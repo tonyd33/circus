@@ -2,29 +2,31 @@
 
 This document defines the protocol for communicating with Chimp agents via Conduit exchanges.
 
-The protocol operates in two phases:
+The protocol distinguishes between:
+1. **Commands** - Messages sent TO the chimp (incoming)
+2. **Output Messages** - Messages sent FROM the chimp (outgoing)
 
-1. **Initialization Phase**: Messages from a configuration file processed before connecting to the stream
-2. **Runtime Phase**: Messages received from the Conduit exchange stream
+Output messages include both **responses to commands** and **autonomous messages** that the chimp can emit on its own (like progress updates, logs, or artifacts).
 
-Both phases use the same message protocol - the only difference is the delivery mechanism.
+## Protocol Version
+
+Current version: `0.1.0`
 
 ## Initialization Configuration
 
-Initialization configuration is provided via a JSON file containing an array of protocol messages. These messages are processed sequentially during chimp startup, before the chimp connects to the Conduit message stream.
+Initialization configuration is provided via a JSON file containing an array of commands to execute during chimp startup, before connecting to the runtime message stream.
 
 ### Configuration File Format
 
 ```json
 {
   "version": "0.1.0",
-  "messages": [
+  "commands": [
     {
       "command": "clone-repo",
       "args": {
         "url": "https://github.com/user/repo.git",
-        "branch": "main",
-        "path": "/workspace"
+        "branch": "main"
       }
     },
     {
@@ -36,19 +38,12 @@ Initialization configuration is provided via a JSON file containing an array of 
     {
       "command": "send-agent-message",
       "args": {
-        "prompt": "Review the recent changes to the authentication module"
+        "prompt": "Familiarize yourself with the codebase"
       }
     }
   ]
 }
 ```
-
-### Configuration Schema
-
-- `version` (string, required): Protocol version
-- `messages` (array, required): Array of protocol messages to process on startup
-
-Each message in the array follows the standard protocol message format (see Message Types below).
 
 ### Configuration Location
 
@@ -58,71 +53,17 @@ The chimp looks for initialization configuration in the following locations (in 
 2. `/etc/chimp/config.json` (standard mount point)
 3. `./chimp.config.json` (current directory)
 
-If no configuration file is found, the chimp starts with default settings and proceeds directly to runtime phase.
+If no configuration file is found, the chimp starts with default settings.
 
-### Initialization Sequence
+---
 
-1. **Load configuration** from file (if present)
-2. **Validate configuration** structure and protocol version
-3. **Process messages sequentially**:
-   - Each message is validated using the same protocol schemas as runtime messages
-   - Control messages are executed (clone repo, change session mode, etc.)
-   - Agent messages are sent to Claude (useful for initial context setting)
-   - Responses are logged but not published to the stream
-4. **Connect to Conduit** and begin runtime phase
+## Commands (Incoming Messages)
 
-### Example Configurations
+Commands are messages sent TO the chimp to instruct it to perform actions.
 
-#### Clone Repository and Resume Session
+### Command Structure
 
-```json
-{
-  "version": "0.1.0",
-  "messages": [
-    {
-      "command": "clone-repo",
-      "args": {
-        "url": "https://github.com/user/repo.git",
-        "branch": "feature-branch"
-      }
-    },
-    {
-      "command": "resume-session",
-      "args": {
-        "sessionId": "existing-session-id"
-      }
-    }
-  ]
-}
-```
-
-#### Set Working Directory and Provide Initial Context
-
-```json
-{
-  "version": "0.1.0",
-  "messages": [
-    {
-      "command": "set-working-dir",
-      "args": {
-        "path": "/workspace/src"
-      }
-    },
-    {
-      "command": "send-agent-message",
-      "args": {
-        "prompt": "You are working on a TypeScript project. Familiarize yourself with the codebase structure."
-      }
-    }
-  ]
-}
-```
-
-## Message Format
-
-All messages sent to a Chimp worker use a unified format with a command and optional arguments.
-
-### Message Structure
+All commands follow this format:
 
 ```json
 {
@@ -133,89 +74,18 @@ All messages sent to a Chimp worker use a unified format with a command and opti
 }
 ```
 
-#### Fields
+### Available Commands
 
-- `command` (string, required): The command to execute
-- `args` (object, optional): Command-specific arguments
+#### `send-agent-message`
 
-## Commands
+Send a prompt to the Claude agent for processing.
 
-### `send-agent-message`
-
-Send a message to the Claude agent for processing.
-
+**Request:**
 ```json
 {
   "command": "send-agent-message",
   "args": {
-    "prompt": "Your prompt here"
-  }
-}
-```
-
-**Args:**
-- `prompt` (string, required): The prompt to send to the Claude agent
-
-**Response:**
-Returns the agent's text response as a string.
-
-**Example:**
-```json
-{
-  "command": "send-agent-message",
-  "args": {
-    "prompt": "Analyze the authentication module and suggest improvements"
-  }
-}
-```
-
-### Session Management Commands
-
-#### `stop`
-
-Gracefully stop the worker and close the current session.
-
-```json
-{
-  "command": "stop"
-}
-```
-
-**Response:**
-```json
-{
-  "status": "stopped",
-  "sessionId": "current-session-id"
-}
-```
-
-#### `new-session`
-
-Start a new session, abandoning the current one.
-
-```json
-{
-  "command": "new-session"
-}
-```
-
-**Response:**
-```json
-{
-  "status": "session-created",
-  "sessionId": "new-session-id"
-}
-```
-
-#### `resume-session`
-
-Resume a specific session by ID.
-
-```json
-{
-  "command": "resume-session",
-  "args": {
-    "sessionId": "session-id-to-resume"
+    "prompt": "Analyze the authentication module"
   }
 }
 ```
@@ -223,8 +93,9 @@ Resume a specific session by ID.
 **Response:**
 ```json
 {
-  "status": "session-resumed",
-  "sessionId": "resumed-session-id"
+  "type": "agent-message-response",
+  "content": "I've analyzed the authentication module...",
+  "sessionId": "session-123"
 }
 ```
 
@@ -232,6 +103,7 @@ Resume a specific session by ID.
 
 Get the current worker status and session information.
 
+**Request:**
 ```json
 {
   "command": "get-status"
@@ -241,67 +113,73 @@ Get the current worker status and session information.
 **Response:**
 ```json
 {
-  "status": "running",
-  "sessionId": "current-session-id",
+  "type": "status-response",
+  "sessionId": "session-123",
   "messageCount": 42,
   "model": "claude-haiku-4-5"
 }
 ```
 
+#### `new-session`
+
+Start a new session, abandoning the current one.
+
+**Request:**
+```json
+{
+  "command": "new-session"
+}
+```
+
+**Response:** No response.
+
 #### `fork-session`
 
-Fork the current session to explore alternative paths.
+Fork the current session to explore alternative paths. **(Not yet implemented)**
 
+**Request:**
 ```json
 {
   "command": "fork-session"
 }
 ```
 
-**Response:**
+**Response:** Not yet implemented.
+
+#### `stop`
+
+Gracefully stop the worker. (No response - worker terminates)
+
+**Request:**
 ```json
 {
-  "status": "session-forked",
-  "originalSessionId": "original-session-id",
-  "forkedSessionId": "new-forked-session-id"
+  "command": "stop"
 }
 ```
 
-### Initialization Commands
-
 #### `clone-repo`
 
-Clone a git repository. Typically used during initialization phase.
+Clone a git repository. Typically used during initialization.
 
+**Request:**
 ```json
 {
   "command": "clone-repo",
   "args": {
     "url": "https://github.com/user/repo.git",
-    "branch": "main",
-    "path": "/workspace"
+    "branch": "main",  // optional
+    "path": "/workspace"  // optional
   }
 }
 ```
 
-**Args:**
-- `url` (string, required): Git repository URL to clone
-- `branch` (string, optional): Git branch to checkout (default: "main")
-- `path` (string, optional): Path where repository should be cloned (default: "/workspace")
-
-**Response:**
-```json
-{
-  "status": "repo-cloned",
-  "path": "/workspace",
-  "branch": "main"
-}
-```
+**Response:** No response.
 
 #### `set-working-dir`
 
 Change the working directory for the agent.
 
+**Request:**
 ```json
 {
   "command": "set-working-dir",
@@ -311,21 +189,13 @@ Change the working directory for the agent.
 }
 ```
 
-**Args:**
-- `path` (string, required): Absolute path to set as working directory
-
-**Response:**
-```json
-{
-  "status": "working-dir-changed",
-  "path": "/workspace/src"
-}
-```
+**Response:** No response.
 
 #### `set-model`
 
 Change the Claude model used by the agent.
 
+**Request:**
 ```json
 {
   "command": "set-model",
@@ -335,21 +205,13 @@ Change the Claude model used by the agent.
 }
 ```
 
-**Args:**
-- `model` (string, required): Claude model identifier
-
-**Response:**
-```json
-{
-  "status": "model-changed",
-  "model": "claude-opus-4"
-}
-```
+**Response:** No response.
 
 #### `set-allowed-tools`
 
 Configure which tools the agent is allowed to use.
 
+**Request:**
 ```json
 {
   "command": "set-allowed-tools",
@@ -359,69 +221,151 @@ Configure which tools the agent is allowed to use.
 }
 ```
 
-**Args:**
-- `tools` (array[string], required): List of allowed tool names
+**Response:** No response.
+
+#### `save-session`
+
+Save the current session to S3 storage for later restoration.
+
+**Request:**
+```json
+{
+  "command": "save-session",
+  "args": {
+    "method": "s3"
+  }
+}
+```
 
 **Response:**
 ```json
 {
-  "status": "tools-configured",
-  "tools": ["Read", "Glob", "Grep", "Write", "Edit", "Bash"]
+  "type": "save-session-response",
+  "s3Path": "s3://claude-sessions/sessions/session-123.jsonl",
+  "sessionId": "session-123"
 }
 ```
 
-## Response Format
+**Note:** Session files are stored at `~/.claude/projects/<encoded-cwd>/<session-id>.jsonl` and uploaded to S3. The working directory must match when restoring.
 
-All responses from the Chimp worker are published as Conduit messages with the following structure:
+#### `restore-session`
 
-### Agent Responses
+Restore a previously saved session from S3 storage.
 
-Responses from the Claude agent are published as the text content:
-
+**Request:**
 ```json
 {
-  "type": "data",
-  "id": "message-id",
-  "timestamp": "2024-01-01T00:00:00Z",
-  "sequence": 0,
-  "payload": "The agent's response text here..."
-}
-```
-
-### Control Responses
-
-Responses to control commands are published as JSON objects:
-
-```json
-{
-  "type": "data",
-  "id": "message-id",
-  "timestamp": "2024-01-01T00:00:00Z",
-  "sequence": 0,
-  "payload": {
-    "status": "session-created",
-    "sessionId": "new-session-id"
+  "command": "restore-session",
+  "args": {
+    "sessionId": "session-123",
+    "method": "s3"
   }
 }
 ```
+
+**Response:** No response.
+
+---
+
+## Output Messages (Outgoing Messages)
+
+Output messages are sent FROM the chimp. They include both responses to commands and autonomous messages.
+
+All output messages have a `type` field to discriminate between different message types.
+
+### Command Responses
+
+Command responses are sent in reply to specific commands. Only the following commands return responses:
+
+- `send-agent-message` → `agent-message-response`
+- `get-status` → `status-response`
+- `save-session` → `save-session-response`
+
+All other commands provide feedback via log messages instead of dedicated response types.
+
+### Autonomous Messages
+
+Autonomous messages are sent by the chimp without being prompted by a specific command. These allow the chimp to communicate progress, emit artifacts, or provide logging information.
+
+#### `artifact`
+
+An artifact created by the agent (e.g., file, test result, screenshot).
+
+```json
+{
+  "type": "artifact",
+  "artifactType": "file",
+  "name": "user.model.ts",
+  "content": "export interface User { ... }",
+  "metadata": {
+    "path": "/workspace/src/models/user.model.ts",
+    "created": "2024-01-01T00:00:00Z"
+  }
+}
+```
+
+**Fields:**
+- `artifactType` (string): Type of artifact (e.g., "file", "test-result", "screenshot")
+- `name` (string): Name or identifier for the artifact
+- `content` (unknown): Artifact content (format depends on artifactType)
+- `metadata` (object, optional): Additional metadata about the artifact
+
+#### `progress`
+
+Progress update from the agent.
+
+```json
+{
+  "type": "progress",
+  "message": "Analyzing test suite...",
+  "percentage": 45
+}
+```
+
+**Fields:**
+- `message` (string): Human-readable progress message
+- `percentage` (number, optional): Progress percentage (0-100)
+
+#### `log`
+
+Log message from the agent.
+
+```json
+{
+  "type": "log",
+  "level": "info",
+  "message": "Starting code analysis",
+  "timestamp": "2024-01-01T00:00:00Z"
+}
+```
+
+**Fields:**
+- `level` (enum): Log level - "debug", "info", "warn", or "error"
+- `message` (string): Log message
+- `timestamp` (string): ISO 8601 timestamp
 
 ### Error Responses
 
-Errors are published with the following format:
+Errors can be sent in response to any command.
 
 ```json
 {
-  "type": "data",
-  "id": "message-id",
-  "timestamp": "2024-01-01T00:00:00Z",
-  "sequence": 0,
-  "payload": {
-    "error": "Error message here",
-    "command": "command-that-failed",
-    "sequence": 123
+  "type": "error",
+  "error": "Session not found",
+  "command": "resume-session",
+  "details": {
+    "sessionId": "invalid-session-id",
+    "availableSessions": ["session-123", "session-456"]
   }
 }
 ```
+
+**Fields:**
+- `error` (string): Error message
+- `command` (string, optional): The command that caused the error
+- `details` (object, optional): Additional error context
+
+---
 
 ## Examples
 
@@ -439,56 +383,54 @@ Errors are published with the following format:
 
 **Output:**
 ```json
-"Here's a function to calculate fibonacci numbers:\n\n```python\ndef fibonacci(n):\n  ..."
+{
+  "type": "agent-message-response",
+  "content": "Here's a function to calculate fibonacci numbers...",
+  "sessionId": "session-123"
+}
 ```
 
-### Example 2: Multi-turn Conversation
+### Example 2: Agent with Progress Updates
+
+**Input:**
+```json
+{
+  "command": "send-agent-message",
+  "args": {
+    "prompt": "Run the full test suite and fix any failures"
+  }
+}
+```
+
+**Output (multiple messages):**
+```json
+{"type": "progress", "message": "Running test suite...", "percentage": 10}
+{"type": "log", "level": "info", "message": "Found 42 tests", "timestamp": "..."}
+{"type": "progress", "message": "Analyzing failures...", "percentage": 50}
+{"type": "artifact", "artifactType": "test-result", "name": "test-results.json", "content": {...}}
+{"type": "progress", "message": "Fixing failures...", "percentage": 75}
+{"type": "agent-message-response", "content": "I've fixed all test failures...", "sessionId": "session-123"}
+```
+
+### Example 3: Session Forking
 
 **Input 1:**
 ```json
 {
   "command": "send-agent-message",
   "args": {
-    "prompt": "Analyze the user authentication code"
+    "prompt": "Refactor the user authentication system"
   }
 }
 ```
 
 **Output 1:**
 ```json
-"I've analyzed the authentication code. Here are my findings: ..."
-```
-
-**Input 2:**
-```json
 {
-  "command": "send-agent-message",
-  "args": {
-    "prompt": "Now refactor it to use JWT tokens"
-  }
+  "type": "agent-message-response",
+  "content": "I'll refactor using JWT tokens...",
+  "sessionId": "session-123"
 }
-```
-
-**Output 2:**
-```json
-"Based on my previous analysis, here's the refactored code using JWT: ..."
-```
-
-### Example 3: Session Management
-
-**Input 1:**
-```json
-{
-  "command": "send-agent-message",
-  "args": {
-    "prompt": "Help me debug this API endpoint"
-  }
-}
-```
-
-**Output 1:**
-```json
-"Let me analyze the API endpoint. I found several issues: ..."
 ```
 
 **Input 2:**
@@ -501,9 +443,9 @@ Errors are published with the following format:
 **Output 2:**
 ```json
 {
-  "status": "session-forked",
-  "originalSessionId": "abc-123",
-  "forkedSessionId": "def-456"
+  "type": "fork-session-response",
+  "originalSessionId": "session-123",
+  "forkedSessionId": "session-456"
 }
 ```
 
@@ -512,22 +454,39 @@ Errors are published with the following format:
 {
   "command": "send-agent-message",
   "args": {
-    "prompt": "Try a different approach using caching"
+    "prompt": "Actually, try using OAuth2 instead"
   }
 }
 ```
 
 **Output 3:**
 ```json
-"In this forked session, let me try a caching approach: ..."
+{
+  "type": "agent-message-response",
+  "content": "In this forked session, I'll implement OAuth2...",
+  "sessionId": "session-456"
+}
 ```
 
-## Protocol Version
-
-Current version: `0.1.0`
-
-Future versions may add new control commands or message fields while maintaining backward compatibility with existing commands.
+---
 
 ## Implementation
 
-The protocol is implemented using Zod schemas in the `chimp-protocol` package. See `packages/chimp-protocol/index.ts` for TypeScript types and validation functions.
+The protocol is implemented using Zod schemas with discriminated unions in the `@mnke/circus-protocol` package. See `packages/protocol/index.ts` for TypeScript types and validation functions.
+
+### Usage
+
+```typescript
+import {
+  parseChimpCommand,
+  parseChimpOutputMessage,
+  type ChimpCommand,
+  type ChimpOutputMessage,
+} from '@mnke/circus-protocol';
+
+// Parse incoming command
+const command: ChimpCommand = parseChimpCommand(incomingPayload);
+
+// Parse outgoing message
+const output: ChimpOutputMessage = parseChimpOutputMessage(outgoingPayload);
+```

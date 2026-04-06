@@ -6,12 +6,15 @@
   "private": false,
   "scripts": {
     "dev": "bun --watch index.ts",
-    "start": "bun index.ts"
+    "build": "bun build --target=bun --outfile=index.js index.ts",
+    "start": "bun index.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.92",
-    "@mnke/conduit-sdk": "^0.1.0",
-    "@mnke/circus-protocol": "workspace:*"
+    "@aws-sdk/client-s3": "^3.1024.0",
+    "@mnke/circus-protocol": "workspace:*",
+    "@mnke/conduit-sdk": "^0.1.0"
   },
   "devDependencies": {
     "@types/bun": "latest"

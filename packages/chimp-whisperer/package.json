@@ -1,0 +1,22 @@
+{
+  "name": "@mnke/circus-chimp-whisperer",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@mnke/conduit-client": "^0.1.6",
+    "@mnke/circus-protocol": "workspace:*"
+  },
+  "scripts": {
+    "dev": "bun --watch index.ts",
+    "typecheck": "tsc --noEmit",
+    "start": "bun index.ts",
+    "repl": "bun repl.ts"
+  }
+}

@@ -31,6 +31,7 @@
               bun
               self.formatter.${system}
               natscli
+              # buf
             ];
           };
         }

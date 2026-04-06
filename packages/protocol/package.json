@@ -3,7 +3,12 @@
   "version": "0.1.0",
   "module": "index.ts",
   "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
   "devDependencies": {
+    "@bufbuild/protobuf": "^2.11.0",
+    "@bufbuild/protoc-gen-es": "^2.11.0",
     "@types/bun": "latest"
   },
   "peerDependencies": {

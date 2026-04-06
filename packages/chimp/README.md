@@ -114,10 +114,6 @@ NATS_CONSUMER_NAME=CHIMP_CONSUMER
 NATS_SUBJECT_INPUT=chimp.input
 NATS_SUBJECT_OUTPUT=chimp.output
 NATS_SUBJECT_CONTROL=chimp.control
-
-# Optional
-IN_CLUSTER=false
-IS_RECOVERING=false
 ```
 
 ### 5. Install Dependencies and Run
@@ -133,7 +129,7 @@ In another terminal, publish a test message:
 
 ```bash
 # Publish a test message
-nats pub chimp.input '{"type":"data","id":"test-1","timestamp":"2024-01-01T00:00:00Z","sequence":1,"payload":"Hello Claude! Can you help me write a function to calculate fibonacci numbers?"}'
+nats pub chimp.input '{"type":"data","id":"test-1","timestamp":"2024-01-01T00:00:00Z","sequence":1,"payload":{"command": "send-agent-message", "args":{"prompt": "Hello Claude! Can you help me write a function to calculate fibonacci numbers?"}}}'
 
 # Subscribe to responses
 nats sub chimp.output
