@@ -1,6 +1,6 @@
 # Chimp Protocol
 
-This document defines the protocol for communicating with Chimp agents via Conduit exchanges.
+This document defines the protocol for communicating with Chimp agents (autonomous AI workers) in the Circus system.
 
 The protocol distinguishes between:
 1. **Commands** - Messages sent TO the chimp (incoming)
@@ -8,9 +8,273 @@ The protocol distinguishes between:
 
 Output messages include both **responses to commands** and **autonomous messages** that the chimp can emit on its own (like progress updates, logs, or artifacts).
 
+## What is a Chimp?
+
+A **Chimp** is an autonomous worker that processes commands and interacts with an AI model via NATS JetStream. Chimps are managed by the Ringmaster and receive work from the Usher.
+
+**Key characteristics:**
+- Processes commands from `chimp.{chimpName}.input` NATS subject
+- Publishes responses to `chimp.{chimpName}.output` NATS subject
+- Publishes heartbeats to `chimp.{chimpName}.heartbeat` every ~10 seconds
+- Publishes correlation events to `chimp.{chimpName}.correlation` when creating external resources
+- Publishes completion event to `chimp.{chimpName}.control` when shutting down gracefully
+- Stateful: maintains session history across messages
+- Ephemeral: runs until idle timeout or explicit stop command
+
 ## Protocol Version
 
 Current version: `0.1.0`
+
+---
+
+## Chimp Implementation Requirements
+
+This section defines what ANY Chimp implementation (including alternative implementations like "Bonobo") MUST satisfy to be compatible with the Circus system.
+
+### 1. Environment Variables (Required)
+
+The Ringmaster sets these environment variables when creating a Chimp pod. Your implementation MUST read and use them:
+
+| Variable | Required | Description | Example |
+|----------|----------|-------------|---------|
+| `CHIMP_NAME` | ✅ Yes | Unique identifier for this Chimp instance. Used to construct all NATS subject names. | `slack-C123-T456` |
+| `NATS_URL` | ✅ Yes | NATS server connection URL | `nats://nats:4222` |
+
+**AI Model Configuration** (implementation-specific):
+
+The AI model and API keys are **NOT** mandated by the protocol. Implementations are free to use any AI backend:
+
+| Variable | Required | Description | Example |
+|----------|----------|-------------|---------|
+| `ANTHROPIC_API_KEY` | 📝 If using Anthropic | API key for Claude | `sk-ant-...` |
+| `OPENAI_API_KEY` | 📝 If using OpenAI | API key for GPT models | `sk-...` |
+| `MODEL` | ⚠️ Optional | Default model to use | `claude-opus-4` |
+
+### 2. NATS JetStream Connection (Required)
+
+Your Chimp MUST:
+
+1. **Connect to NATS JetStream** using the `NATS_URL` environment variable
+2. **Construct subject names** from `CHIMP_NAME`:
+   ```typescript
+   const streamName = `chimp-${CHIMP_NAME}`;
+   const inputSubject = `chimp.${CHIMP_NAME}.input`;
+   const outputSubject = `chimp.${CHIMP_NAME}.output`;
+   const heartbeatSubject = `chimp.${CHIMP_NAME}.heartbeat`;
+   const correlationSubject = `chimp.${CHIMP_NAME}.correlation`;
+   ```
+
+3. **Consume from JetStream consumer**:
+   - Stream: `chimp-${CHIMP_NAME}`
+   - Consumer: `chimp-${CHIMP_NAME}-consumer`
+   - Filter subject: `chimp.${CHIMP_NAME}.input`
+   - Ack policy: Explicit (must call `msg.ack()` after processing)
+
+4. **Publish to output subject**: All responses go to `chimp.${CHIMP_NAME}.output`
+
+### 3. Message Processing (Required)
+
+Your Chimp MUST:
+
+1. **Read messages** from the input subject as JSON
+2. **Parse and validate** using the command schema (see Commands section)
+3. **Process commands** according to the protocol
+4. **Publish responses** to the output subject as JSON
+5. **Acknowledge messages** after successful processing
+
+**Error handling:**
+- If a command fails, publish an error message (see Error Responses)
+- Still acknowledge the message to prevent redelivery
+- Log errors for debugging
+
+### 4. Heartbeat Publishing (Required)
+
+Your Chimp MUST publish heartbeat messages every **10 seconds** (±2s) to `chimp.${CHIMP_NAME}.heartbeat`:
+
+```json
+{
+  "chimpName": "slack-C123-T456",
+  "timestamp": 1234567890000,
+  "messageCount": 42
+}
+```
+
+**Fields:**
+- `chimpName` (string): The value of `CHIMP_NAME` env var
+- `timestamp` (number): Current Unix timestamp in milliseconds
+- `messageCount` (number): Total number of messages processed
+
+**Why?** The Ringmaster monitors heartbeats via Redis (30s TTL). If heartbeats stop, the Ringmaster will recreate the Chimp pod after ~60 seconds.
+
+### 5. Control Events (Required)
+
+Your Chimp MUST publish control events to `chimp.${CHIMP_NAME}.control` to announce lifecycle changes:
+
+#### Completion Event
+
+When shutting down gracefully (idle timeout or explicit stop), publish a completion event:
+
+```json
+{
+  "type": "completion",
+  "chimpName": "slack-C123-T456",
+  "timestamp": 1234567890000,
+  "reason": "idle_timeout",
+  "messageCount": 42,
+  "sessionId": "session-123"
+}
+```
+
+**Fields:**
+- `type` (string): Always "completion"
+- `chimpName` (string): The value of `CHIMP_NAME` env var
+- `timestamp` (number): Current Unix timestamp in milliseconds
+- `reason` (enum): Why the Chimp is shutting down - "idle_timeout", "explicit_stop", "error"
+- `messageCount` (number): Total messages processed
+- `sessionId` (string, optional): Current session ID if one exists
+
+**Why?** The Ringmaster listens for completion events to immediately clean up pods and update state. This is much faster than waiting for heartbeat TTL expiration.
+
+### 6. Correlation Events (Required)
+
+When your Chimp creates external resources (GitHub PRs, Jira issues, Slack threads, etc.), it MUST publish correlation events to `chimp.${CHIMP_NAME}.correlation`:
+
+```json
+{
+  "type": "github-pr",
+  "sessionName": "slack-C123-T456",
+  "timestamp": 1234567890000,
+  "repo": "myorg/myrepo",
+  "prNumber": 123
+}
+```
+
+**Supported types:**
+
+| Type | Required Fields | Example |
+|------|----------------|---------|
+| `github-pr` | `repo`, `prNumber` | `{"type":"github-pr","repo":"myorg/repo","prNumber":123}` |
+| `github-issue` | `repo`, `issueNumber` | `{"type":"github-issue","repo":"myorg/repo","issueNumber":456}` |
+| `jira-issue` | `issueKey` | `{"type":"jira-issue","issueKey":"PROJ-123"}` |
+| `slack-thread` | `channelId`, `threadTs` | `{"type":"slack-thread","channelId":"C123","threadTs":"1234.5678"}` |
+| `discord-thread` | `channelId`, `threadId` | `{"type":"discord-thread","channelId":"123","threadId":"456"}` |
+
+**Why?** The Usher listens to these events and updates Redis indexes. This enables bidirectional correlation: when a user comments on a PR the Chimp created, the Usher routes it back to the same Chimp automatically.
+
+### 7. Idle Timeout (Required)
+
+Your Chimp MUST implement an idle timeout mechanism:
+
+- After **30 minutes** (configurable via `IDLE_TIMEOUT_MS` env var) of no incoming messages, the Chimp MUST:
+  1. Publish a completion event with `reason: "idle_timeout"`
+  2. Stop publishing heartbeats
+  3. Close NATS connection
+  4. Exit gracefully
+
+- Reset the idle timer when:
+  - A new message is received
+  - A command is processed
+
+**Why?** Idle Chimps waste resources. The idle timeout ensures pods are cleaned up automatically. When new work arrives, the Ringmaster will recreate the pod on-demand (messages are buffered in NATS JetStream).
+
+### 8. Command Support (Required)
+
+Your Chimp MUST implement these commands:
+
+| Command | Required | Description |
+|---------|----------|-------------|
+| `send-agent-message` | ✅ Yes | Process a user prompt with the AI model |
+| `get-status` | ✅ Yes | Return current status (sessionId, messageCount, model) |
+| `stop` | ✅ Yes | Gracefully shut down with completion event |
+| `new-session` | ⚠️ Recommended | Start a new session (abandon current) |
+| `set-model` | ⚠️ Optional | Change AI model (if applicable) |
+| `set-allowed-tools` | ⚠️ Optional | Configure allowed tools |
+
+All other commands are **optional** (clone-repo, set-working-dir, save-session, restore-session, fork-session, etc.).
+
+### 9. Session Management (Recommended)
+
+Your Chimp SHOULD maintain **session state** across messages:
+- Session ID (e.g., Claude SDK session ID)
+- Conversation history
+- Working directory
+- Message count
+
+This enables:
+- Multi-turn conversations with context
+- Session forking/branching
+- Session persistence (save/restore)
+
+**Note:** Session management is implementation-specific. The protocol only requires that `get-status` returns a `sessionId` field if a session exists.
+
+### 10. Graceful Shutdown (Required)
+
+Your Chimp MUST handle:
+- `stop` command - publish completion event, stop heartbeats, exit gracefully
+- Idle timeout - publish completion event, stop heartbeats, exit gracefully
+- `SIGINT` / `SIGTERM` signals - publish completion event, close NATS connection and exit
+
+**Always publish a completion event before shutting down** (except for crashes).
+
+### 11. Example Minimal Implementation
+
+Here's a minimal Chimp implementation in pseudocode:
+
+```typescript
+const chimpName = process.env.CHIMP_NAME!;
+const natsUrl = process.env.NATS_URL!;
+
+// Connect to NATS
+const nc = await connect({ servers: natsUrl });
+const js = nc.jetstream();
+
+// Start heartbeat
+setInterval(() => {
+  nc.publish(`chimp.${chimpName}.heartbeat`, JSON.stringify({
+    chimpName,
+    timestamp: Date.now(),
+    messageCount: state.messageCount,
+  }));
+}, 10_000);
+
+// Consume messages
+const consumer = await js.consumers.get(`chimp-${chimpName}`, `chimp-${chimpName}-consumer`);
+for await (const msg of await consumer.consume()) {
+  const command = JSON.parse(msg.string());
+
+  // Process command
+  const response = await handleCommand(command);
+
+  // Publish response
+  if (response) {
+    nc.publish(`chimp.${chimpName}.output`, JSON.stringify(response));
+  }
+
+  // Acknowledge
+  msg.ack();
+}
+```
+
+### 12. Testing Your Implementation
+
+To verify your Chimp is protocol-compliant:
+
+1. **Environment check**: Can it read `CHIMP_NAME` and `NATS_URL`?
+2. **Connection test**: Does it connect to NATS JetStream?
+3. **Heartbeat test**: Does it publish heartbeats every 10 seconds?
+4. **Command test**: Can it process `send-agent-message` and `get-status`?
+5. **Error handling**: Does it publish error messages on failure?
+6. **Shutdown test**: Does it stop gracefully on `stop` command and SIGTERM?
+7. **Correlation test**: Does it publish correlation events when creating resources?
+
+### 13. Reference Implementation
+
+See `circus/packages/chimp/` for the reference implementation using:
+- Claude Agent SDK (Anthropic)
+- NATS JetStream for messaging
+- Direct NATS connection (no intermediary layers)
+
+---
 
 ## Initialization Configuration
 

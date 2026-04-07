@@ -12,10 +12,15 @@
   "private": true,
   "scripts": {
     "typecheck": "bun run --filter='*' typecheck",
-    "build": "bun run --filter='*' build"
+    "build": "bun run --filter='*' build",
+    "format": "bun run biome format --write",
+    "prepare": "husky"
   },
   "type": "module",
   "workspaces": [
     "packages/*"
-  ]
+  ],
+  "dependencies": {
+    "husky": "^9.1.7"
+  }
 }

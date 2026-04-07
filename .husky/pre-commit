@@ -1,0 +1,3 @@
+bun test
+bun run typecheck
+gitleaks git

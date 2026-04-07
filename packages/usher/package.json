@@ -1,5 +1,6 @@
 {
-  "name": "@mnke/circus-chimp-whisperer",
+  "name": "@mnke/usher",
+  "version": "0.1.0",
   "module": "index.ts",
   "type": "module",
   "private": true,
@@ -10,13 +11,13 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "@mnke/conduit-client": "^0.1.6",
-    "@mnke/circus-protocol": "workspace:*"
+    "@mnke/circus-shared": "workspace:*",
+    "ioredis": "^5.10.1",
+    "nats": "^2.29.3"
   },
   "scripts": {
     "dev": "bun --watch index.ts",
-    "typecheck": "tsc --noEmit",
-    "start": "bun index.ts",
-    "repl": "bun repl.ts"
+    "typecheck": "bun tsc --noEmit",
+    "start": "bun index.ts"
   }
 }

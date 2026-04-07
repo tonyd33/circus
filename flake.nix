@@ -7,6 +7,7 @@
     { self, ... }@inputs:
 
     let
+      goVersion = 26; # Change this to update the whole stack
       supportedSystems = [
         "x86_64-linux"
         "aarch64-linux"
@@ -32,6 +33,11 @@
               self.formatter.${system}
               natscli
               # buf
+              go
+              # goimports, godoc, etc.
+              gotools
+              golangci-lint
+              gitleaks
             ];
           };
         }
