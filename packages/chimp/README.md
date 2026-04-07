@@ -1,24 +1,30 @@
-# conduit-chimp
+# @mnke/circus-chimp
 
-A Claude Agent integration for the Conduit Kubernetes operator. This application connects Claude's AI agent capabilities (with access to file operations, bash commands, etc.) to NATS JetStream via Conduit exchanges, enabling AI-powered message processing in a distributed system.
+A Claude Agent worker for the Circus platform. Chimp connects to NATS JetStream, processes messages using the Claude Agent SDK (with full tool access), and publishes responses back. It implements heartbeat monitoring, idle timeout, and session persistence.
 
 ## Overview
 
-Conduit Chimp receives messages from a NATS JetStream (managed by the Conduit operator), processes them using the Claude Agent SDK, and publishes responses back. It automatically checkpoints state for recovery and handles shutdown gracefully.
+Chimp is the worker component of Circus that executes Claude AI agent tasks. Each Chimp runs as a dedicated Kubernetes pod, processing messages from its own NATS stream with full access to file operations, bash commands, and other Claude tools.
 
 ## Features
 
-- **Claude Agent SDK Integration**: Uses the full Claude Agent SDK with access to file operations, bash commands, and other tools
-- **Checkpointing**: Automatically saves state every 5 messages for recovery
-- **Error Handling**: Graceful error handling with error responses published back to the stream
-- **Signal Handling**: Proper shutdown on SIGINT/SIGTERM with state preservation
+- **Claude Agent SDK Integration**: Full Claude Agent SDK with tool access (Read, Write, Edit, Glob, Grep, Bash)
+- **Session Continuity**: Maintains session state across messages using Claude's session system
+- **Heartbeat Monitoring**: Publishes heartbeats every 10 seconds for health tracking
+- **Idle Timeout**: Automatically shuts down after 30 minutes of inactivity to save resources
+- **Correlation Events**: Publishes events when creating external resources (PRs, issues, threads)
+- **S3 Session Persistence**: Save and restore Claude sessions to/from S3 (MinIO)
+- **Configurable**: Model, tools, and working directory configurable via environment variables
+- **Error Handling**: Graceful error handling with structured error responses
+- **Signal Handling**: Proper shutdown on SIGINT/SIGTERM with completion events
 
 ## Prerequisites
 
-- [Bun](https://bun.sh) runtime
+- [Bun](https://bun.sh) runtime (v1.3.11 or later)
 - Anthropic API key
-- NATS JetStream instance (for local development)
-- Access to the Conduit operator (for production deployment in Kubernetes)
+- NATS server with JetStream enabled
+- (Optional) S3/MinIO instance for session persistence
+- Kubernetes cluster (for production deployment)
 
 ## Local Development Setup
 
@@ -140,140 +146,187 @@ nats sub chimp.output
 ### Required Variables
 
 - `ANTHROPIC_API_KEY`: Your Anthropic API key
+- `CHIMP_NAME`: Unique identifier for this Chimp instance (e.g., `slack-C123-T456`)
 
-### Conduit Variables
+### NATS Configuration
 
-When running in Kubernetes with the Conduit operator, these are automatically injected. For local development, set them manually:
+- `NATS_URL`: NATS server connection URL (default: `nats://localhost:4222`)
 
-- `EXCHANGE_ID`: Unique exchange identifier
-- `EXCHANGE_NAME`: Name of the exchange
-- `EXCHANGE_NAMESPACE`: Kubernetes namespace
-- `NATS_URL`: NATS server connection URL (e.g., `nats://localhost:4222`)
-- `NATS_STREAM_NAME`: JetStream stream name
-- `NATS_CONSUMER_NAME`: Consumer name
-- `NATS_SUBJECT_INPUT`: Input subject for receiving messages (e.g., `chimp.input`)
-- `NATS_SUBJECT_OUTPUT`: Output subject for publishing responses (e.g., `chimp.output`)
-- `NATS_SUBJECT_CONTROL`: Control message subject (e.g., `chimp.control`)
+Stream and consumer names are automatically derived from `CHIMP_NAME`:
+- Stream: `chimp-{CHIMP_NAME}`
+- Consumer: `chimp-{CHIMP_NAME}-consumer`
+- Subjects: `chimp.{CHIMP_NAME}.{input|output|control|correlation|heartbeat}`
 
 ### Optional Variables
 
-- `IN_CLUSTER`: Set to `false` for local development (default: `true`)
-- `IS_RECOVERING`: Whether recovering from checkpoint (default: `false`)
-- `CHECKPOINT_DATA`: JSON checkpoint data for recovery
+#### Claude Configuration
+- `CLAUDE_MODEL`: Claude model to use (default: `claude-sonnet-4-5`)
+- `ALLOWED_TOOLS`: Comma-separated list of allowed tools (default: `Read,Glob,Grep,Write,Edit,Bash`)
+- `WORKING_DIR`: Initial working directory (default: current directory)
 
-## Message Format
+#### Lifecycle Configuration
+- `IDLE_TIMEOUT_MS`: Milliseconds of inactivity before shutdown (default: `1800000` = 30 minutes)
 
-### Input Messages
+#### S3/MinIO Configuration (for session persistence)
+- `S3_ENDPOINT`: S3 endpoint URL (default: `http://minio:9000`)
+- `S3_REGION`: S3 region (default: `us-east-1`)
+- `S3_ACCESS_KEY_ID`: S3 access key (default: `minioadmin`)
+- `S3_SECRET_ACCESS_KEY`: S3 secret key (default: `minioadmin`)
+- `S3_BUCKET`: S3 bucket for sessions (default: `claude-sessions`)
 
-The Conduit SDK expects messages in the following envelope format:
+## Message Protocol
 
-```json
-{
-  "type": "data",
-  "id": "unique-message-id",
-  "timestamp": "2024-01-01T00:00:00Z",
-  "sequence": 1,
-  "payload": "Your prompt here"
-}
-```
+Chimp uses the Circus protocol (defined in `@mnke/circus-protocol`). All messages are JSON.
 
-The `payload` field can be:
-
-```json
-// Simple string
-"What is the capital of France?"
-
-// Object with prompt field
-{
-  "prompt": "What is the capital of France?"
-}
-
-// Any JSON object (will be stringified)
-{
-  "question": "What is the capital of France?",
-  "context": "I'm learning geography"
-}
-```
-
-### Output Messages
-
-Responses are published as a Conduit message envelope:
+### Input Messages (chimp.{name}.input)
 
 ```json
 {
-  "type": "data",
-  "id": "response-message-id",
-  "timestamp": "2024-01-01T00:00:01Z",
-  "sequence": 0,
-  "payload": "The capital of France is Paris..."
-}
-```
-
-### Error Messages
-
-On error, the following format is used:
-
-```json
-{
-  "type": "data",
-  "id": "error-message-id",
-  "timestamp": "2024-01-01T00:00:01Z",
-  "sequence": 0,
-  "payload": {
-    "error": "Error message here",
-    "sequence": 123,
-    "timestamp": "2024-01-01T00:00:01Z"
+  "command": "send-agent-message",
+  "args": {
+    "prompt": "Your message to Claude here"
   }
 }
 ```
 
-## State Management
+Other commands:
+- `get-status` - Get current Chimp status
+- `new-session` - Start a new session on next message
+- `stop` - Shut down the Chimp
+- `clone-repo` - Clone a git repository
+- `set-working-dir` - Change working directory
+- `set-model` - Change Claude model
+- `set-allowed-tools` - Update allowed tools
+- `save-session` - Save session to S3
+- `restore-session` - Restore session from S3
 
-The application maintains state including:
+See [PROTOCOL.md](../../PROTOCOL.md) for full protocol specification.
 
-- `messageCount`: Total number of messages processed
+### Output Messages (chimp.{name}.output)
 
-State is automatically checkpointed every 5 messages and can be recovered if the application restarts.
-
-## Production Deployment with Conduit
-
-To deploy with the Conduit operator, create an Exchange resource:
-
-```yaml
-apiVersion: conduit.mnke.io/v1alpha1
-kind: Exchange
-metadata:
-  name: conduit-chimp
-  namespace: default
-spec:
-  image: your-registry/conduit-chimp:latest
-  env:
-    - name: ANTHROPIC_API_KEY
-      valueFrom:
-        secretKeyRef:
-          name: anthropic-secret
-          key: api-key
-  resources:
-    requests:
-      memory: "256Mi"
-      cpu: "100m"
-    limits:
-      memory: "512Mi"
-      cpu: "500m"
+**Agent Response:**
+```json
+{
+  "type": "agent-message",
+  "content": "Claude's response text",
+  "sessionId": "session-abc-123"
+}
 ```
 
-Create the Anthropic API key secret:
+**Log Message:**
+```json
+{
+  "type": "log",
+  "level": "info",
+  "message": "Processing started"
+}
+```
+
+**Error Response:**
+```json
+{
+  "type": "error",
+  "error": "Error message",
+  "metadata": {
+    "sequence": "123",
+    "timestamp": "2024-01-01T00:00:00Z"
+  }
+}
+```
+
+### Control Messages (chimp.{name}.control)
+
+**Completion Event** (published on shutdown):
+```json
+{
+  "type": "completion",
+  "chimpName": "slack-C123-T456",
+  "timestamp": 1234567890000,
+  "reason": "idle_timeout",
+  "messageCount": 42,
+  "sessionId": "session-123"
+}
+```
+
+### Heartbeat Messages (chimp.{name}.heartbeat)
+
+Published every 10 seconds:
+```json
+{
+  "chimpName": "slack-C123-T456",
+  "timestamp": 1234567890000,
+  "messageCount": 42
+}
+```
+
+### Correlation Events (chimp.{name}.correlation)
+
+Published when creating external resources:
+```json
+{
+  "type": "github-pr",
+  "repo": "owner/repo",
+  "prNumber": 123,
+  "sessionName": "slack-C123-T456",
+  "timestamp": 1234567890000
+}
+```
+
+## Lifecycle
+
+Chimps follow an ephemeral lifecycle to conserve resources:
+
+1. **Creation**: Ringmaster creates Chimp pod when messages arrive
+2. **Running**: Processes messages and publishes heartbeats every 10 seconds
+3. **Idle Detection**: After 30 minutes (configurable) with no messages, publishes completion event
+4. **Shutdown**: Exits gracefully, allowing Kubernetes to clean up the pod
+5. **Recreation**: If new messages arrive, Ringmaster creates a new pod
+
+Messages are safely buffered in NATS JetStream during downtime.
+
+## Session Persistence
+
+Chimp maintains Claude session state across messages for continuity.
+
+### Local Session Files
+
+Sessions are stored locally at:
+```
+~/.claude/projects/<encoded-cwd>/<session-id>.jsonl
+```
+
+Where `<encoded-cwd>` is the working directory path with non-alphanumeric chars replaced by `-`.
+
+### S3 Persistence
+
+Use `save-session` and `restore-session` commands to persist sessions to S3/MinIO:
 
 ```bash
-kubectl create secret generic anthropic-secret \
-  --from-literal=api-key=your_api_key_here
+# Save session
+nats pub chimp.mychimp.input '{"command":"save-session"}'
+
+# Restore session
+nats pub chimp.mychimp.input '{"command":"restore-session","args":{"sessionId":"session-abc-123"}}'
 ```
 
-Apply the Exchange:
+This allows session continuity across pod restarts.
+
+## Production Deployment
+
+Chimps are typically deployed by Ringmaster in response to incoming messages. Manual deployment:
 
 ```bash
-kubectl apply -f exchange.yaml
+kubectl create secret generic anthropic-api-key \
+  --from-literal=api-key=your_anthropic_api_key
+
+kubectl run chimp-test \
+  --image=circus-chimp:latest \
+  --env="ANTHROPIC_API_KEY=$(kubectl get secret anthropic-api-key -o jsonpath='{.data.api-key}' | base64 -d)" \
+  --env="CHIMP_NAME=test-chimp" \
+  --env="NATS_URL=nats://nats:4222"
 ```
+
+See the main Circus documentation for full deployment instructions.
 
 ## Debugging
 
@@ -323,11 +376,50 @@ nats consumer rm CHIMP_STREAM CHIMP_CONSUMER
 nats stream rm CHIMP_STREAM
 ```
 
+## Development
+
+### Running Locally
+
+```bash
+# Set environment variables
+export ANTHROPIC_API_KEY=your_key
+export CHIMP_NAME=test-chimp
+export NATS_URL=nats://localhost:4222
+
+# Run with auto-reload
+bun run dev
+
+# Or run directly
+bun index.ts
+```
+
+### Building
+
+```bash
+bun run build
+```
+
+This creates a standalone `index.js` file that can be deployed to Kubernetes.
+
+### Type Checking
+
+```bash
+bun run typecheck
+```
+
 ## Built With
 
 - [Bun](https://bun.com) - Fast JavaScript runtime
-- [Conduit SDK](https://github.com/tonyd33/conduit/tree/master/sdk/typescript) - TypeScript SDK for Conduit exchanges
 - [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript) - Official Claude Agent SDK with full tool access
+- [NATS](https://nats.io) - Distributed messaging system
+- [@mnke/circus-protocol](../protocol) - Message protocol validation
+- [@mnke/circus-shared](../shared) - Shared utilities (logging, errors)
+
+## Related Documentation
+
+- [Main Circus README](../../README.md)
+- [Architecture Documentation](../../ARCHITECTURE.md)
+- [Protocol Specification](../../PROTOCOL.md)
 
 ## License
 

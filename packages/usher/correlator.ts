@@ -4,7 +4,7 @@
  * Fast correlation logic (<1s) to match events to sessions
  */
 
-import { SessionStore } from "./session-store.ts";
+import type { SessionStore } from "./session-store.ts";
 import type { NormalizedEvent, CorrelationResult, Session } from "./types.ts";
 
 /**

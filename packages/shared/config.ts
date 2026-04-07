@@ -56,7 +56,7 @@ export function getEnvInt(key: string, defaultValue: number): number {
   if (!value) return defaultValue;
 
   const parsed = parseInt(value, 10);
-  if (isNaN(parsed)) {
+  if (Number.isNaN(parsed)) {
     throw new ConfigurationError(
       `Environment variable ${key} must be a valid integer, got: ${value}`,
     );

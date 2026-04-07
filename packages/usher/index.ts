@@ -318,10 +318,10 @@ class UsherService {
    * HTTP Server
    */
   async serve() {
-    const port = parseInt(process.env.PORT || "3000");
+    const port = parseInt(process.env.PORT || "3000", 10);
     const self = this; // Capture this for use in fetch handler
 
-    const server = Bun.serve({
+    const _server = Bun.serve({
       port,
       async fetch(req) {
         const url = new URL(req.url);

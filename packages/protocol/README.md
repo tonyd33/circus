@@ -1,11 +1,21 @@
-# chimp-protocol
+# @mnke/circus-protocol
 
-Protocol validation and types for Chimp agents. This package provides Zod schemas and TypeScript types for validating messages sent to and from Chimp workers.
+Protocol validation and types for the Circus platform. This package provides Zod schemas and TypeScript types for validating messages sent to and from Chimp workers.
 
 ## Installation
 
 ```bash
-bun add chimp-protocol
+bun add @mnke/circus-protocol
+```
+
+Or as a workspace dependency in the Circus monorepo:
+
+```json
+{
+  "dependencies": {
+    "@mnke/circus-protocol": "workspace:*"
+  }
+}
 ```
 
 ## Usage

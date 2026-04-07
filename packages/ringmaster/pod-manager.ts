@@ -5,11 +5,7 @@
  */
 
 import * as k8s from "@kubernetes/client-node";
-import {
-  isK8sNotFound,
-  isK8sConflict,
-  type K8sError,
-} from "@mnke/circus-shared/errors";
+import { isK8sNotFound, isK8sConflict } from "@mnke/circus-shared/errors";
 import { createLogger } from "@mnke/circus-shared/logger";
 import { ChimpNaming, type RingmasterConfig } from "./types.ts";
 
