@@ -1,0 +1,55 @@
+{{- if .Values.minio.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "circus.fullname" . }}-minio
+  labels:
+    {{- include "circus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+spec:
+  replicas: {{ .Values.minio.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "circus.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: minio
+  template:
+    metadata:
+      labels:
+        {{- include "circus.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: minio
+    spec:
+      containers:
+        - name: minio
+          image: "{{ .Values.minio.image.repository }}:{{ .Values.minio.image.tag }}"
+          imagePullPolicy: {{ .Values.minio.image.pullPolicy }}
+          args:
+            {{- toYaml .Values.minio.args | nindent 12 }}
+          env:
+            - name: MINIO_ROOT_USER
+              value: {{ .Values.minio.auth.rootUser | quote }}
+            - name: MINIO_ROOT_PASSWORD
+              value: {{ .Values.minio.auth.rootPassword | quote }}
+          ports:
+            - containerPort: 9000
+              name: api
+              protocol: TCP
+            - containerPort: 9001
+              name: console
+              protocol: TCP
+          {{- if .Values.minio.livenessProbe.enabled }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.minio.livenessProbe.path }}
+              port: 9000
+            initialDelaySeconds: {{ .Values.minio.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.minio.livenessProbe.periodSeconds }}
+          {{- end }}
+          {{- if .Values.minio.readinessProbe.enabled }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.minio.readinessProbe.path }}
+              port: 9000
+            initialDelaySeconds: {{ .Values.minio.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.minio.readinessProbe.periodSeconds }}
+          {{- end }}
+{{- end }}

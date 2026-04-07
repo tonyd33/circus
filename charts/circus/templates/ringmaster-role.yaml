@@ -1,0 +1,16 @@
+{{- if and .Values.ringmaster.enabled .Values.ringmaster.rbac.create -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "circus.fullname" . }}-ringmaster
+  labels:
+    {{- include "circus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ringmaster
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+{{- end }}

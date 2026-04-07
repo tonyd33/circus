@@ -1,0 +1,17 @@
+{{- if .Values.usher.enabled -}}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "circus.fullname" . }}-test-connection"
+  labels:
+    {{- include "circus.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+spec:
+  containers:
+    - name: wget
+      image: busybox
+      command: ['wget']
+      args: ['{{ include "circus.fullname" . }}-usher:{{ .Values.usher.service.port }}']
+  restartPolicy: Never
+{{- end }}

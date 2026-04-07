@@ -1,0 +1,17 @@
+{{- if and .Values.ringmaster.enabled .Values.ringmaster.rbac.create -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "circus.fullname" . }}-ringmaster
+  labels:
+    {{- include "circus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ringmaster
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "circus.fullname" . }}-ringmaster
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.ringmaster.serviceAccount.name | default (printf "%s-ringmaster" (include "circus.fullname" .)) }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

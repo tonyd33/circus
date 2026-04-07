@@ -1,0 +1,19 @@
+{{- if .Values.usher.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "circus.fullname" . }}-usher
+  labels:
+    {{- include "circus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: usher
+spec:
+  type: {{ .Values.usher.service.type }}
+  selector:
+    {{- include "circus.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: usher
+  ports:
+    - name: usher
+      port: {{ .Values.usher.service.port }}
+      targetPort: 3000
+      protocol: TCP
+{{- end }}

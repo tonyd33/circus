@@ -38,6 +38,7 @@
               gotools
               golangci-lint
               gitleaks
+              kubernetes-helm
             ];
           };
         }

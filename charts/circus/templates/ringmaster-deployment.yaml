@@ -1,0 +1,46 @@
+{{- if .Values.ringmaster.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "circus.fullname" . }}-ringmaster
+  labels:
+    {{- include "circus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ringmaster
+spec:
+  replicas: {{ .Values.ringmaster.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "circus.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: ringmaster
+  template:
+    metadata:
+      labels:
+        {{- include "circus.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: ringmaster
+    spec:
+      serviceAccountName: {{ .Values.ringmaster.serviceAccount.name | default (printf "%s-ringmaster" (include "circus.fullname" .)) }}
+      containers:
+        - name: ringmaster
+          image: "{{ .Values.ringmaster.image.repository }}:{{ .Values.ringmaster.image.tag }}"
+          imagePullPolicy: {{ .Values.ringmaster.image.pullPolicy }}
+          env:
+            - name: REDIS_URL
+              value: {{ .Values.ringmaster.env.redisUrl | default (printf "redis://%s-redis:%d" (include "circus.fullname" .) (.Values.redis.service.port | int)) | quote }}
+            - name: NATS_URL
+              value: {{ .Values.ringmaster.env.natsUrl | default (printf "nats://%s-nats:%d" (include "circus.fullname" .) (.Values.nats.service.port | int)) | quote }}
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: CHIMP_IMAGE
+              value: {{ .Values.ringmaster.env.chimpImage | quote }}
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.ringmaster.anthropicApiKey.existingSecret }}
+                  key: {{ .Values.ringmaster.anthropicApiKey.key }}
+            - name: RECONCILE_INTERVAL
+              value: {{ .Values.ringmaster.env.reconcileInterval | quote }}
+          resources:
+            {{- toYaml .Values.ringmaster.resources | nindent 12 }}
+{{- end }}

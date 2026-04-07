@@ -1,0 +1,16 @@
+apiVersion: v2
+name: circus
+description: A Helm chart for deploying the Circus distributed task execution platform
+
+type: application
+
+version: 0.1.0
+
+appVersion: "0.1.0"
+
+keywords:
+  - circus
+  - distributed-tasks
+  - kubernetes
+  - nats
+  - redis

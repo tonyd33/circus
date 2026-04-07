@@ -1,0 +1,43 @@
+{{- if .Values.usher.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "circus.fullname" . }}-usher
+  labels:
+    {{- include "circus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: usher
+spec:
+  replicas: {{ .Values.usher.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "circus.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: usher
+  template:
+    metadata:
+      labels:
+        {{- include "circus.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: usher
+    spec:
+      containers:
+        - name: usher
+          image: "{{ .Values.usher.image.repository }}:{{ .Values.usher.image.tag }}"
+          imagePullPolicy: {{ .Values.usher.image.pullPolicy }}
+          env:
+            - name: REDIS_URL
+              value: {{ .Values.usher.env.redisUrl | default (printf "redis://%s-redis:%d" (include "circus.fullname" .) (.Values.redis.service.port | int)) | quote }}
+            - name: NATS_URL
+              value: {{ .Values.usher.env.natsUrl | default (printf "nats://%s-nats:%d" (include "circus.fullname" .) (.Values.nats.service.port | int)) | quote }}
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: CHIMP_IMAGE
+              value: {{ .Values.usher.env.chimpImage | quote }}
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.usher.anthropicApiKey.existingSecret }}
+                  key: {{ .Values.usher.anthropicApiKey.key }}
+          resources:
+            {{- toYaml .Values.usher.resources | nindent 12 }}
+{{- end }}

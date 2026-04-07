@@ -1,0 +1,19 @@
+ringmaster:
+  image:
+    repository: circus-ringmaster
+  env:
+    chimpImage: circus-chimp:latest
+    reconcileInterval: "15000"  # Faster reconciliation for dev
+
+usher:
+  image:
+    repository: circus-usher
+
+redis:
+  enabled: true
+
+nats:
+  enabled: true
+
+minio:
+  enabled: true
