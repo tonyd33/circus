@@ -5,12 +5,7 @@
  */
 
 import Redis from "ioredis";
-import type {
-  Session,
-  SessionIdentifiers,
-  SessionState,
-  EventSource,
-} from "./types.ts";
+import type { Session, SessionState, EventSource } from "./types.ts";
 
 /**
  * Session store using Redis for persistence
@@ -48,7 +43,10 @@ export class SessionStore {
     );
 
     // Set TTL based on idle timeout (default: 30 minutes)
-    const idleTimeout = parseInt(process.env.SESSION_IDLE_TIMEOUT || "1800");
+    const idleTimeout = parseInt(
+      process.env.SESSION_IDLE_TIMEOUT || "1800",
+      10,
+    );
     await this.redis.expire(key, idleTimeout);
 
     // Create lookup indexes
@@ -85,8 +83,8 @@ export class SessionStore {
         identifiers: JSON.parse(data.identifiers),
         userId: data.userId || undefined,
       },
-      createdAt: parseInt(data.createdAt),
-      lastActivityAt: parseInt(data.lastActivityAt),
+      createdAt: parseInt(data.createdAt, 10),
+      lastActivityAt: parseInt(data.lastActivityAt, 10),
       state: data.state as SessionState,
     };
   }

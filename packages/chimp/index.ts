@@ -21,19 +21,14 @@ import {
   extractPrompt,
   parseChimpCommand,
 } from "@mnke/circus-protocol";
-import {
-  connect,
-  type NatsConnection,
-  type JetStreamClient,
-  type JsMsg,
-} from "nats";
+import { connect, type NatsConnection } from "nats";
 import {
   S3Client,
   PutObjectCommand,
   GetObjectCommand,
 } from "@aws-sdk/client-s3";
-import * as path from "path";
-import * as os from "os";
+import * as path from "node:path";
+import * as os from "node:os";
 
 /**
  * Application state tracking.
@@ -59,7 +54,7 @@ type CorrelationEvent =
 /**
  * Publish a correlation event to NATS
  */
-async function publishCorrelation(
+async function _publishCorrelation(
   nc: NatsConnection,
   chimpName: string,
   event: CorrelationEvent,
@@ -152,7 +147,7 @@ async function processWithClaude(
     options,
   });
 
-  const pendingPromises: Promise<void>[] = [];
+  const _pendingPromises: Promise<void>[] = [];
 
   // Stream the response
   for await (const message of queryStream) {

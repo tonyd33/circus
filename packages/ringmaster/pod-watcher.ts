@@ -211,7 +211,7 @@ export class PodWatcher {
    */
   private async handlePodDeleted(
     chimpName: string,
-    pod: k8s.V1Pod,
+    _pod: k8s.V1Pod,
   ): Promise<void> {
     logger.info({ chimpName }, "Pod deleted, clearing health");
 

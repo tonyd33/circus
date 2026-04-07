@@ -98,11 +98,11 @@ export function verifySlackSignature(
   signature: string,
   signingSecret: string,
 ): boolean {
-  const crypto = require("crypto");
+  const crypto = require("node:crypto");
 
   // Check timestamp to prevent replay attacks (within 5 minutes)
   const now = Math.floor(Date.now() / 1000);
-  if (Math.abs(now - parseInt(timestamp)) > 300) {
+  if (Math.abs(now - parseInt(timestamp, 10)) > 300) {
     return false;
   }
 

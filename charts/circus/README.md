@@ -1,22 +1,24 @@
 # Circus Helm Chart
 
-This Helm chart deploys the Circus distributed task execution platform on Kubernetes.
+This Helm chart deploys the Circus event-driven Claude Agent orchestration platform on Kubernetes.
 
 ## Components
 
 The chart deploys the following components:
 
-- **NATS** - Message broker with JetStream for task queuing
-- **Redis** - State management and caching
-- **MinIO** - Object storage for task artifacts
-- **Ringmaster** - Kubernetes orchestrator for task pods
-- **Usher** - API service for task submission and management
+- **NATS** - Message broker with JetStream for durable messaging
+- **Redis** - Session state and correlation indexes
+- **MinIO** - Object storage for Claude session persistence
+- **Ringmaster** - Lifecycle manager for Chimp pods and NATS streams
+- **Usher** - Event correlation service for webhooks
+- **Chimp** - (Dynamic) Claude Agent worker pods created on-demand
 
 ## Prerequisites
 
 - Kubernetes 1.19+
 - Helm 3.0+
-- An Anthropic API key
+- Anthropic API key (for Claude Agent SDK)
+- (Optional) Slack/GitHub/Discord/Jira for webhook integration
 
 ## Installation
 
@@ -181,12 +183,21 @@ helm install circus ./charts/circus --dry-run --debug
 
 ## Architecture
 
-The Circus platform follows this architecture:
+The Circus platform follows this event-driven architecture:
 
-1. **Usher** receives task submission requests
-2. Tasks are queued in **NATS** JetStream
-3. **Ringmaster** watches the queue and creates pods for tasks
-4. **Chimp** worker pods execute tasks
-5. Results are stored in **Redis** and artifacts in **MinIO**
+1. **External Event** (Slack message, GitHub comment, etc.)
+2. **Usher** receives webhook, correlates to session, publishes to NATS
+3. **NATS JetStream** durably buffers messages
+4. **Ringmaster** detects messages, ensures Chimp pod is running
+5. **Chimp** pod processes messages using Claude Agent SDK
+6. **Responses** published back to NATS and forwarded to external systems
+7. **Idle Chimps** automatically shut down after 30 minutes to save resources
 
-For more details, see the main project documentation.
+### Key Features
+
+- **Event-Driven**: Sub-second response times with NATS-based messaging
+- **Auto-Scaling**: Chimps spin up on-demand and shut down when idle
+- **Session Continuity**: Automatic correlation ensures conversations route to the same Chimp
+- **High Availability**: Ringmaster supports horizontal scaling with 3+ replicas
+
+For detailed architecture documentation, see [ARCHITECTURE.md](../../ARCHITECTURE.md).

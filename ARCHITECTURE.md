@@ -1,8 +1,8 @@
-# Circus Architecture (Exchange-Free)
+# Circus Architecture
 
 ## Overview
 
-The Circus manages event-driven Claude agents ("Chimps") without using Kubernetes CRDs. State lives in Redis, lifecycle management is event-driven, and NATS JetStream provides durable messaging.
+Circus is an event-driven platform for managing Claude AI agents ("Chimps") at scale. It uses Redis for state management, NATS JetStream for durable messaging, and Kubernetes for container orchestration. The architecture is designed for sub-second response times, automatic scaling, and high availability.
 
 ## Components
 
@@ -14,14 +14,17 @@ The Circus manages event-driven Claude agents ("Chimps") without using Kubernete
 - Correlates events to sessions using Redis lookups (<50ms)
 - Publishes messages directly to NATS subjects
 - Maintains session state in Redis
+- **Ensures NATS streams exist before publishing** (idempotent stream/consumer creation)
 - **Subscribes to correlation events from Chimps to update Redis indexes**
 
 **Flow:**
 ```
-Webhook → Normalize Event → Correlate to Session → Publish to NATS
+Webhook → Normalize Event → Correlate to Session → Ensure Stream → Publish to NATS
 
 [Parallel] Chimp publishes correlation event → Usher updates Redis indexes
 ```
+
+**Note on Stream Creation:** Currently, Usher creates streams/consumers idempotently before publishing messages. This ensures immediate message delivery without waiting for Ringmaster. In future iterations, stream creation may move entirely to Ringmaster's message listener.
 
 ### 2. Ringmaster (Lifecycle Manager)
 **Purpose:** Manages Chimp pod and stream lifecycle

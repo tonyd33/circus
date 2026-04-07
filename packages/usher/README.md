@@ -1,17 +1,18 @@
-# Usher
+# @mnke/usher
 
-**The Usher guides events from various sources to their appropriate Chimp sessions.**
+**Event correlation service for the Circus platform**
 
-Usher is an event correlation service that receives webhooks from multiple sources (GitHub, Jira, Slack, Discord, etc.), correlates them to sessions, and publishes messages directly to NATS subjects for Chimps to process.
+Usher receives webhooks from multiple sources (Slack, GitHub, Discord, Jira), correlates them to Chimp sessions using intelligent routing, and publishes messages to NATS JetStream. It's the entry point for all external events into the Circus platform.
 
 ## Features
 
-- **Fast Correlation** (<1s, typically 100-200ms): Redis-backed session lookups
-- **Durable Sessions**: Sessions persist across restarts in Redis
-- **Direct NATS Publishing**: No intermediary layers, messages go directly to JetStream
-- **Bidirectional Correlation**: Tracks external resources created by Chimps
-- **Multiple Event Sources**: Slack, GitHub, Discord, Jira (extensible)
-- **Session = Chimp Name**: Simple 1:1 mapping
+- **Sub-Second Correlation**: Redis-backed lookups with <100ms typical latency
+- **Intelligent Session Routing**: Thread-aware, user-aware, and resource-aware correlation
+- **Durable Sessions**: 30-minute TTL with automatic refresh on activity
+- **Bidirectional Correlation**: Tracks resources created by Chimps (PRs, issues, threads)
+- **Multiple Event Sources**: Slack (implemented), GitHub/Discord/Jira (ready to add)
+- **Stream Management**: Idempotent NATS stream/consumer creation
+- **Production-Ready**: Structured logging (Pino), error handling, and health checks
 
 ## Architecture
 
@@ -51,35 +52,46 @@ This allows future comments on that PR to automatically route back to the same C
 
 ### Environment Variables
 
-```bash
-# NATS
-NATS_URL=nats://nats:4222
+**Required:**
+- `NATS_URL`: NATS server URL (default: `nats://localhost:4222`)
+- `REDIS_URL`: Redis server URL (default: `redis://localhost:6379`)
 
-# Redis
-REDIS_URL=redis://redis:6379
+**Optional:**
+- `PORT`: HTTP server port (default: `3000`)
 
-# Webhooks
-SLACK_SIGNING_SECRET=your-slack-signing-secret
-GITHUB_WEBHOOK_SECRET=your-github-webhook-secret
-DISCORD_WEBHOOK_TOKEN=your-discord-webhook-token
-JIRA_WEBHOOK_SECRET=your-jira-webhook-secret
-
-# Server
-PORT=3000
-```
+**Webhook Secrets (for verification):**
+- `SLACK_SIGNING_SECRET`: Slack webhook signing secret
+- `GITHUB_WEBHOOK_SECRET`: GitHub webhook secret (coming soon)
+- `DISCORD_WEBHOOK_TOKEN`: Discord webhook token (coming soon)
+- `JIRA_WEBHOOK_SECRET`: Jira webhook secret (coming soon)
 
 ## Running
 
 ### Development
 
 ```bash
-bun --watch index.ts
+# Set up environment
+export REDIS_URL=redis://localhost:6379
+export NATS_URL=nats://localhost:4222
+export PORT=3000
+
+# Run with auto-reload
+bun run dev
+
+# Or run directly
+bun index.ts
 ```
 
 ### Production
 
 ```bash
-bun start
+bun run start
+```
+
+### Building
+
+```bash
+bun run build
 ```
 
 ## Webhook Endpoints
@@ -102,6 +114,37 @@ Supports:
 5. Install app to workspace
 6. Set `SLACK_SIGNING_SECRET` environment variable
 
+### Test Endpoint
+
+**Endpoint:** `POST /webhooks/test`
+
+A simple test endpoint for development and debugging:
+
+```bash
+curl -X POST http://localhost:3000/webhooks/test \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userId": "user123",
+    "content": "Hello, Claude!",
+    "identifiers": {
+      "channelId": "test-channel",
+      "threadId": "test-thread"
+    }
+  }'
+```
+
+Returns:
+```json
+{
+  "success": true,
+  "event": {
+    "source": "test",
+    "eventType": "message",
+    "content": "Hello, Claude!"
+  }
+}
+```
+
 ### GitHub (Coming Soon)
 
 **Endpoint:** `POST /webhooks/github`
@@ -112,6 +155,8 @@ Will support:
 - Pull request reviews
 - Issue updates
 
+Adapter stub is ready in `adapters/github.ts`.
+
 ### Discord (Coming Soon)
 
 **Endpoint:** `POST /webhooks/discord`
@@ -121,6 +166,8 @@ Will support:
 - Thread messages
 - Mentions
 
+Adapter stub is ready in `adapters/discord.ts`.
+
 ### Jira (Coming Soon)
 
 **Endpoint:** `POST /webhooks/jira`
@@ -129,6 +176,8 @@ Will support:
 - Issue updates
 - Comments
 - Status changes
+
+Adapter stub is ready in `adapters/jira.ts`.
 
 ### Health Check
 
@@ -259,29 +308,95 @@ curl -X POST http://localhost:3000/webhooks/slack \
   -d '{"type":"url_verification","challenge":"test"}'
 ```
 
+## Session Correlation Logic
+
+Usher uses a hierarchical correlation strategy (first match wins):
+
+1. **Thread ID** - Exact match on thread timestamp (Slack/Discord)
+2. **Issue/PR ID** - Exact match on resource identifier (GitHub/Jira)
+3. **Channel ID** - Match on channel for non-threaded messages
+4. **Recent User Session** - User's most recent session (within 5 minutes)
+5. **New Session** - Create new session with generated name
+
+All lookups are O(1) Redis operations.
+
+### Chimp Naming Convention
+
+Session names (which become Chimp names) are generated as:
+
+- Slack thread: `slack-{channelId}-{threadTs}`
+- Slack channel: `slack-{channelId}`
+- GitHub PR: `github-{owner}-{repo}-pr-{number}`
+- GitHub issue: `github-{owner}-{repo}-issue-{number}`
+- Jira issue: `jira-{issueKey}`
+- Discord thread: `discord-{channelId}-{threadId}`
+
 ## Dependencies
 
-- **nats**: NATS client for direct JetStream publishing
-- **Bun.redis**: Redis client for session storage
+- **nats**: NATS client for JetStream publishing
+- **ioredis**: Redis client for session/correlation storage
+- **@mnke/circus-shared**: Shared utilities (logging, error handling)
 
-## Architecture Decisions
+## Development
 
-### Why Direct NATS Publishing?
+### Adding a New Event Source
 
-- Eliminates intermediary layers (no Exchange CRD)
-- Faster message delivery (no operator reconciliation)
-- Simpler architecture (fewer moving parts)
-- Better scalability (direct pub/sub)
+1. Create adapter in `adapters/{source}.ts`:
 
-### Why Redis?
+```typescript
+import type { NormalizedEvent } from "../types.ts";
 
-- Fast O(1) lookups for correlation
-- Survives service restarts
-- TTL support for automatic cleanup
-- Supports multiple Usher instances (horizontal scaling)
+export function normalizeYourEvent(payload: any): NormalizedEvent | null {
+  // Validate payload
+  if (!payload.someField) {
+    return null;
+  }
 
-### Why Bidirectional Correlation?
+  return {
+    source: "yoursource",
+    eventType: "message",
+    identifiers: {
+      // Source-specific identifiers
+      resourceId: payload.id,
+    },
+    userId: payload.user.id,
+    content: payload.text,
+    raw: payload,
+  };
+}
+```
 
-- Enables seamless cross-platform workflows
-- Chimp creates PR on GitHub → User comments on GitHub → Routes back to same Chimp
-- No manual session management required
+2. Add webhook endpoint in `index.ts`:
+
+```typescript
+if (url.pathname === "/webhooks/yoursource" && req.method === "POST") {
+  const payload = await req.json();
+  const normalized = normalizeYourEvent(payload);
+
+  if (normalized) {
+    service.processEvent(normalized).catch((error) => {
+      logger.error({ err: error }, "Failed to process event");
+    });
+  }
+
+  return new Response("OK", { status: 200 });
+}
+```
+
+3. Update correlation logic in `correlator.ts` if needed for source-specific routing.
+
+### Type Checking
+
+```bash
+bun run typecheck
+```
+
+## Related Documentation
+
+- [Main Circus README](../../README.md)
+- [Architecture Documentation](../../ARCHITECTURE.md)
+- [Protocol Specification](../../PROTOCOL.md)
+
+## License
+
+See the main repository for license information.

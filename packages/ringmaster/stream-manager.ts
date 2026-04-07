@@ -16,7 +16,6 @@ import {
 import {
   isNatsNotFound,
   isNatsAlreadyExists,
-  type NatsError,
 } from "@mnke/circus-shared/errors";
 import { createLogger } from "@mnke/circus-shared/logger";
 import { ChimpNaming, type RingmasterConfig } from "./types.ts";
