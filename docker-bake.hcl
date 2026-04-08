@@ -6,57 +6,83 @@ variable "REGISTRY" {
   default = ""
 }
 
+variable "IMAGE_NAME" {
+  default = ""
+}
+
+variable "PUSH" {
+  default = false
+}
+
 group "default" {
-  targets = ["chimp", "ringmaster", "usher"]
+  targets = ["chimp", "ringmaster", "usher", "bullhorn"]
+}
+
+# Common target with shared configuration
+target "docker-metadata-action" {}
+
+target "common" {
+  context = "."
+  dockerfile = "Dockerfile"
+  platforms = ["linux/amd64", "linux/arm64"]
 }
 
 target "chimp" {
-  context = "."
+  inherits = ["common", "docker-metadata-action"]
   target = "chimp"
-  dockerfile = "Dockerfile"
-  tags = [
-    notequal("",REGISTRY) ? "${REGISTRY}/circus-chimp:${TAG}" : "circus-chimp:${TAG}",
-    notequal("",REGISTRY) ? "${REGISTRY}/circus-chimp:latest" : "circus-chimp:latest"
-  ]
-  platforms = ["linux/amd64", "linux/arm64"]
+  cache-from = ["type=gha,scope=chimp"]
+  cache-to = ["type=gha,mode=max,scope=chimp"]
+  output = [PUSH ? "type=registry" : "type=docker"]
 }
 
 target "chimp-local" {
   inherits = ["chimp"]
   platforms = []
   output = ["type=docker"]
+  tags = ["circus-chimp:${TAG}"]
 }
 
 target "ringmaster" {
-  context = "."
-  dockerfile = "Dockerfile"
+  inherits = ["common", "docker-metadata-action"]
   target = "ringmaster"
-  tags = [
-    notequal("",REGISTRY) ? "${REGISTRY}/circus-ringmaster:${TAG}" : "circus-ringmaster:${TAG}",
-    notequal("",REGISTRY) ? "${REGISTRY}/circus-ringmaster:latest" : "circus-ringmaster:latest"
-  ]
-  platforms = ["linux/amd64", "linux/arm64"]
+  cache-from = ["type=gha,scope=ringmaster"]
+  cache-to = ["type=gha,mode=max,scope=ringmaster"]
+  output = [PUSH ? "type=registry" : "type=docker"]
 }
 
 target "ringmaster-local" {
   inherits = ["ringmaster"]
   platforms = []
   output = ["type=docker"]
+  tags = ["circus-ringmaster:${TAG}"]
 }
 
 target "usher" {
-  context = "."
-  dockerfile = "Dockerfile"
+  inherits = ["common", "docker-metadata-action"]
   target = "usher"
-  tags = [
-    notequal("",REGISTRY) ? "${REGISTRY}/circus-usher:${TAG}" : "circus-usher:${TAG}",
-    notequal("",REGISTRY) ? "${REGISTRY}/circus-usher:latest" : "circus-usher:latest"
-  ]
-  platforms = ["linux/amd64", "linux/arm64"]
+  cache-from = ["type=gha,scope=usher"]
+  cache-to = ["type=gha,mode=max,scope=usher"]
+  output = [PUSH ? "type=registry" : "type=docker"]
 }
 
 target "usher-local" {
   inherits = ["usher"]
   platforms = []
   output = ["type=docker"]
+  tags = ["circus-usher:${TAG}"]
+}
+
+target "bullhorn" {
+  inherits = ["common", "docker-metadata-action"]
+  target = "bullhorn"
+  cache-from = ["type=gha,scope=bullhorn"]
+  cache-to = ["type=gha,mode=max,scope=bullhorn"]
+  output = [PUSH ? "type=registry" : "type=docker"]
+}
+
+target "bullhorn-local" {
+  inherits = ["bullhorn"]
+  platforms = []
+  output = ["type=docker"]
+  tags = ["circus-bullhorn:${TAG}"]
 }

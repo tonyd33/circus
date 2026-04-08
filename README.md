@@ -1,12 +1,12 @@
 # Circus
 
-**Event-driven Claude Agent orchestration platform for Kubernetes**
+**Event-driven AI Agent orchestration platform for Kubernetes**
 
-Circus manages distributed Claude AI agents ("Chimps") across Kubernetes, with event-driven lifecycle management, durable messaging via NATS JetStream, and intelligent session correlation.
+Circus manages distributed AI agents ("Chimps") across Kubernetes, with event-driven lifecycle management, durable messaging via NATS JetStream, and intelligent session correlation.
 
 ## Overview
 
-Circus is a lightweight, event-driven platform for running Claude AI agents at scale. It automatically manages agent lifecycle, routes events from multiple sources (Slack, GitHub, Discord, Jira), and maintains session continuity across distributed agents.
+Circus is a lightweight, event-driven platform for running AI agents at scale. It automatically manages agent lifecycle, routes events from multiple sources (Slack, GitHub, Discord, Jira), and maintains session continuity across distributed agents.
 
 ### Key Features
 
@@ -18,11 +18,12 @@ Circus is a lightweight, event-driven platform for running Claude AI agents at s
 
 ## Architecture
 
-Circus consists of three main components:
+Circus consists of four main components:
 
 1. **Usher** - Event correlation service that routes webhooks to agent sessions
 2. **Ringmaster** - Lifecycle manager that creates/monitors Chimp pods and NATS streams
-3. **Chimp** - Claude Agent worker pods that process messages using the Claude Agent SDK
+3. **Chimp** - AI Agent worker pods that process messages and execute tasks
+4. **Bullhorn** - Output handler that announces chimp responses to external services
 
 ### Data Flow
 
@@ -35,9 +36,11 @@ NATS JetStream (durable queue)
   ↓
 Ringmaster (ensures Chimp is running)
   ↓
-Chimp (processes with Claude Agent SDK)
+Chimp (processes with AI Agent SDK)
   ↓
-Response published to NATS
+Response published to NATS (chimp.*.output)
+  ↓
+Bullhorn (sends to Slack/GitHub/etc)
 ```
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed architecture documentation.
@@ -111,6 +114,7 @@ circus/
 │   ├── chimp/         # Claude Agent worker
 │   ├── usher/         # Event correlation service
 │   ├── ringmaster/    # Lifecycle manager
+│   ├── bullhorn/      # Output handler service
 │   ├── protocol/      # Shared protocol types
 │   └── shared/        # Shared utilities (logging, errors)
 ├── charts/
@@ -121,9 +125,10 @@ circus/
 
 ## Packages
 
-- **[@mnke/circus-chimp](./packages/chimp)** - Claude Agent worker that processes messages
+- **[@mnke/circus-chimp](./packages/chimp)** - AI Agent worker that processes messages
 - **[@mnke/usher](./packages/usher)** - Event correlation and routing service
 - **[@mnke/ringmaster](./packages/ringmaster)** - Pod and stream lifecycle manager
+- **[@mnke/circus-bullhorn](./packages/bullhorn)** - Output handler for chimp responses
 - **[@mnke/circus-protocol](./packages/protocol)** - Message protocol validation (Zod schemas)
 - **[@mnke/circus-shared](./packages/shared)** - Shared utilities (Pino logging, error types)
 
@@ -166,14 +171,13 @@ bun run build
 
 - [ARCHITECTURE.md](./ARCHITECTURE.md) - System architecture and design decisions
 - [PROTOCOL.md](./PROTOCOL.md) - Message protocol specification
-- [REFACTORING.md](./REFACTORING.md) - Code quality improvements summary
 
 ## Technology Stack
 
 - **Runtime**: [Bun](https://bun.sh) - Fast JavaScript runtime
 - **Messaging**: [NATS](https://nats.io) JetStream - Durable, distributed messaging
 - **State**: Redis - Session state and correlation indexes
-- **AI**: [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript) - Full Claude Agent with tool access
+- **AI**: Pluggable AI Agent SDK (default: Claude Agent SDK with full tool access)
 - **Orchestration**: Kubernetes - Production container orchestration
 - **Logging**: Pino - High-performance structured logging
 

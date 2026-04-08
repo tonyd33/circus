@@ -1,0 +1,215 @@
+# OpenTelemetry Collector Helm Chart Values
+# Deploys as DaemonSet to collect logs from all nodes
+
+mode: daemonset
+
+# Enable presets for Kubernetes observability
+presets:
+  # Collect logs from all pods
+  logsCollection:
+    enabled: true
+    includeCollectorLogs: false
+
+  # Add Kubernetes attributes to all telemetry
+  kubernetesAttributes:
+    enabled: true
+
+  # Collect Kubelet metrics
+  kubeletMetrics:
+    enabled: true
+
+# Image configuration
+image:
+  repository: otel/opentelemetry-collector-contrib
+  # tag: 0.96.0
+
+# OpenTelemetry Collector configuration
+config:
+  receivers:
+    # Configure kubeletstats to skip TLS verification (for minikube/dev)
+    kubeletstats:
+      auth_type: serviceAccount
+      endpoint: https://${env:K8S_NODE_IP}:10250
+      insecure_skip_verify: true
+      collection_interval: 10s
+
+    # Scrape Prometheus metrics from Circus services using pod discovery
+    prometheus:
+      config:
+        scrape_configs:
+          # Bullhorn pods (port 9090)
+          - job_name: 'circus-bullhorn'
+            scrape_interval: 15s
+            kubernetes_sd_configs:
+              - role: pod
+                namespaces:
+                  names:
+                    - default
+            relabel_configs:
+              - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_component]
+                regex: bullhorn
+                action: keep
+              - source_labels: [__meta_kubernetes_pod_ip]
+                regex: (.+)
+                target_label: __address__
+                replacement: $1:9090
+              - source_labels: [__meta_kubernetes_pod_name]
+                target_label: pod
+              - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_component]
+                target_label: component
+
+          # Usher pods (port 9091)
+          - job_name: 'circus-usher'
+            scrape_interval: 15s
+            kubernetes_sd_configs:
+              - role: pod
+                namespaces:
+                  names:
+                    - default
+            relabel_configs:
+              - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_component]
+                regex: usher
+                action: keep
+              - source_labels: [__meta_kubernetes_pod_ip]
+                regex: (.+)
+                target_label: __address__
+                replacement: $1:9091
+              - source_labels: [__meta_kubernetes_pod_name]
+                target_label: pod
+              - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_component]
+                target_label: component
+
+          # Chimp pods (port 9092)
+          - job_name: 'circus-chimp'
+            scrape_interval: 15s
+            kubernetes_sd_configs:
+              - role: pod
+                namespaces:
+                  names:
+                    - default
+            relabel_configs:
+              - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_component]
+                regex: chimp
+                action: keep
+              - source_labels: [__meta_kubernetes_pod_ip]
+                regex: (.+)
+                target_label: __address__
+                replacement: $1:9092
+              - source_labels: [__meta_kubernetes_pod_label_chimp_name]
+                target_label: chimp_name
+              - source_labels: [__meta_kubernetes_pod_name]
+                target_label: pod
+              - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_component]
+                target_label: component
+
+          # Ringmaster pods (port 9093)
+          - job_name: 'circus-ringmaster'
+            scrape_interval: 15s
+            kubernetes_sd_configs:
+              - role: pod
+                namespaces:
+                  names:
+                    - default
+            relabel_configs:
+              - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_component]
+                regex: ringmaster
+                action: keep
+              - source_labels: [__meta_kubernetes_pod_ip]
+                regex: (.+)
+                target_label: __address__
+                replacement: $1:9093
+              - source_labels: [__meta_kubernetes_pod_name]
+                target_label: pod
+              - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_component]
+                target_label: component
+
+  exporters:
+    # Export metrics to Mimir
+    prometheusremotewrite:
+      endpoint: http://mimir:9009/api/v1/push
+      tls:
+        insecure: true
+
+    # Export traces to Tempo
+    otlp/tempo:
+      endpoint: tempo.default.svc.cluster.local:4317
+      tls:
+        insecure: true
+
+    # Export logs to Loki
+    otlphttp:
+      endpoint: http://loki:3100/otlp
+      tls:
+        insecure: true
+
+    # Debug exporter (optional, for development)
+    debug:
+      verbosity: basic
+
+  processors:
+    # Batch processor for better performance
+    batch:
+      timeout: 10s
+      send_batch_size: 1024
+
+    # Memory limiter to prevent OOM
+    memory_limiter:
+      check_interval: 1s
+      limit_mib: 512
+
+    # Add cluster label
+    resource:
+      attributes:
+        - key: cluster
+          value: dev
+          action: insert
+
+  service:
+    pipelines:
+      # Traces pipeline
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, resource, batch]
+        exporters: [otlp/tempo, debug]
+
+      # Metrics pipeline
+      metrics:
+        receivers: [otlp, prometheus, kubeletstats]
+        processors: [memory_limiter, resource, batch]
+        exporters: [prometheusremotewrite, debug]
+
+      # Logs pipeline (preset adds filelog receiver automatically)
+      logs:
+        receivers: [otlp]
+        processors: [memory_limiter, resource, batch]
+        exporters: [otlphttp, debug]
+
+# Resource limits
+resources:
+  limits:
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 256Mi
+
+# Service configuration for OTLP receivers
+service:
+  type: ClusterIP
+
+# Ports configuration
+ports:
+  otlp:
+    enabled: true
+    containerPort: 4317
+    servicePort: 4317
+    protocol: TCP
+  otlp-http:
+    enabled: true
+    containerPort: 4318
+    servicePort: 4318
+    protocol: TCP
+  prometheus:
+    enabled: true
+    containerPort: 8888
+    servicePort: 8888
+    protocol: TCP

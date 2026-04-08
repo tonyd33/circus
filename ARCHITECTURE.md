@@ -2,7 +2,7 @@
 
 ## Overview
 
-Circus is an event-driven platform for managing Claude AI agents ("Chimps") at scale. It uses Redis for state management, NATS JetStream for durable messaging, and Kubernetes for container orchestration. The architecture is designed for sub-second response times, automatic scaling, and high availability.
+Circus is an event-driven platform for managing AI agents ("Chimps") at scale. It uses Redis for state management, NATS JetStream for durable messaging, and Kubernetes for container orchestration. The architecture is designed for sub-second response times, automatic scaling, and high availability.
 
 ## Components
 
@@ -55,12 +55,12 @@ Webhook → Normalize Event → Correlate to Session → Ensure Stream → Publi
 ```
 
 ### 3. Chimp (Worker)
-**Purpose:** Processes messages using Claude Agent SDK
+**Purpose:** Processes messages using AI Agent SDK
 
 **Responsibilities:**
 - Connects to NATS JetStream as durable consumer
-- Processes messages with Claude
-- Publishes responses
+- Processes messages with AI Agent
+- Publishes responses to `chimp.{chimpName}.output`
 - **Publishes periodic heartbeat events to NATS (every 10s)**
 - **Publishes correlation events when creating external resources** (PRs, issues, threads)
 - **Publishes completion event when shutting down** (idle timeout or explicit stop)
@@ -68,14 +68,34 @@ Webhook → Normalize Event → Correlate to Session → Ensure Stream → Publi
 
 **Flow:**
 ```
-Pull from NATS → Process with Claude → Publish Response
-                                     ↓
-                    Publish Heartbeat Events (every 10s)
-                                     ↓
-                    Publish Correlation Events (when creating PRs, issues, etc.)
-                                     ↓
-                    Idle Timeout (30min) → Publish Completion Event → Exit
+Pull from NATS → Process with AI Agent → Publish Response to chimp.{chimpName}.output
+                                       ↓
+                      Publish Heartbeat Events (every 10s)
+                                       ↓
+                      Publish Correlation Events (when creating PRs, issues, etc.)
+                                       ↓
+                      Idle Timeout (30min) → Publish Completion Event → Exit
 ```
+
+### 4. Bullhorn (Output Handler)
+**Purpose:** Processes chimp output messages and sends them to external services
+
+**Responsibilities:**
+- Subscribes to `chimp.*.output` on NATS
+- Validates output messages using protocol schemas
+- Routes messages to appropriate handlers (Slack, GitHub, Discord, console)
+- Extensible handler architecture for future integrations
+
+**Flow:**
+```
+Subscribe to chimp.*.output → Parse & Validate Message → Route to Handlers
+                                                         ↓
+                                          [ConsoleLogger, SlackHandler, GitHubHandler, ...]
+```
+
+**Current Implementation:**
+- **ConsoleLoggerHandler**: Logs all chimp output messages using Pino logger
+- Future handlers: Slack message sender, GitHub comment creator, Discord webhook, etc.
 
 ## Data Stores
 
@@ -190,7 +210,7 @@ consumerName:        `chimp-${chimpName}-consumer`
    ↓
 9. Chimp pulls message from stream
    ↓
-10. Chimp processes with Claude
+10. Chimp processes with AI Agent
     ↓
 11. Chimp publishes response to chimp.{chimpName}.output
 ```
@@ -331,38 +351,6 @@ t=41: New pod processes buffered messages
 - Redis TTL for health
 - Reconciliation loop as safety net
 - Idempotent pod/stream creation
-
-## Migration from Current Architecture
-
-### What Changes
-
-**Removed:**
-- ❌ Conduit CRD + Operator
-- ❌ Exchange resources
-- ❌ `conduit-client` library
-- ❌ `conduit-sdk` library
-- ❌ `chimp-whisperer` package
-- ❌ `chimp-primitives` package
-
-**Added:**
-- ✅ Ringmaster (lifecycle manager)
-- ✅ Direct NATS publishing in Usher
-- ✅ Health heartbeats in Chimp
-- ✅ Redis state management
-- ✅ Correlation event system
-
-**Updated:**
-- 🔄 Chimp: Direct NATS JetStream connection, heartbeat publishing
-- 🔄 Usher: Direct NATS publishing, correlation event listener
-
-### Migration Path
-
-1. Deploy Ringmaster alongside existing Conduit
-2. Update Chimps to send heartbeats (backwards compatible)
-3. Update Usher to publish to NATS directly
-4. Verify Ringmaster creates pods correctly
-5. Deprecate Conduit operator
-6. Remove Exchange CRDs
 
 ## Chimp Lifecycle
 

@@ -1,31 +1,25 @@
 Circus has been deployed successfully!
 
 Components deployed:
-{{- if .Values.nats.enabled }}
-  - NATS: {{ include "circus.fullname" . }}-nats:{{ .Values.nats.service.port }}
-{{- end }}
-{{- if .Values.redis.enabled }}
-  - Redis: {{ include "circus.fullname" . }}-redis:{{ .Values.redis.service.port }}
-{{- end }}
-{{- if .Values.minio.enabled }}
-  - MinIO: {{ include "circus.fullname" . }}-minio:{{ .Values.minio.service.apiPort }} (API), :{{ .Values.minio.service.consolePort }} (Console)
-{{- end }}
 {{- if .Values.ringmaster.enabled }}
   - Ringmaster: {{ include "circus.fullname" . }}-ringmaster
 {{- end }}
 {{- if .Values.usher.enabled }}
   - Usher: {{ include "circus.fullname" . }}-usher:{{ .Values.usher.service.port }}
 {{- end }}
+{{- if .Values.bullhorn.enabled }}
+  - Bullhorn: {{ include "circus.fullname" . }}-bullhorn
+{{- end }}
+
+External services (must be installed separately):
+  - NATS: {{ .Values.externalServices.nats.url }}
+  - Redis: {{ .Values.externalServices.redis.url }}
+  - MinIO: {{ .Values.externalServices.minio.url }}
 
 To access the Usher service:
   export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/component=usher,app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
   echo "Visit http://127.0.0.1:3000 to access Usher"
   kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 3000:3000
 
-To access MinIO Console:
-  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/component=minio,app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
-  echo "Visit http://127.0.0.1:9001 to access MinIO Console"
-  kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 9001:9001
-
 Note: Make sure to set the Anthropic API key secret before deploying:
-  kubectl create secret generic anthropic-api-key --from-literal=api-key=YOUR_API_KEY
+  kubectl create secret generic anthropic-api-key --from-literal=ANTHROPIC_API_KEY=YOUR_API_KEY

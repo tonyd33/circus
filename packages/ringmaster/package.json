@@ -1,7 +1,7 @@
 {
   "name": "@mnke/ringmaster",
   "version": "0.1.0",
-  "module": "index.ts",
+  "module": "src/index.ts",
   "type": "module",
   "private": true,
   "devDependencies": {
@@ -18,9 +18,9 @@
     "nats": "^2.29.3"
   },
   "scripts": {
-    "dev": "bun --watch index.ts",
-    "build": "bun build --target=node --outfile=index.js index.ts",
+    "dev": "bun --watch src/index.ts",
+    "build": "bun build --target=node --outfile=index.js src/index.ts",
     "typecheck": "bun tsc --noEmit",
-    "start": "bun index.ts"
+    "start": "bun src/index.ts"
   }
 }

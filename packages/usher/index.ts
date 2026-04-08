@@ -4,21 +4,25 @@
  * The Usher guides events from various sources to their appropriate Chimp sessions
  */
 
+import { createLogger } from "@mnke/circus-shared/logger";
 import {
+  createMetrics,
+  type ServiceMetrics,
+} from "@mnke/circus-shared/metrics";
+import Redis from "ioredis";
+import {
+  AckPolicy,
   connect,
-  type NatsConnection,
+  DeliverPolicy,
   type JetStreamManager,
+  type NatsConnection,
   RetentionPolicy,
   StorageType,
-  AckPolicy,
-  DeliverPolicy,
 } from "nats";
-import Redis from "ioredis";
-import { createLogger } from "@mnke/circus-shared/logger";
-import { SessionStore } from "./session-store.ts";
-import { Correlator } from "./correlator.ts";
 import { normalizeSlackEvent, verifySlackSignature } from "./adapters/slack.ts";
 import { normalizeTestEvent } from "./adapters/test.ts";
+import { Correlator } from "./correlator.ts";
+import { SessionStore } from "./session-store.ts";
 import type { NormalizedEvent } from "./types.ts";
 
 const logger = createLogger("Usher");
@@ -54,6 +58,10 @@ class UsherService {
   private nc: NatsConnection | null = null;
   private jsm: JetStreamManager | null = null;
   private redis: Redis;
+  private metrics: ServiceMetrics;
+  private server: ReturnType<typeof Bun.serve> | null = null;
+  private metricsServer: ReturnType<typeof Bun.serve> | null = null;
+  private isShuttingDown = false;
 
   constructor() {
     // Initialize components
@@ -61,6 +69,7 @@ class UsherService {
     this.redis = new Redis(redisUrl);
     this.sessionStore = new SessionStore(redisUrl);
     this.correlator = new Correlator(this.sessionStore);
+    this.metrics = createMetrics({ serviceName: "usher" });
   }
 
   /**
@@ -76,6 +85,7 @@ class UsherService {
     });
 
     logger.info({ url: natsUrl }, "Connected to NATS");
+    this.metrics.incActiveConnections("nats");
 
     // Initialize JetStream manager for stream/consumer creation
     this.jsm = await this.nc.jetstreamManager();
@@ -263,6 +273,7 @@ class UsherService {
     }
 
     const startTime = Date.now();
+    const inputSubject = `chimp.*.input`;
 
     try {
       // 1. Correlate event to session (< 50ms target)
@@ -287,7 +298,7 @@ class UsherService {
 
       // 3. Publish message (fire-and-forget)
       const sendStart = Date.now();
-      const inputSubject = `chimp.${result.exchangeName}.input`;
+      const publishSubject = `chimp.${result.exchangeName}.input`;
 
       // Wrap content in a ChimpCommand message
       const message = {
@@ -297,12 +308,17 @@ class UsherService {
         },
       };
 
-      this.nc.publish(inputSubject, JSON.stringify(message));
+      this.nc.publish(publishSubject, JSON.stringify(message));
+      this.metrics.recordNatsPublish(publishSubject);
       const sendTime = Date.now() - sendStart;
 
-      logger.debug({ inputSubject, sendTime }, "Message published");
+      logger.debug(
+        { inputSubject: publishSubject, sendTime },
+        "Message published",
+      );
 
       const totalTime = Date.now() - startTime;
+      this.metrics.recordNatsProcessed(inputSubject, true, totalTime / 1000);
       logger.info({ totalTime }, "Event processing complete");
 
       if (totalTime > 1000) {
@@ -310,8 +326,80 @@ class UsherService {
       }
     } catch (error) {
       logger.error({ err: error }, "Error processing event");
+      this.metrics.recordError("event_processing", "error");
+      const totalTime = Date.now() - startTime;
+      this.metrics.recordNatsProcessed(inputSubject, false, totalTime / 1000);
       throw error;
     }
+  }
+
+  /**
+   * Graceful shutdown
+   */
+  async shutdown(): Promise<void> {
+    if (this.isShuttingDown) {
+      return;
+    }
+
+    this.isShuttingDown = true;
+    logger.info("Shutting down gracefully...");
+
+    try {
+      // Stop accepting new HTTP requests
+      if (this.server) {
+        logger.info("Stopping HTTP server...");
+        this.server.stop();
+        this.server = null;
+      }
+
+      // Close NATS connection
+      if (this.nc) {
+        logger.info("Closing NATS connection...");
+        await this.nc.drain();
+        await this.nc.close();
+        this.nc = null;
+        this.jsm = null;
+      }
+
+      // Close Redis connection
+      if (this.redis) {
+        logger.info("Closing Redis connection...");
+        this.redis.disconnect();
+      }
+
+      logger.info("Shutdown complete");
+      process.exit(0);
+    } catch (error) {
+      logger.error({ err: error }, "Error during shutdown");
+      process.exit(1);
+    }
+  }
+
+  /**
+   * Start metrics server
+   */
+  async startMetricsServer(port: number = 9090): Promise<void> {
+    this.metricsServer = Bun.serve({
+      port,
+      fetch: async (req) => {
+        const url = new URL(req.url);
+
+        if (url.pathname === "/metrics") {
+          const metrics = await this.metrics.getMetrics();
+          return new Response(metrics, {
+            headers: { "Content-Type": this.metrics.getContentType() },
+          });
+        }
+
+        if (url.pathname === "/healthz") {
+          return new Response("OK", { status: 200 });
+        }
+
+        return new Response("Not Found", { status: 404 });
+      },
+    });
+
+    logger.info({ port }, "Metrics server started");
   }
 
   /**
@@ -321,132 +409,147 @@ class UsherService {
     const port = parseInt(process.env.PORT || "3000", 10);
     const self = this; // Capture this for use in fetch handler
 
-    const _server = Bun.serve({
+    this.server = Bun.serve({
       port,
       async fetch(req) {
+        const startTime = Date.now();
         const url = new URL(req.url);
+        let status = 200;
 
-        // Health check
-        if (url.pathname === "/healthz") {
-          return new Response("OK", { status: 200 });
-        }
-
-        // Slack webhook
-        if (url.pathname === "/webhooks/slack" && req.method === "POST") {
-          try {
-            const body = await req.text();
-            const payload = JSON.parse(body);
-
-            // Handle URL verification challenge
-            if (payload.type === "url_verification") {
-              return new Response(
-                JSON.stringify({ challenge: payload.challenge }),
-                {
-                  headers: { "Content-Type": "application/json" },
-                },
-              );
-            }
-
-            // Verify signature
-            const timestamp =
-              req.headers.get("x-slack-request-timestamp") || "";
-            const signature = req.headers.get("x-slack-signature") || "";
-            const signingSecret = process.env.SLACK_SIGNING_SECRET || "";
-
-            if (
-              !verifySlackSignature(body, timestamp, signature, signingSecret)
-            ) {
-              return new Response("Invalid signature", { status: 401 });
-            }
-
-            // Normalize event
-            const normalized = normalizeSlackEvent(payload);
-            if (!normalized) {
-              return new Response("Event type not supported", { status: 200 });
-            }
-
-            // Process event (async, don't wait)
-            self.processEvent(normalized).catch((error) => {
-              logger.error({ err: error }, "Failed to process event");
-            });
-
-            // Return immediately to Slack
+        try {
+          // Health check
+          if (url.pathname === "/healthz") {
             return new Response("OK", { status: 200 });
-          } catch (error) {
-            logger.error({ err: error }, "Slack webhook error");
-            return new Response("Internal error", { status: 500 });
           }
-        }
 
-        // GitHub webhook placeholder
-        if (url.pathname === "/webhooks/github" && req.method === "POST") {
-          return new Response("GitHub webhooks not yet implemented", {
-            status: 501,
-          });
-        }
+          // Slack webhook
+          if (url.pathname === "/webhooks/slack" && req.method === "POST") {
+            try {
+              const body = await req.text();
+              const payload = JSON.parse(body);
 
-        // Discord webhook placeholder
-        if (url.pathname === "/webhooks/discord" && req.method === "POST") {
-          return new Response("Discord webhooks not yet implemented", {
-            status: 501,
-          });
-        }
+              // Handle URL verification challenge
+              if (payload.type === "url_verification") {
+                return new Response(
+                  JSON.stringify({ challenge: payload.challenge }),
+                  {
+                    headers: { "Content-Type": "application/json" },
+                  },
+                );
+              }
 
-        // Jira webhook placeholder
-        if (url.pathname === "/webhooks/jira" && req.method === "POST") {
-          return new Response("Jira webhooks not yet implemented", {
-            status: 501,
-          });
-        }
+              // Verify signature
+              const timestamp =
+                req.headers.get("x-slack-request-timestamp") || "";
+              const signature = req.headers.get("x-slack-signature") || "";
+              const signingSecret = process.env.SLACK_SIGNING_SECRET || "";
 
-        // Test webhook (for testing/development)
-        if (url.pathname === "/webhooks/test" && req.method === "POST") {
-          try {
-            const body = await req.text();
-            const payload = JSON.parse(body);
+              if (
+                !verifySlackSignature(body, timestamp, signature, signingSecret)
+              ) {
+                return new Response("Invalid signature", { status: 401 });
+              }
 
-            // Normalize event
-            const normalized = normalizeTestEvent(payload);
-            if (!normalized) {
+              // Normalize event
+              const normalized = normalizeSlackEvent(payload);
+              if (!normalized) {
+                return new Response("Event type not supported", {
+                  status: 200,
+                });
+              }
+
+              // Process event (async, don't wait)
+              self.processEvent(normalized).catch((error) => {
+                logger.error({ err: error }, "Failed to process event");
+              });
+
+              // Return immediately to Slack
+              return new Response("OK", { status: 200 });
+            } catch (error) {
+              logger.error({ err: error }, "Slack webhook error");
+              return new Response("Internal error", { status: 500 });
+            }
+          }
+
+          // GitHub webhook placeholder
+          if (url.pathname === "/webhooks/github" && req.method === "POST") {
+            return new Response("GitHub webhooks not yet implemented", {
+              status: 501,
+            });
+          }
+
+          // Discord webhook placeholder
+          if (url.pathname === "/webhooks/discord" && req.method === "POST") {
+            return new Response("Discord webhooks not yet implemented", {
+              status: 501,
+            });
+          }
+
+          // Jira webhook placeholder
+          if (url.pathname === "/webhooks/jira" && req.method === "POST") {
+            return new Response("Jira webhooks not yet implemented", {
+              status: 501,
+            });
+          }
+
+          // Test webhook (for testing/development)
+          if (url.pathname === "/webhooks/test" && req.method === "POST") {
+            try {
+              const body = await req.text();
+              const payload = JSON.parse(body);
+
+              // Normalize event
+              const normalized = normalizeTestEvent(payload);
+              if (!normalized) {
+                return new Response(
+                  JSON.stringify({ error: "Invalid test event payload" }),
+                  {
+                    status: 400,
+                    headers: { "Content-Type": "application/json" },
+                  },
+                );
+              }
+
+              // Process event (async, don't wait)
+              self.processEvent(normalized).catch((error) => {
+                logger.error({ err: error }, "Failed to process test event");
+              });
+
+              // Return immediately with session info
               return new Response(
-                JSON.stringify({ error: "Invalid test event payload" }),
+                JSON.stringify({
+                  success: true,
+                  event: {
+                    source: normalized.source,
+                    eventType: normalized.eventType,
+                    content: normalized.content,
+                  },
+                }),
                 {
-                  status: 400,
+                  status: 200,
                   headers: { "Content-Type": "application/json" },
                 },
               );
-            }
-
-            // Process event (async, don't wait)
-            self.processEvent(normalized).catch((error) => {
-              logger.error({ err: error }, "Failed to process test event");
-            });
-
-            // Return immediately with session info
-            return new Response(
-              JSON.stringify({
-                success: true,
-                event: {
-                  source: normalized.source,
-                  eventType: normalized.eventType,
-                  content: normalized.content,
-                },
-              }),
-              {
-                status: 200,
+            } catch (error) {
+              logger.error({ err: error }, "Test webhook error");
+              return new Response(JSON.stringify({ error: "Internal error" }), {
+                status: 500,
                 headers: { "Content-Type": "application/json" },
-              },
-            );
-          } catch (error) {
-            logger.error({ err: error }, "Test webhook error");
-            return new Response(JSON.stringify({ error: "Internal error" }), {
-              status: 500,
-              headers: { "Content-Type": "application/json" },
-            });
+              });
+            }
           }
-        }
 
-        return new Response("Not Found", { status: 404 });
+          status = 404;
+          return new Response("Not Found", { status: 404 });
+        } finally {
+          const duration = (Date.now() - startTime) / 1000;
+          self.metrics.recordHttpRequest(
+            req.method,
+            url.pathname,
+            status,
+            duration,
+          );
+        }
       },
     });
 
@@ -463,5 +566,22 @@ class UsherService {
 
 // Start the service
 const service = new UsherService();
+
+// Setup signal handlers for graceful shutdown
+process.on("SIGTERM", () => {
+  logger.info("Received SIGTERM signal");
+  service.shutdown();
+});
+
+process.on("SIGINT", () => {
+  logger.info("Received SIGINT signal");
+  service.shutdown();
+});
+
 await service.initialize();
+
+// Start metrics server
+const metricsPort = parseInt(process.env.METRICS_PORT || "9091", 10);
+await service.startMetricsServer(metricsPort);
+
 await service.serve();

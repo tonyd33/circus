@@ -1,4 +1,5 @@
 ringmaster:
+  enabled: true
   image:
     repository: circus-ringmaster
   env:
@@ -6,14 +7,11 @@ ringmaster:
     reconcileInterval: "15000"  # Faster reconciliation for dev
 
 usher:
+  enabled: true
   image:
     repository: circus-usher
 
-redis:
+bullhorn:
   enabled: true
-
-nats:
-  enabled: true
-
-minio:
-  enabled: true
+  image:
+    repository: circus-bullhorn
