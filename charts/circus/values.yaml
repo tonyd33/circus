@@ -84,3 +84,9 @@ bullhorn:
     limits:
       memory: "256Mi"
       cpu: "200m"
+
+# Chimp configuration
+chimp:
+  initConfig:
+    enabled: false
+    commands: []

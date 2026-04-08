@@ -13,6 +13,7 @@ import { createLogger } from "@mnke/circus-shared/logger";
 import type Redis from "ioredis";
 import {
   type Action,
+  type ChimpActivity,
   type CoreState,
   DEFAULT_HEALTH_CONFIG,
   type Decision,
@@ -60,10 +61,18 @@ export async function gatherCoreState(
   const healthData = await redis.get(healthKey);
   const health: ChimpHealth | null = healthData ? JSON.parse(healthData) : null;
 
+  // Get activity data
+  const activityKey = ChimpNaming.redisActivityKey(chimpName);
+  const activityData = await redis.get(activityKey);
+  const activity: ChimpActivity | null = activityData
+    ? JSON.parse(activityData)
+    : null;
+
   return {
     chimpState,
     sessionExists,
     health,
+    activity,
     now,
   };
 }

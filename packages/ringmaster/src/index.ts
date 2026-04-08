@@ -32,6 +32,9 @@ const config: RingmasterConfig = {
   reconcileInterval: getEnvInt("RECONCILE_INTERVAL", 30000), // 30s default
 };
 
+// Get idle timeout from environment (default: 5 minutes)
+const idleTimeoutMs = getEnvInt("IDLE_TIMEOUT_MS", 300_000);
+
 logger.info(
   {
     redisUrl: config.redisUrl,
@@ -39,6 +42,7 @@ logger.info(
     namespace: config.namespace,
     chimpImage: config.chimpImage,
     reconcileInterval: config.reconcileInterval,
+    idleTimeoutMs,
   },
   "Ringmaster starting",
 );
@@ -51,7 +55,7 @@ const redis = new Redis(config.redisUrl);
 metrics.incActiveConnections("redis");
 
 // Create reconciler
-const reconciler = new Reconciler(config, redis, metrics);
+const reconciler = new Reconciler(config, redis, metrics, idleTimeoutMs);
 
 // Handle shutdown gracefully
 const shutdown = async (signal: string) => {

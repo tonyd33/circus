@@ -20,6 +20,7 @@ export interface Logger {
   warn(obj: object, msg?: string, ...args: unknown[]): void;
   error(msg: string, ...args: unknown[]): void;
   error(obj: object, msg?: string, ...args: unknown[]): void;
+  child(bindings: pino.Bindings): Logger;
 }
 
 /**
@@ -55,4 +56,5 @@ export const noopLogger: Logger = {
   info: () => {},
   warn: () => {},
   error: () => {},
+  child: () => noopLogger,
 };

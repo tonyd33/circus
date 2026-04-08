@@ -1,0 +1,23 @@
+{
+  "version": "0.1.0",
+  "commands": [
+    {
+      "command": "set-model",
+      "args": {
+        "model": "claude-sonnet-4-5"
+      }
+    },
+    {
+      "command": "set-working-dir",
+      "args": {
+        "path": "/workspace"
+      }
+    },
+    {
+      "command": "set-allowed-tools",
+      "args": {
+        "tools": ["Read", "Glob", "Grep", "Write", "Edit", "Bash"]
+      }
+    }
+  ]
+}

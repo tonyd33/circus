@@ -15,3 +15,14 @@ bullhorn:
   enabled: true
   image:
     repository: circus-bullhorn
+
+chimp:
+  initConfig:
+    enabled: true
+    commands:
+      - command: clone-repo
+        args:
+          url: "https://github.com/tonyd33/circus.git"
+      - command: set-working-dir
+        args:
+          path: "circus"

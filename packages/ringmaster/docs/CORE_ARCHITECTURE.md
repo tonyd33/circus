@@ -96,7 +96,8 @@ type TriggerEvent =
   | { type: "completion"; reason: "idle_timeout" | "explicit_stop" | "error" }
   | { type: "pod_event"; event: "added" | "modified" | "deleted" | "failed" }
   | { type: "message_received" }
-  | { type: "reconcile_tick" };
+  | { type: "reconcile_tick" }
+  | { type: "heartbeat_received" };
 ```
 
 ## Actions
@@ -160,6 +161,11 @@ type Action =
 - If chimp healthy → ⏭️ Do nothing
 - If chimp unhealthy → ✅ Create stream + pod
 
+### Heartbeat Received
+
+- If chimp status is not "running" → ✅ Update state to "running"
+- If chimp already "running" → ⏭️ Do nothing
+
 ## Testing
 
 All core logic is tested in `core.test.ts`:
@@ -168,11 +174,12 @@ All core logic is tested in `core.test.ts`:
 bun test core.test.ts
 ```
 
-**26 tests** covering:
+**38 tests** covering:
 - Health checking
 - Completion scenarios (idle timeout, explicit stop, error)
 - Pod events (added, modified, deleted, failed)
 - Message handling
+- Heartbeat handling
 - Reconciliation
 - Critical bug scenarios
 

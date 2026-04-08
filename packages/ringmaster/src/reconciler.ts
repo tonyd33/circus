@@ -16,6 +16,7 @@ import {
 } from "./listeners/completion-listener.ts";
 import { HeartbeatListener } from "./listeners/heartbeat-listener.ts";
 import { MessageListener } from "./listeners/message-listener.ts";
+import { OutputListener } from "./listeners/output-listener.ts";
 import { PodWatcher } from "./listeners/pod-watcher.ts";
 import { PodManager } from "./managers/pod-manager.ts";
 import { StreamManager } from "./managers/stream-manager.ts";
@@ -26,6 +27,7 @@ export class Reconciler {
   private podManager: PodManager;
   private streamManager: StreamManager;
   private heartbeatListener: HeartbeatListener;
+  private outputListener: OutputListener;
   private messageListener: MessageListener;
   private podWatcher: PodWatcher;
   private completionListener: CompletionListener;
@@ -33,11 +35,23 @@ export class Reconciler {
   private metrics: ServiceMetrics;
   private reconcileInterval: number;
   private intervalHandle: Timer | null = null;
+  private idleTimeoutMs: number;
 
-  constructor(config: RingmasterConfig, redis: Redis, metrics: ServiceMetrics) {
+  constructor(
+    config: RingmasterConfig,
+    redis: Redis,
+    metrics: ServiceMetrics,
+    idleTimeoutMs: number = 300_000, // 5 minutes default
+  ) {
     this.podManager = new PodManager(config);
     this.streamManager = new StreamManager(config);
-    this.heartbeatListener = new HeartbeatListener(config, redis);
+    this.heartbeatListener = new HeartbeatListener(
+      config,
+      redis,
+      this.podManager,
+      this.streamManager,
+    );
+    this.outputListener = new OutputListener(config, redis, idleTimeoutMs);
     this.messageListener = new MessageListener(config, (chimpName) =>
       this.handleChimpNeeded(chimpName),
     );
@@ -54,6 +68,7 @@ export class Reconciler {
     this.redis = redis;
     this.metrics = metrics;
     this.reconcileInterval = config.reconcileInterval;
+    this.idleTimeoutMs = idleTimeoutMs;
   }
 
   /**
@@ -63,6 +78,7 @@ export class Reconciler {
     await Promise.all([
       this.streamManager.connect(),
       this.heartbeatListener.start(),
+      this.outputListener.start(),
       this.messageListener.start(),
       this.podWatcher.start(),
       this.completionListener.start(),
@@ -92,6 +108,7 @@ export class Reconciler {
     await this.completionListener.stop();
     await this.podWatcher.stop();
     await this.messageListener.stop();
+    await this.outputListener.stop();
     await this.heartbeatListener.stop();
     await this.streamManager.close();
     logger.info("Ringmaster reconciler stopped");
@@ -202,6 +219,10 @@ export class Reconciler {
         redis: this.redis,
         podManager: this.podManager,
         streamManager: this.streamManager,
+      },
+      {
+        maxHeartbeatAge: 30_000, // 30 seconds
+        maxIdleAge: this.idleTimeoutMs,
       },
     );
   }

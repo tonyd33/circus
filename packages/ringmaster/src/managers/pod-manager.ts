@@ -17,6 +17,7 @@ export class PodManager {
   private namespace: string;
   private chimpImage: string;
   private anthropicApiKey: string;
+  private chimpInitConfigMap?: string;
 
   constructor(config: RingmasterConfig) {
     const kc = new k8s.KubeConfig();
@@ -26,6 +27,7 @@ export class PodManager {
     this.namespace = config.namespace;
     this.chimpImage = config.chimpImage;
     this.anthropicApiKey = config.anthropicApiKey;
+    this.chimpInitConfigMap = process.env.CHIMP_INIT_CONFIG_MAP;
   }
 
   /**
@@ -85,8 +87,28 @@ export class PodManager {
                 value: process.env.REDIS_URL || "redis://redis:6379",
               },
             ],
+            volumeMounts: this.chimpInitConfigMap
+              ? [
+                  {
+                    name: "chimp-init-config",
+                    mountPath: "/etc/chimp",
+                    readOnly: true,
+                  },
+                ]
+              : [],
           },
         ],
+        volumes: this.chimpInitConfigMap
+          ? [
+              {
+                name: "chimp-init-config",
+                configMap: {
+                  name: this.chimpInitConfigMap,
+                  optional: true, // Don't fail if ConfigMap doesn't exist
+                },
+              },
+            ]
+          : [],
         restartPolicy: "Never", // Chimps are ephemeral - don't restart on exit
       },
     };

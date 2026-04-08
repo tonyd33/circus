@@ -1,0 +1,15 @@
+{{- if .Values.chimp.initConfig.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "circus.fullname" . }}-chimp-init-config
+  labels:
+    {{- include "circus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: chimp
+data:
+  config.json: |
+    {
+      "version": "0.1.0",
+      "commands": {{ toJson .Values.chimp.initConfig.commands }}
+    }
+{{- end }}

@@ -294,6 +294,12 @@ Initialization configuration is provided via a JSON file containing an array of 
       }
     },
     {
+      "command": "set-working-dir",
+      "args": {
+        "path": "repo"
+      }
+    },
+    {
       "command": "resume-session",
       "args": {
         "sessionId": "abc-123-def-456"

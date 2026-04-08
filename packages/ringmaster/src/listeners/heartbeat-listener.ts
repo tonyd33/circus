@@ -13,11 +13,14 @@ import {
   type NatsConnection,
   type Subscription,
 } from "nats";
+import { handleEvent } from "../adapters/core-adapter.ts";
 import type {
   ChimpHealth,
   HeartbeatEvent,
   RingmasterConfig,
 } from "../core/types.ts";
+import type { PodManager } from "../managers/pod-manager.ts";
+import type { StreamManager } from "../managers/stream-manager.ts";
 
 const logger = createLogger("HeartbeatListener");
 
@@ -27,10 +30,19 @@ export class HeartbeatListener {
   private redis: Redis;
   private natsUrl: string;
   private subscription: Subscription | null = null;
+  private podManager: PodManager;
+  private streamManager: StreamManager;
 
-  constructor(config: RingmasterConfig, redis: Redis) {
+  constructor(
+    config: RingmasterConfig,
+    redis: Redis,
+    podManager: PodManager,
+    streamManager: StreamManager,
+  ) {
     this.natsUrl = config.natsUrl;
     this.redis = redis;
+    this.podManager = podManager;
+    this.streamManager = streamManager;
   }
 
   /**
@@ -68,7 +80,7 @@ export class HeartbeatListener {
   }
 
   /**
-   * Handle a heartbeat event by updating Redis
+   * Handle a heartbeat event by updating Redis and chimp state
    */
   private async handleHeartbeat(event: HeartbeatEvent): Promise<void> {
     const healthKey = ChimpNaming.redisHealthKey(event.chimpName);
@@ -85,6 +97,24 @@ export class HeartbeatListener {
       { chimpName: event.chimpName, messageCount: event.messageCount },
       "Updated health",
     );
+
+    // Use core logic to update chimp state to running
+    try {
+      await handleEvent(
+        event.chimpName,
+        { type: "heartbeat_received" },
+        {
+          redis: this.redis,
+          podManager: this.podManager,
+          streamManager: this.streamManager,
+        },
+      );
+    } catch (error) {
+      logger.error(
+        { err: error, chimpName: event.chimpName },
+        "Error handling heartbeat event",
+      );
+    }
   }
 
   /**

@@ -41,6 +41,10 @@ export class ChimpNaming {
     return `chimp:${chimpName}:health`;
   }
 
+  static redisActivityKey(chimpName: string): string {
+    return `chimp:${chimpName}:activity`;
+  }
+
   static correlationSubject(chimpName: string): string {
     return `chimp.${chimpName}.correlation`;
   }

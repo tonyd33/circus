@@ -41,6 +41,10 @@ spec:
                   key: {{ .Values.ringmaster.anthropicApiKey.key }}
             - name: RECONCILE_INTERVAL
               value: {{ .Values.ringmaster.env.reconcileInterval | quote }}
+            {{- if .Values.chimp.initConfig.enabled }}
+            - name: CHIMP_INIT_CONFIG_MAP
+              value: {{ include "circus.fullname" . }}-chimp-init-config
+            {{- end }}
           resources:
             {{- toYaml .Values.ringmaster.resources | nindent 12 }}
 {{- end }}

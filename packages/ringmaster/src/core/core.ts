@@ -9,6 +9,13 @@ import type * as k8s from "@kubernetes/client-node";
 import type { ChimpHealth, ChimpState } from "./types.ts";
 
 /**
+ * Activity tracking - when chimp last produced output
+ */
+export interface ChimpActivity {
+  lastActivity: number; // Timestamp of last output message
+}
+
+/**
  * Core state - always includes ChimpState (if exists) + event-specific data
  */
 export interface CoreState {
@@ -18,6 +25,8 @@ export interface CoreState {
   sessionExists: boolean;
   /** Health data from Redis (null if expired/missing) */
   health: ChimpHealth | null;
+  /** Activity data from Redis (null if expired/missing) */
+  activity: ChimpActivity | null;
   /** Timestamp when this snapshot was taken */
   now: number;
 }
@@ -40,7 +49,8 @@ export type EventPayload =
       pod: k8s.V1Pod | null;
     }
   | { type: "message_received" }
-  | { type: "reconcile_tick" };
+  | { type: "reconcile_tick" }
+  | { type: "heartbeat_received" };
 
 /**
  * Check if a pod exited normally (Succeeded phase with exit code 0)
@@ -99,6 +109,8 @@ export interface Decision {
 export interface HealthConfig {
   /** Maximum age of heartbeat in milliseconds before considered unhealthy */
   maxHeartbeatAge: number;
+  /** Maximum age of last activity in milliseconds before considered idle */
+  maxIdleAge: number;
 }
 
 /**
@@ -106,6 +118,7 @@ export interface HealthConfig {
  */
 export const DEFAULT_HEALTH_CONFIG: HealthConfig = {
   maxHeartbeatAge: 30_000, // 30 seconds
+  maxIdleAge: 300_000, // 5 minutes
 };
 
 /**
@@ -122,6 +135,23 @@ export function isHealthy(
 
   const age = now - health.lastHeartbeat;
   return age < config.maxHeartbeatAge;
+}
+
+/**
+ * Check if a chimp is idle based on its activity data
+ */
+export function isIdle(
+  activity: ChimpActivity | null,
+  now: number,
+  config: HealthConfig = DEFAULT_HEALTH_CONFIG,
+): boolean {
+  if (!activity) {
+    // If no activity data exists, consider it idle
+    return true;
+  }
+
+  const age = now - activity.lastActivity;
+  return age >= config.maxIdleAge;
 }
 
 /**
@@ -142,7 +172,11 @@ export function decideOnCompletion(
   }
 
   // Update state to mark as unknown
-  actions.push({ type: "update_chimp_state", status: "unknown" });
+  if (reason === "error") {
+    actions.push({ type: "update_chimp_state", status: "unknown" });
+  } else {
+    actions.push({ type: "update_chimp_state", status: "stopped" });
+  }
 
   // Delete pod (will be recreated on demand if session still exists)
   actions.push({ type: "delete_pod" });
@@ -272,17 +306,53 @@ export function decideOnMessageReceived(
 }
 
 /**
+ * Decide what to do when a heartbeat is received
+ */
+export function decideOnHeartbeat(state: CoreState): Decision {
+  // If chimp state doesn't exist or status is not running, update to running
+  if (!state.chimpState || state.chimpState.status !== "running") {
+    return {
+      actions: [{ type: "update_chimp_state", status: "running" }],
+      reason: "Heartbeat received - updating status to running",
+    };
+  }
+
+  // Chimp is already running, do nothing
+  return {
+    actions: [{ type: "noop" }],
+    reason: "Heartbeat received - chimp already running",
+  };
+}
+
+/**
  * Decide what to do during reconciliation for a single chimp
  */
 export function decideOnReconcile(
   state: CoreState,
   config: HealthConfig = DEFAULT_HEALTH_CONFIG,
 ): Decision {
-  // If healthy, do nothing
-  if (isHealthy(state.health, state.now, config)) {
+  const healthy = isHealthy(state.health, state.now, config);
+  const idle = isIdle(state.activity, state.now, config);
+  const stopped = state.chimpState?.status === "stopped";
+
+  // If chimp is healthy but idle for too long, stop it
+  if (healthy && idle) {
+    return {
+      actions: [
+        { type: "delete_session" }, // Delete session to prevent recreation
+        { type: "delete_health" },
+        { type: "delete_pod" },
+        // { type: "update_chimp_state", status: "stopped" },
+      ],
+      reason: "Chimp is idle - stopping due to inactivity",
+    };
+  }
+
+  // If healthy and active, do nothing
+  if (healthy || stopped) {
     return {
       actions: [{ type: "noop" }],
-      reason: "Chimp is healthy",
+      reason: "Chimp is healthy and active",
     };
   }
 
@@ -317,5 +387,8 @@ export function decide(
 
     case "reconcile_tick":
       return decideOnReconcile(state, config);
+
+    case "heartbeat_received":
+      return decideOnHeartbeat(state);
   }
 }
