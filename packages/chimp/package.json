@@ -13,7 +13,6 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.92",
     "@aws-sdk/client-s3": "^3.1024.0",
-    "@mnke/circus-protocol": "workspace:*",
     "@mnke/circus-shared": "workspace:*",
     "nats": "^2.28.2"
   },

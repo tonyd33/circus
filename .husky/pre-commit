@@ -1,5 +1,5 @@
 bun test
 bun run typecheck
-bun run format
 gitleaks git
 helm lint charts/circus
+bun run lint-staged

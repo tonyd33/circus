@@ -6,79 +6,15 @@
 global:
   namespace: default
 
-# NATS configuration (DEVELOPMENT)
-nats:
-  enabled: false
-  image:
-    repository: nats
-    tag: "2.10-alpine"
-    pullPolicy: IfNotPresent
-  replicaCount: 1
-  service:
-    type: ClusterIP
-    port: 4222
-  storage:
-    enabled: true
-    size: 1Gi
-  args:
-    - "-js"
-    - "-sd"
-    - "/data"
-
-# Redis configuration (DEVELOPMENT)
-redis:
-  enabled: false
-  image:
-    repository: redis
-    tag: "7-alpine"
-    pullPolicy: IfNotPresent
-  replicaCount: 1
-  service:
-    type: ClusterIP
-    port: 6379
-  args:
-    - redis-server
-    - --appendonly
-    - "yes"
-  livenessProbe:
-    enabled: true
-    initialDelaySeconds: 30
-    periodSeconds: 10
-  readinessProbe:
-    enabled: true
-    initialDelaySeconds: 5
-    periodSeconds: 5
-
-# MinIO configuration (DEVELOPMENT)
-minio:
-  enabled: false
-  image:
-    repository: minio/minio
-    tag: latest
-    pullPolicy: IfNotPresent
-  replicaCount: 1
-  service:
-    type: ClusterIP
-    apiPort: 9000
-    consolePort: 9001
-  auth:
-    rootUser: minioadmin
-    rootPassword: minioadmin
-  livenessProbe:
-    enabled: true
-    path: /minio/health/live
-    initialDelaySeconds: 30
-    periodSeconds: 10
-  readinessProbe:
-    enabled: true
-    path: /minio/health/ready
-    initialDelaySeconds: 30
-    periodSeconds: 10
-  args:
-    - server
-    - /data
-    - --console-address
-    - ":9001"
+# External services configuration
+# These services are expected to be installed separately
+externalServices:
+  redis:
+    url: "redis://redis:6379"
+  nats:
+    url: "nats://nats:4222"
+  minio:
+    url: "http://minio:9000"
 
 # Ringmaster configuration
 ringmaster:
@@ -94,11 +30,6 @@ ringmaster:
   rbac:
     create: true
   env:
-    # Redis and NATS URLs will use the generated service names
-    # Format: redis://<release-name>-circus-redis:6379
-    # You can override these if using external services
-    redisUrl: ""  # Auto-generated if empty
-    natsUrl: ""   # Auto-generated if empty
     chimpImage: "circus-chimp:latest"
     reconcileInterval: "30000"
   resources:
@@ -111,7 +42,7 @@ ringmaster:
   # Anthropic API key - should be provided via secret
   anthropicApiKey:
     existingSecret: "anthropic-api-key"
-    key: "api-key"
+    key: "ANTHROPIC_API_KEY"
 
 # Usher configuration
 usher:
@@ -125,11 +56,6 @@ usher:
     type: ClusterIP
     port: 3000
   env:
-    # Redis and NATS URLs will use the generated service names
-    # Format: redis://<release-name>-circus-redis:6379
-    # You can override these if using external services
-    redisUrl: ""  # Auto-generated if empty
-    natsUrl: ""   # Auto-generated if empty
     chimpImage: "circus-chimp:latest"
   resources:
     requests:
@@ -141,14 +67,20 @@ usher:
   # Anthropic API key - should be provided via secret
   anthropicApiKey:
     existingSecret: "anthropic-api-key"
-    key: "api-key"
+    key: "ANTHROPIC_API_KEY"
 
-# Secret configuration
-secrets:
-  anthropicApiKey:
-    # Set this to your Anthropic API key
-    # You can also create the secret manually before installing the chart
-    create: false
-    # If create is true, provide the API key value here
-    # WARNING: This is not secure for production - use external secret management
-    value: ""
+# Bullhorn configuration
+bullhorn:
+  enabled: true
+  image:
+    repository: circus-bullhorn
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"

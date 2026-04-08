@@ -7,9 +7,22 @@
  */
 
 import * as ClaudeSDK from "@anthropic-ai/claude-agent-sdk";
+import { ChimpNaming } from "@mnke/circus-shared/chimp-naming";
 import { createLogger } from "@mnke/circus-shared/logger";
+import {
+  createMetrics,
+  type ServiceMetrics,
+} from "@mnke/circus-shared/metrics";
 
 const logger = createLogger("Chimp");
+
+import * as os from "node:os";
+import * as path from "node:path";
+import {
+  GetObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 import {
   type ChimpCommand,
   type ChimpOutputMessage,
@@ -20,15 +33,8 @@ import {
   createStatusResponse,
   extractPrompt,
   parseChimpCommand,
-} from "@mnke/circus-protocol";
+} from "@mnke/circus-shared/protocol";
 import { connect, type NatsConnection } from "nats";
-import {
-  S3Client,
-  PutObjectCommand,
-  GetObjectCommand,
-} from "@aws-sdk/client-s3";
-import * as path from "node:path";
-import * as os from "node:os";
 
 /**
  * Application state tracking.
@@ -59,7 +65,7 @@ async function _publishCorrelation(
   chimpName: string,
   event: CorrelationEvent,
 ): Promise<void> {
-  const correlationSubject = `chimp.${chimpName}.correlation`;
+  const correlationSubject = ChimpNaming.correlationSubject(chimpName);
   const payload = {
     ...event,
     sessionName: chimpName,
@@ -71,6 +77,52 @@ async function _publishCorrelation(
     { eventType: event.type, subject: correlationSubject },
     "Published correlation event",
   );
+}
+
+/**
+ * Create a stub hook handler that logs all hook events to the chimp output
+ */
+function createHookHandler(
+  nc: NatsConnection,
+  chimpName: string,
+): (
+  input: ClaudeSDK.HookInput,
+  toolUseID: string | undefined,
+  options: { signal: AbortSignal },
+) => Promise<ClaudeSDK.HookJSONOutput> {
+  const outputSubject = ChimpNaming.outputSubject(chimpName);
+
+  return async (input, toolUseID, _options) => {
+    // Extract hook event name and relevant data
+    const hookEventName = input.hook_event_name;
+    const sessionId = input.session_id;
+
+    // Create a debug message with hook details
+    const debugMessage = {
+      type: "hook-debug",
+      hookEvent: hookEventName,
+      sessionId,
+      toolUseID,
+      timestamp: new Date().toISOString(),
+      data: input,
+    };
+
+    // Log hook event
+    logger.debug(
+      {
+        hookEvent: hookEventName,
+        toolUseID,
+        agentId: input.agent_id,
+        agentType: input.agent_type,
+      },
+      `Hook triggered: ${hookEventName}`,
+    );
+
+    // Return a basic continue response for all hooks
+    return {
+      async: true,
+    };
+  };
 }
 
 /**
@@ -112,6 +164,99 @@ function getSessionFilePath(workingDir: string, sessionId: string): string {
 }
 
 /**
+ * Save the entire Claude state directory to S3 as a tarball
+ * @returns The S3 path where the state was saved
+ */
+async function saveClaudeStateToS3(chimpName: string): Promise<string> {
+  const homeDir = os.homedir();
+  const claudeDir = path.join(homeDir, ".claude");
+  const tempDir = path.join(os.tmpdir(), `chimp-${chimpName}-${Date.now()}`);
+  const tarballPath = path.join(tempDir, "claude.tar.gz");
+
+  try {
+    // Create temp directory
+    await Bun.$`mkdir -p ${tempDir}`;
+
+    // Create tarball of ~/.claude directory
+    // Use -C to change to home directory, then tar the .claude directory
+    await Bun.$`tar -czf ${tarballPath} -C ${homeDir} .claude`;
+
+    // Read the tarball
+    const fileContent = await Bun.file(tarballPath).arrayBuffer();
+
+    // Upload to S3
+    const s3Client = createS3Client();
+    const bucket = process.env.S3_BUCKET || "claude-sessions";
+    const s3Key = `${chimpName}/claude.tar.gz`;
+
+    await s3Client.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: s3Key,
+        Body: new Uint8Array(fileContent),
+        ContentType: "application/gzip",
+      }),
+    );
+
+    return `s3://${bucket}/${s3Key}`;
+  } finally {
+    // Clean up temp directory
+    await Bun.$`rm -rf ${tempDir}`.catch(() => {
+      // Ignore cleanup errors
+    });
+  }
+}
+
+/**
+ * Restore the entire Claude state directory from S3 tarball
+ */
+async function restoreClaudeStateFromS3(chimpName: string): Promise<void> {
+  const homeDir = os.homedir();
+  const tempDir = path.join(os.tmpdir(), `chimp-${chimpName}-${Date.now()}`);
+  const tarballPath = path.join(tempDir, "claude.tar.gz");
+
+  try {
+    // Create temp directory
+    await Bun.$`mkdir -p ${tempDir}`;
+
+    // Download from S3
+    const s3Client = createS3Client();
+    const bucket = process.env.S3_BUCKET || "claude-sessions";
+    const key = `${chimpName}/claude.tar.gz`;
+
+    const response = await s3Client.send(
+      new GetObjectCommand({
+        Bucket: bucket,
+        Key: key,
+      }),
+    );
+
+    if (!response.Body) {
+      throw new Error("Empty response from S3");
+    }
+
+    // Read the body stream
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of response.Body as AsyncIterable<Uint8Array>) {
+      chunks.push(chunk);
+    }
+    const fileContent = Buffer.concat(chunks);
+
+    // Write tarball to temp file
+    await Bun.write(tarballPath, fileContent);
+
+    // Extract tarball to home directory
+    // This will restore ~/.claude directory
+    await Bun.$`tar -xzf ${tarballPath} -C ${homeDir}`;
+  } finally {
+    // Clean up temp directory
+    await Bun.$`rm -rf ${tempDir}`.catch(() => {
+      // Ignore cleanup errors
+    });
+  }
+}
+
+/**
  * Process a message using Claude Agent SDK with session continuity
  * Publishes progress messages and logs during processing
  */
@@ -122,7 +267,7 @@ async function processWithClaude(
   chimpName: string,
 ): Promise<{ response: string; sessionId: string }> {
   // Publish log message
-  const outputSubject = `chimp.${chimpName}.output`;
+  const outputSubject = ChimpNaming.outputSubject(chimpName);
   nc.publish(
     outputSubject,
     JSON.stringify(
@@ -133,6 +278,21 @@ async function processWithClaude(
   let responseText = "";
   let sessionId = state.sessionId;
 
+  // Create hook handler
+  const hookHandler = createHookHandler(nc, chimpName);
+
+  // Define all hook events to handle
+  const hookEvents = ClaudeSDK.HOOK_EVENTS;
+
+  // Build hooks configuration for all events
+  const hooks: Partial<
+    Record<ClaudeSDK.HookEvent, ClaudeSDK.HookCallbackMatcher[]>
+  > = {};
+
+  for (const event of hookEvents) {
+    hooks[event] = [{ hooks: [hookHandler] }];
+  }
+
   // Build query options based on session mode
   const options: ClaudeSDK.Options = {
     model: state.model,
@@ -140,14 +300,13 @@ async function processWithClaude(
     continue: sessionId == null,
     resume: sessionId,
     cwd: state.workingDir,
+    hooks,
   };
 
   const queryStream = ClaudeSDK.query({
     prompt: userPrompt,
     options,
   });
-
-  const _pendingPromises: Promise<void>[] = [];
 
   // Stream the response
   for await (const message of queryStream) {
@@ -199,7 +358,7 @@ async function handleCommand(
 ): Promise<ChimpOutputMessage | null> {
   logger.info({ command: command.command }, "Handling command");
 
-  const outputSubject = `chimp.${chimpName}.output`;
+  const outputSubject = ChimpNaming.outputSubject(chimpName);
 
   switch (command.command) {
     case "send-agent-message": {
@@ -374,111 +533,58 @@ async function handleCommand(
         throw new Error("No active session to save");
       }
 
-      const sessionFile = getSessionFilePath(state.workingDir, state.sessionId);
-
       nc.publish(
         outputSubject,
         JSON.stringify(
-          createLogMessage("info", `Saving session ${state.sessionId} to S3`),
+          createLogMessage(
+            "info",
+            `Saving Claude state for ${chimpName} to S3`,
+          ),
         ),
       );
 
       try {
-        // Read the session file
-        const fileContent = await Bun.file(sessionFile).arrayBuffer();
-
-        // Upload to S3
-        const s3Client = createS3Client();
-        const bucket = process.env.S3_BUCKET || "claude-sessions";
-        const s3Key = `sessions/${state.sessionId}.jsonl`;
-
-        await s3Client.send(
-          new PutObjectCommand({
-            Bucket: bucket,
-            Key: s3Key,
-            Body: new Uint8Array(fileContent),
-            ContentType: "application/jsonl",
-          }),
-        );
-
-        const s3Path = `s3://${bucket}/${s3Key}`;
-
-        nc.publish(
-          outputSubject,
-          JSON.stringify(
-            createLogMessage("info", `Session saved successfully to ${s3Path}`),
-          ),
-        );
-
-        return createSaveSessionResponse(s3Path, state.sessionId);
-      } catch (error) {
-        throw new Error(
-          `Failed to save session: ${error instanceof Error ? error.message : "Unknown error"}`,
-        );
-      }
-    }
-
-    case "restore-session": {
-      const { sessionId } = command.args;
-
-      nc.publish(
-        outputSubject,
-        JSON.stringify(
-          createLogMessage("info", `Restoring session ${sessionId}`),
-        ),
-      );
-
-      try {
-        // Build S3 key from session ID (format: sessions/<session-id>.jsonl)
-        const s3Client = createS3Client();
-        const bucket = process.env.S3_BUCKET || "claude-sessions";
-        const key = `sessions/${sessionId}.jsonl`;
-
-        nc.publish(
-          outputSubject,
-          JSON.stringify(
-            createLogMessage("info", `Downloading from s3://${bucket}/${key}`),
-          ),
-        );
-
-        // Download from S3
-        const response = await s3Client.send(
-          new GetObjectCommand({
-            Bucket: bucket,
-            Key: key,
-          }),
-        );
-
-        if (!response.Body) {
-          throw new Error("Empty response from S3");
-        }
-
-        // Read the body stream
-        const chunks: Uint8Array[] = [];
-        for await (const chunk of response.Body as AsyncIterable<Uint8Array>) {
-          chunks.push(chunk);
-        }
-        const fileContent = Buffer.concat(chunks);
-
-        // Write to local session file
-        const sessionFile = getSessionFilePath(state.workingDir, sessionId);
-        const sessionDir = path.dirname(sessionFile);
-
-        // Ensure directory exists
-        await Bun.$`mkdir -p ${sessionDir}`;
-
-        // Write the session file
-        await Bun.write(sessionFile, fileContent);
-
-        // Update state to resume this session
-        state.sessionId = sessionId;
+        const s3Path = await saveClaudeStateToS3(chimpName);
 
         nc.publish(
           outputSubject,
           JSON.stringify(
             createLogMessage(
               "info",
-              `Session ${sessionId} restored successfully from S3`,
+              `Claude state saved successfully to ${s3Path}`,
+            ),
+          ),
+        );
+
+        return createSaveSessionResponse(s3Path, state.sessionId);
+      } catch (error) {
+        throw new Error(
+          `Failed to save Claude state: ${error instanceof Error ? error.message : "Unknown error"}`,
+        );
+      }
+    }
+
+    case "restore-session": {
+      // Note: sessionId arg is ignored now, we restore based on chimp name
+      nc.publish(
+        outputSubject,
+        JSON.stringify(
+          createLogMessage(
+            "info",
+            `Restoring Claude state for ${chimpName} from S3`,
+          ),
+        ),
+      );
+
+      try {
+        await restoreClaudeStateFromS3(chimpName);
+
+        nc.publish(
+          outputSubject,
+          JSON.stringify(
+            createLogMessage(
+              "info",
+              `Claude state restored successfully from S3`,
             ),
           ),
         );
@@ -486,7 +592,7 @@ async function handleCommand(
         return null;
       } catch (error) {
         throw new Error(
-          `Failed to restore session: ${error instanceof Error ? error.message : "Unknown error"}`,
+          `Failed to restore Claude state: ${error instanceof Error ? error.message : "Unknown error"}`,
         );
       }
     }
@@ -520,7 +626,7 @@ async function publishCompletion(
   reason: CompletionEvent["reason"],
   state: AppState,
 ): Promise<void> {
-  const controlSubject = `chimp.${chimpName}.control`;
+  const controlSubject = ChimpNaming.controlSubject(chimpName);
   const event: CompletionEvent = {
     type: "completion",
     chimpName,
@@ -537,8 +643,23 @@ async function publishCompletion(
   );
 }
 
-async function main() {
-  logger.info("Starting Chimp - Claude Agent...");
+/**
+ * Startup phase - Initialize connections and restore session if available
+ */
+async function startup(): Promise<{
+  nc: NatsConnection;
+  chimpName: string;
+  state: AppState;
+  metrics: ServiceMetrics;
+  subjects: {
+    inputSubject: string;
+    outputSubject: string;
+    streamName: string;
+    consumerName: string;
+  };
+  idleTimeoutMs: number;
+}> {
+  logger.info("=== STARTUP PHASE ===");
 
   // Validate API key
   if (!process.env.ANTHROPIC_API_KEY) {
@@ -552,8 +673,11 @@ async function main() {
     throw new Error("CHIMP_NAME environment variable is required");
   }
 
-  // Get idle timeout from environment (default: 30 minutes)
-  const idleTimeoutMs = parseInt(process.env.IDLE_TIMEOUT_MS || "1800000", 10);
+  // Get idle timeout from environment (default: 1 minute)
+  const idleTimeoutMs = parseInt(process.env.IDLE_TIMEOUT_MS || "60000", 10);
+
+  // Initialize metrics
+  const metrics = createMetrics({ serviceName: "chimp" });
 
   // Connect to NATS
   const natsUrl = process.env.NATS_URL || "nats://localhost:4222";
@@ -563,13 +687,13 @@ async function main() {
     reconnectTimeWait: 2000,
   });
   logger.info({ natsUrl }, "Connected to NATS");
+  metrics.incActiveConnections("nats");
 
-  // Get JetStream context
-  const js = nc.jetstream();
-  const streamName = `chimp-${chimpName}`;
-  const consumerName = `chimp-${chimpName}-consumer`;
-  const inputSubject = `chimp.${chimpName}.input`;
-  const outputSubject = `chimp.${chimpName}.output`;
+  // Define subjects using ChimpNaming
+  const streamName = ChimpNaming.streamName(chimpName);
+  const consumerName = ChimpNaming.consumerName(chimpName);
+  const inputSubject = ChimpNaming.inputSubject(chimpName);
+  const outputSubject = ChimpNaming.outputSubject(chimpName);
 
   logger.info({ inputSubject, consumerName }, "Subscribing to input subject");
 
@@ -584,31 +708,145 @@ async function main() {
     workingDir: process.env.WORKING_DIR || process.cwd(),
   };
 
-  // Handle shutdown signals
-  let isShuttingDown = false;
+  try {
+    logger.info({ chimpName }, "Restoring Claude state from S3 on startup");
+    await restoreClaudeStateFromS3(chimpName);
+    logger.info({ chimpName }, "Claude state restored successfully from S3");
+  } catch (error) {
+    logger.warn(
+      { err: error, chimpName },
+      "Failed to restore Claude state from S3, will start fresh",
+    );
+  }
+
+  logger.info("=== STARTUP COMPLETE ===");
+
+  return {
+    nc,
+    chimpName,
+    state,
+    metrics,
+    subjects: {
+      inputSubject,
+      outputSubject,
+      streamName,
+      consumerName,
+    },
+    idleTimeoutMs,
+  };
+}
+
+/**
+ * Shutdown phase - Save session and clean up resources
+ */
+async function shutdown(
+  nc: NatsConnection,
+  chimpName: string,
+  state: AppState,
+  metrics: ServiceMetrics,
+  outputSubject: string,
+  heartbeatInterval: Timer | null,
+  idleTimeout: Timer | null,
+  reason: CompletionEvent["reason"] = "explicit_stop",
+): Promise<void> {
+  logger.info({ reason }, "=== SHUTDOWN PHASE ===");
+
+  // Save Claude state to S3 if a session exists
+  if (state.sessionId) {
+    try {
+      logger.info({ chimpName }, "Saving Claude state to S3 on shutdown");
+
+      const s3Path = await saveClaudeStateToS3(chimpName);
+
+      logger.info({ s3Path }, "Claude state saved to S3 successfully");
+    } catch (error) {
+      logger.error(
+        { err: error },
+        "Failed to save Claude state to S3 on shutdown",
+      );
+    }
+  }
+
+  // Publish completion event
+  await publishCompletion(nc, chimpName, reason, state);
+
+  // Stop timers
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+  }
+  if (idleTimeout) {
+    clearTimeout(idleTimeout);
+  }
+
+  await nc.close();
+  metrics.decActiveConnections("nats");
+  logger.info("=== SHUTDOWN COMPLETE ===");
+  process.exit(0);
+}
+
+/**
+ * Runtime phase - Process messages from NATS
+ */
+async function runtime(
+  nc: NatsConnection,
+  chimpName: string,
+  state: AppState,
+  metrics: ServiceMetrics,
+  subjects: {
+    streamName: string;
+    consumerName: string;
+    outputSubject: string;
+  },
+  idleTimeoutMs: number,
+  metricsPort: number = 9092,
+): Promise<void> {
+  logger.info("=== RUNTIME PHASE ===");
+
+  const { streamName, consumerName, outputSubject } = subjects;
+
+  // Start metrics server
+  Bun.serve({
+    port: metricsPort,
+    fetch: async (req) => {
+      const url = new URL(req.url);
+
+      if (url.pathname === "/metrics") {
+        const metricsData = await metrics.getMetrics();
+        return new Response(metricsData, {
+          headers: { "Content-Type": metrics.getContentType() },
+        });
+      }
+
+      if (url.pathname === "/healthz") {
+        return new Response("OK", { status: 200 });
+      }
+
+      return new Response("Not Found", { status: 404 });
+    },
+  });
+
+  logger.info({ port: metricsPort }, "Metrics server started");
+
+  // Setup timers
   let heartbeatInterval: Timer | null = null;
   let idleTimeout: Timer | null = null;
+  let isShuttingDown = false;
 
-  const shutdown = async (
+  const doShutdown = async (
     reason: CompletionEvent["reason"] = "explicit_stop",
   ) => {
     if (isShuttingDown) return;
     isShuttingDown = true;
-    logger.info({ reason }, "Shutting down");
-
-    // Publish completion event
-    await publishCompletion(nc, chimpName, reason, state);
-
-    // Stop timers
-    if (heartbeatInterval) {
-      clearInterval(heartbeatInterval);
-    }
-    if (idleTimeout) {
-      clearTimeout(idleTimeout);
-    }
-
-    await nc.close();
-    process.exit(0);
+    await shutdown(
+      nc,
+      chimpName,
+      state,
+      metrics,
+      outputSubject,
+      heartbeatInterval,
+      idleTimeout,
+      reason,
+    );
   };
 
   const resetIdleTimeout = () => {
@@ -617,20 +855,21 @@ async function main() {
     }
     idleTimeout = setTimeout(async () => {
       logger.info({ idleTimeoutMs }, "No activity, shutting down");
-      await shutdown("idle_timeout");
+      await doShutdown("idle_timeout");
     }, idleTimeoutMs);
   };
 
   // Start idle timeout
   resetIdleTimeout();
 
-  process.on("SIGINT", () => shutdown("explicit_stop"));
-  process.on("SIGTERM", () => shutdown("explicit_stop"));
+  // Handle shutdown signals
+  process.on("SIGINT", () => doShutdown("explicit_stop"));
+  process.on("SIGTERM", () => doShutdown("explicit_stop"));
 
   // Start heartbeat interval (every 10 seconds)
   heartbeatInterval = setInterval(async () => {
     try {
-      const heartbeatSubject = `chimp.${chimpName}.heartbeat`;
+      const heartbeatSubject = ChimpNaming.heartbeatSubject(chimpName);
       const heartbeat = {
         chimpName,
         timestamp: Date.now(),
@@ -644,7 +883,8 @@ async function main() {
     }
   }, 10_000);
 
-  // Get durable consumer
+  // Get JetStream consumer
+  const js = nc.jetstream();
   const consumer = await js.consumers.get(streamName, consumerName);
   logger.info("Connected to JetStream consumer, ready to process messages");
 
@@ -653,7 +893,9 @@ async function main() {
 
   try {
     for await (const msg of messages) {
+      const startTime = Date.now();
       logger.info({ subject: msg.subject, seq: msg.seq }, "Received message");
+      metrics.recordNatsReceived(msg.subject);
 
       // Reset idle timeout on each message
       resetIdleTimeout();
@@ -669,20 +911,25 @@ async function main() {
         // Publish response if there is one
         if (response) {
           nc.publish(outputSubject, JSON.stringify(response));
+          metrics.recordNatsPublish(outputSubject);
         }
 
         // Acknowledge the message
         msg.ack();
 
+        const duration = (Date.now() - startTime) / 1000;
+        metrics.recordNatsProcessed(msg.subject, true, duration);
+
         // Handle stop command
         if (command.command === "stop") {
-          await shutdown("explicit_stop");
+          await doShutdown("explicit_stop");
           return;
         }
 
         logger.info({ seq: msg.seq }, "Processed message successfully");
       } catch (error) {
         logger.error({ err: error }, "Error processing message");
+        metrics.recordError("message_processing", "error");
 
         // Publish error response
         nc.publish(
@@ -701,13 +948,34 @@ async function main() {
 
         // Acknowledge the message even on error to prevent redelivery
         msg.ack();
+
+        const duration = (Date.now() - startTime) / 1000;
+        metrics.recordNatsProcessed(msg.subject, false, duration);
       }
     }
   } catch (error) {
     logger.error({ err: error }, "Error in message processing loop");
-    await shutdown("error");
+    await doShutdown("error");
     process.exit(1);
   }
+}
+
+/**
+ * Main entry point - orchestrates startup, runtime, and shutdown
+ */
+async function main() {
+  const { nc, chimpName, state, metrics, subjects, idleTimeoutMs } =
+    await startup();
+  const metricsPort = parseInt(process.env.METRICS_PORT || "9092", 10);
+  await runtime(
+    nc,
+    chimpName,
+    state,
+    metrics,
+    subjects,
+    idleTimeoutMs,
+    metricsPort,
+  );
 }
 
 // Run the application

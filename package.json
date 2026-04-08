@@ -4,7 +4,8 @@
   "module": "index.ts",
   "devDependencies": {
     "@biomejs/biome": "^2.4.10",
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "lint-staged": "^16.4.0"
   },
   "peerDependencies": {
     "typescript": "^5"
@@ -22,5 +23,10 @@
   ],
   "dependencies": {
     "husky": "^9.1.7"
+  },
+  "lint-staged": {
+    "*.{js,ts,jsx,tsx,json,jsonc}": [
+      "biome check --write --no-errors-on-unmatched"
+    ]
   }
 }

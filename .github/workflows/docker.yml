@@ -12,6 +12,10 @@ on:
       - master
       - main
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
@@ -23,10 +27,12 @@ jobs:
       contents: read
       packages: write
       id-token: write
+      attestations: write
 
     strategy:
       matrix:
-        target: [chimp, ringmaster, usher]
+        target: [chimp, ringmaster, usher, bullhorn]
+      fail-fast: false
 
     steps:
       - name: Checkout repository

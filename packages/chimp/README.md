@@ -1,19 +1,19 @@
 # @mnke/circus-chimp
 
-A Claude Agent worker for the Circus platform. Chimp connects to NATS JetStream, processes messages using the Claude Agent SDK (with full tool access), and publishes responses back. It implements heartbeat monitoring, idle timeout, and session persistence.
+An AI Agent worker for the Circus platform. Chimp connects to NATS JetStream, processes messages using an AI Agent SDK (with full tool access), and publishes responses back. It implements heartbeat monitoring, idle timeout, and session persistence.
 
 ## Overview
 
-Chimp is the worker component of Circus that executes Claude AI agent tasks. Each Chimp runs as a dedicated Kubernetes pod, processing messages from its own NATS stream with full access to file operations, bash commands, and other Claude tools.
+Chimp is the worker component of Circus that executes AI agent tasks. Each Chimp runs as a dedicated Kubernetes pod, processing messages from its own NATS stream with full access to file operations, bash commands, and other tools.
 
 ## Features
 
-- **Claude Agent SDK Integration**: Full Claude Agent SDK with tool access (Read, Write, Edit, Glob, Grep, Bash)
-- **Session Continuity**: Maintains session state across messages using Claude's session system
+- **AI Agent SDK Integration**: Pluggable agent SDK with full tool access (Read, Write, Edit, Glob, Grep, Bash)
+- **Session Continuity**: Maintains session state across messages using the agent's session system
 - **Heartbeat Monitoring**: Publishes heartbeats every 10 seconds for health tracking
 - **Idle Timeout**: Automatically shuts down after 30 minutes of inactivity to save resources
 - **Correlation Events**: Publishes events when creating external resources (PRs, issues, threads)
-- **S3 Session Persistence**: Save and restore Claude sessions to/from S3 (MinIO)
+- **S3 Session Persistence**: Save and restore agent sessions to/from S3 (MinIO)
 - **Configurable**: Model, tools, and working directory configurable via environment variables
 - **Error Handling**: Graceful error handling with structured error responses
 - **Signal Handling**: Proper shutdown on SIGINT/SIGTERM with completion events
@@ -21,7 +21,7 @@ Chimp is the worker component of Circus that executes Claude AI agent tasks. Eac
 ## Prerequisites
 
 - [Bun](https://bun.sh) runtime (v1.3.11 or later)
-- Anthropic API key
+- AI Agent SDK credentials (e.g., Anthropic API key for Claude)
 - NATS server with JetStream enabled
 - (Optional) S3/MinIO instance for session persistence
 - Kubernetes cluster (for production deployment)
@@ -145,7 +145,7 @@ nats sub chimp.output
 
 ### Required Variables
 
-- `ANTHROPIC_API_KEY`: Your Anthropic API key
+- `ANTHROPIC_API_KEY`: Your AI Agent API key (e.g., Anthropic API key for Claude)
 - `CHIMP_NAME`: Unique identifier for this Chimp instance (e.g., `slack-C123-T456`)
 
 ### NATS Configuration
@@ -159,8 +159,8 @@ Stream and consumer names are automatically derived from `CHIMP_NAME`:
 
 ### Optional Variables
 
-#### Claude Configuration
-- `CLAUDE_MODEL`: Claude model to use (default: `claude-sonnet-4-5`)
+#### Agent Configuration
+- `CLAUDE_MODEL`: AI model to use (default: `claude-sonnet-4-5`)
 - `ALLOWED_TOOLS`: Comma-separated list of allowed tools (default: `Read,Glob,Grep,Write,Edit,Bash`)
 - `WORKING_DIR`: Initial working directory (default: current directory)
 
@@ -286,7 +286,7 @@ Messages are safely buffered in NATS JetStream during downtime.
 
 ## Session Persistence
 
-Chimp maintains Claude session state across messages for continuity.
+Chimp maintains agent session state across messages for continuity.
 
 ### Local Session Files
 
@@ -296,6 +296,8 @@ Sessions are stored locally at:
 ```
 
 Where `<encoded-cwd>` is the working directory path with non-alphanumeric chars replaced by `-`.
+
+**Note**: The session storage path is determined by the underlying agent SDK. For Claude Agent SDK, it uses `~/.claude/projects/`. Other agent SDKs may use different paths.
 
 ### S3 Persistence
 
@@ -410,7 +412,7 @@ bun run typecheck
 ## Built With
 
 - [Bun](https://bun.com) - Fast JavaScript runtime
-- [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript) - Official Claude Agent SDK with full tool access
+- AI Agent SDK (default: [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript) with full tool access)
 - [NATS](https://nats.io) - Distributed messaging system
 - [@mnke/circus-protocol](../protocol) - Message protocol validation
 - [@mnke/circus-shared](../shared) - Shared utilities (logging, errors)
