@@ -12,6 +12,7 @@ import {
 } from "@mnke/circus-shared/metrics";
 import type { ChimpOutputMessage } from "@mnke/circus-shared/protocol";
 import { safeParseChimpOutputMessage } from "@mnke/circus-shared/protocol";
+import { Naming } from "@mnke/circus-shared/standards/chimp";
 import { connect, type NatsConnection } from "nats";
 import type { OutputHandler } from "./handlers.ts";
 import { ConsoleLoggerHandler } from "./handlers.ts";
@@ -97,39 +98,29 @@ export class Bullhorn {
       throw new Error("Bullhorn not initialized. Call initialize() first.");
     }
 
-    await this.initialize();
-
     // Subscribe to all chimp output messages
-    const sub = this.nc.subscribe("chimp.*.output");
-    this.logger.info("Subscribed to chimp.*.output");
+    const sub = this.nc.subscribe("chimps.outputs.>");
+    this.logger.info("Subscribed to chimps.outputs.>");
 
     // Process messages
     (async () => {
       for await (const msg of sub) {
         const startTime = Date.now();
         try {
-          // Extract chimp name from subject (e.g., "chimp.slack-C123.output" -> "slack-C123")
+          // Extract chimp ID from subject (e.g., "chimps.outputs.slack-C123" -> "slack-C123")
           const subject = msg.subject;
           this.metrics.recordNatsReceived(subject);
 
-          const parts = subject.split(".");
-          if (
-            parts.length !== 3 ||
-            parts[0] !== "chimp" ||
-            parts[2] !== "output"
-          ) {
+          const chimpId = Naming.parseOutputSubject(subject);
+          if (chimpId == null) {
             this.logger.warn({ subject }, "Invalid subject format");
             this.metrics.recordError("invalid_subject", "warning");
             continue;
           }
 
-          const chimpName = parts[1];
           const rawMessage = msg.json();
-          if (chimpName == null) {
-            throw new Error("Invalid subject");
-          }
 
-          await this.handleMessage(chimpName, rawMessage);
+          await this.handleMessage(chimpId, rawMessage);
 
           const duration = (Date.now() - startTime) / 1000;
           this.metrics.recordNatsProcessed(subject, true, duration);
