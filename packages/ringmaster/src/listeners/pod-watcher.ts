@@ -88,7 +88,7 @@ export class PodWatcher {
     const chimpLabel = pod.metadata?.labels?.[namespaceLabel("chimp-id")];
 
     if (!chimpLabel) {
-      logger.debug(
+      logger.warn(
         { podName: pod.metadata?.name },
         "Pod missing chimp-id label, skipping",
       );
