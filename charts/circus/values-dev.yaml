@@ -1,22 +1,38 @@
 ringmaster:
   enabled: true
   image:
-    repository: circus-ringmaster
-  env:
-    chimpImage: circus-chimp:latest
-    reconcileInterval: "15000"  # Faster reconciliation for dev
+    repository: ringmaster
+  chimp:
+    image: "chimp:latest"
 
 usher:
   enabled: true
   image:
-    repository: circus-usher
+    repository: usher
 
 bullhorn:
+  enabled: false
+  image:
+    repository: bullhorn
+
+ledger:
   enabled: true
   image:
-    repository: circus-bullhorn
+    repository: ledger
+
+dashboard:
+  enabled: true
+  image:
+    repository: dashboard
 
 chimp:
+  brainType: opencode
+  extraEnv:
+    - name: ANTHROPIC_API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: anthropic-api-key
+          key: ANTHROPIC_API_KEY
   initConfig:
     enabled: true
     commands:

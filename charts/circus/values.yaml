@@ -20,7 +20,7 @@ externalServices:
 ringmaster:
   enabled: true
   image:
-    repository: circus-ringmaster
+    repository: ringmaster
     tag: latest
     pullPolicy: IfNotPresent
   replicaCount: 1
@@ -29,9 +29,6 @@ ringmaster:
     name: ringmaster
   rbac:
     create: true
-  env:
-    chimpImage: "circus-chimp:latest"
-    reconcileInterval: "30000"
   resources:
     requests:
       memory: "128Mi"
@@ -48,15 +45,13 @@ ringmaster:
 usher:
   enabled: true
   image:
-    repository: circus-usher
+    repository: usher
     tag: latest
     pullPolicy: IfNotPresent
   replicaCount: 1
   service:
     type: ClusterIP
-    port: 3000
-  env:
-    chimpImage: "circus-chimp:latest"
+    port: 7392
   resources:
     requests:
       memory: "128Mi"
@@ -64,16 +59,15 @@ usher:
     limits:
       memory: "512Mi"
       cpu: "500m"
-  # Anthropic API key - should be provided via secret
-  anthropicApiKey:
-    existingSecret: "anthropic-api-key"
-    key: "ANTHROPIC_API_KEY"
+  routes:
+    - adapter: debug
+      path: /debug
 
 # Bullhorn configuration
 bullhorn:
   enabled: true
   image:
-    repository: circus-bullhorn
+    repository: bullhorn
     tag: latest
     pullPolicy: IfNotPresent
   replicaCount: 1
@@ -85,8 +79,58 @@ bullhorn:
       memory: "256Mi"
       cpu: "200m"
 
+# Ledger configuration
+ledger:
+  enabled: true
+  image:
+    repository: ledger
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  service:
+    type: ClusterIP
+    port: 6489
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+
+# Dashboard configuration
+dashboard:
+  enabled: true
+  image:
+    repository: dashboard
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  service:
+    type: ClusterIP
+    port: 3000
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
 # Chimp configuration
 chimp:
+  image: "chimp:latest"
+  brainType: echo
+  imagePullPolicy: IfNotPresent
+  extraEnv: []
+  # extraEnv:
+  #   - name: ANTHROPIC_API_KEY
+  #     valueFrom:
+  #       secretKeyRef:
+  #         name: anthropic-api-key
+  #         key: ANTHROPIC_API_KEY
+  volumeMounts: []
+  volumes: []
   initConfig:
     enabled: false
     commands: []

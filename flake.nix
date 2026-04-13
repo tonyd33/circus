@@ -39,6 +39,7 @@
               golangci-lint
               gitleaks
               kubernetes-helm
+              redis
             ];
           };
         }

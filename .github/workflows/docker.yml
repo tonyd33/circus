@@ -31,7 +31,7 @@ jobs:
 
     strategy:
       matrix:
-        target: [chimp, ringmaster, usher, bullhorn]
+        target: [chimp, ringmaster, usher, bullhorn, ledger, dashboard]
       fail-fast: false
 
     steps:

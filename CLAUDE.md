@@ -1,27 +1,40 @@
+## TypeScript Safety
 
-Default to using Bun instead of Node.js.
+**CRITICAL: NEVER use type assertions or casting to bypass type errors.**
 
-- Use `bun <file>` instead of `node <file>` or `ts-node <file>`
-- Use `bun test` instead of `jest` or `vitest`
-- Use `bun build <file.html|file.ts|file.css>` instead of `webpack` or `esbuild`
-- Use `bun install` instead of `npm install` or `yarn install` or `pnpm install`
-- Use `bun run <script>` instead of `npm run <script>` or `yarn run <script>` or `pnpm run <script>`
-- Use `bunx <package> <command>` instead of `npx <package> <command>`
-- Bun automatically loads .env, so don't use dotenv.
+- NEVER use `as Type` cast values
+- NEVER use `<Type>` syntax cast
+- NEVER use `any` silence type errors
+- If type error unsolvable → ask user for help
+- Add helper fns to lib instead of casting
+
+Type casting bypass safety, make false confidence, cause runtime crashes. Types no match = code wrong. Fix proper.
+
+## Bun Usage
+
+Use Bun not Node.js.
+
+- `bun <file>` not `node <file>` or `ts-node <file>`
+- `bun test` not `jest` or `vitest`
+- `bun build <file.html|file.ts|file.css>` not `webpack` or `esbuild`
+- `bun install` not `npm install` or `yarn install` or `pnpm install`
+- `bun run <script>` not `npm run <script>` or `yarn run <script>` or `pnpm run <script>`
+- `bunx <package> <command>` not `npx <package> <command>`
+- Bun load .env automatic. No `dotenv`.
 
 ## APIs
 
-- `Bun.serve()` supports WebSockets, HTTPS, and routes. Don't use `express`.
-- `bun:sqlite` for SQLite. Don't use `better-sqlite3`.
-- `Bun.redis` for Redis. Don't use `ioredis`.
-- `Bun.sql` for Postgres. Don't use `pg` or `postgres.js`.
-- `WebSocket` is built-in. Don't use `ws`.
-- Prefer `Bun.file` over `node:fs`'s readFile/writeFile
-- Bun.$`ls` instead of execa.
+- `Bun.serve()` do WebSockets, HTTPS, routes. No `express`.
+- `bun:sqlite` for SQLite. No `better-sqlite3`.
+- `Bun.redis` for Redis. No `ioredis`.
+- `Bun.sql` for Postgres. No `pg` or `postgres.js`.
+- `WebSocket` built-in. No `ws`.
+- `Bun.file` better than `node:fs` readFile/writeFile
+- Bun.$`ls` not execa.
 
 ## Testing
 
-Use `bun test` to run tests.
+Use `bun test` run tests.
 
 ```ts#index.test.ts
 import { test, expect } from "bun:test";
@@ -33,7 +46,7 @@ test("hello world", () => {
 
 ## Frontend
 
-Use HTML imports with `Bun.serve()`. Don't use `vite`. HTML imports fully support React, CSS, Tailwind.
+Use HTML imports with `Bun.serve()`. No `vite`. HTML imports support React, CSS, Tailwind.
 
 Server:
 
@@ -68,7 +81,7 @@ Bun.serve({
 })
 ```
 
-HTML files can import .tsx, .jsx or .js files directly and Bun's bundler will transpile & bundle automatically. `<link>` tags can point to stylesheets and Bun's CSS bundler will bundle.
+HTML files import .tsx, .jsx, .js direct. Bun bundler transpile & bundle automatic. `<link>` tags point stylesheets, Bun CSS bundler bundle.
 
 ```html#index.html
 <html>
@@ -79,7 +92,7 @@ HTML files can import .tsx, .jsx or .js files directly and Bun's bundler will tr
 </html>
 ```
 
-With the following `frontend.tsx`:
+With `frontend.tsx`:
 
 ```tsx#frontend.tsx
 import React from "react";
@@ -97,10 +110,10 @@ export default function Frontend() {
 root.render(<Frontend />);
 ```
 
-Then, run index.ts
+Then run index.ts
 
 ```sh
 bun --hot ./index.ts
 ```
 
-For more information, read the Bun API docs in `node_modules/bun-types/docs/**.mdx`.
+More info in Bun API docs at `node_modules/bun-types/docs/**.mdx`.

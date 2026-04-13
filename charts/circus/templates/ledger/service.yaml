@@ -1,0 +1,19 @@
+{{- if .Values.ledger.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "circus.fullname" . }}-ledger
+  labels:
+    {{- include "circus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ledger
+spec:
+  type: {{ .Values.ledger.service.type }}
+  selector:
+    {{- include "circus.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: ledger
+  ports:
+    - name: ledger
+      port: {{ .Values.ledger.service.port }}
+      targetPort: 6489
+      protocol: TCP
+{{- end }}

@@ -1,24 +1,31 @@
 {
   "name": "@mnke/circus-chimp",
   "version": "0.1.0",
-  "module": "index.ts",
+  "module": "src/index.ts",
   "type": "module",
   "private": false,
+  "bin": {
+    "chimp": "src/cli.ts"
+  },
   "scripts": {
-    "dev": "bun --watch index.ts",
-    "start": "bun index.ts",
-    "typecheck": "bun tsc --noEmit"
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "typecheck": "bun tsgo --noEmit"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.92",
     "@aws-sdk/client-s3": "^3.1024.0",
+    "@commander-js/extra-typings": "catalog:",
     "@mnke/circus-shared": "workspace:*",
-    "nats": "^2.28.2"
+    "@opencode-ai/sdk": "^1.4.3",
+    "commander": "catalog:",
+    "nats": "catalog:"
   },
   "devDependencies": {
     "@types/bun": "latest"
   },
   "peerDependencies": {
-    "typescript": "^5"
+    "typescript": "^5",
+    "@typescript/native-preview": "^7.0.0-dev.20260411.1"
   }
 }

@@ -1,0 +1,35 @@
+{{- if .Values.ledger.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "circus.fullname" . }}-ledger
+  labels:
+    {{- include "circus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ledger
+spec:
+  replicas: {{ .Values.ledger.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "circus.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: ledger
+  template:
+    metadata:
+      labels:
+        {{- include "circus.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: ledger
+    spec:
+      containers:
+        - name: ledger
+          image: "{{ .Values.ledger.image.repository }}:{{ .Values.ledger.image.tag }}"
+          imagePullPolicy: {{ .Values.ledger.image.pullPolicy }}
+          env:
+            - name: REDIS_URL
+              value: {{ .Values.externalServices.redis.url | quote }}
+            - name: PORT
+              value: {{ .Values.ledger.service.port | quote }}
+          ports:
+            - containerPort: 6489
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.ledger.resources | nindent 12 }}
+{{- end }}

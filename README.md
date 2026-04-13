@@ -1,186 +1,59 @@
 # Circus
 
-**Event-driven AI Agent orchestration platform for Kubernetes**
+Distributed platform for orchestrating fleets of AI agents. External events come in, get routed to agents, agents do work, results go out. Built on NATS JetStream, Redis, and Kubernetes.
 
-Circus manages distributed AI agents ("Chimps") across Kubernetes, with event-driven lifecycle management, durable messaging via NATS JetStream, and intelligent session correlation.
+## The Metaphor
 
-## Overview
+Every package maps to a circus role:
 
-Circus is a lightweight, event-driven platform for running AI agents at scale. It automatically manages agent lifecycle, routes events from multiple sources (Slack, GitHub, Discord, Jira), and maintains session continuity across distributed agents.
+| Package | Role |
+|---------|------|
+| **Ringmaster** | Watches for incoming work and manages agent lifecycle — spins up chimps, tracks their state, cleans up when they're done |
+| **Chimp** | The performing agent. Receives commands, does AI work via a pluggable brain (Claude, Opencode, etc.), publishes results |
+| **Usher** | Front door. HTTP gateway that translates external events (Slack webhooks, debug requests) into agent commands on NATS |
+| **Bullhorn** | Announcer. Picks up agent output from NATS and routes it to destinations (console, Slack, etc.) |
+| **Shared** | The tent. Types, protocol definitions, naming conventions, and utilities used by everything else |
+| **Dashboard** | Audience view. Real-time monitoring UI for watching agent activity |
+| **Ledger** | Ticket ledger. State tracking (stub) |
 
-### Key Features
-
-- **Event-Driven Architecture**: Sub-second response times with NATS-based messaging
-- **Auto-Scaling**: Agents spin up on-demand and shut down when idle to save resources
-- **Multi-Source Support**: Unified event handling for Slack, GitHub, Discord, and Jira
-- **Session Continuity**: Automatic correlation of events to existing agent sessions
-- **Production-Ready**: Structured logging, error handling, and Kubernetes-native deployment
-
-## Architecture
-
-Circus consists of four main components:
-
-1. **Usher** - Event correlation service that routes webhooks to agent sessions
-2. **Ringmaster** - Lifecycle manager that creates/monitors Chimp pods and NATS streams
-3. **Chimp** - AI Agent worker pods that process messages and execute tasks
-4. **Bullhorn** - Output handler that announces chimp responses to external services
-
-### Data Flow
+## Message Flow
 
 ```
-External Event (Slack/GitHub/etc)
-  ↓
-Usher (correlates to session)
-  ↓
-NATS JetStream (durable queue)
-  ↓
-Ringmaster (ensures Chimp is running)
-  ↓
-Chimp (processes with AI Agent SDK)
-  ↓
-Response published to NATS (chimp.*.output)
-  ↓
-Bullhorn (sends to Slack/GitHub/etc)
+                          ┌─────────────┐
+                          │ Ringmaster  │
+                          │ (watches +  │
+                          │  orchestrates)
+                          └──────┬──────┘
+                                 │ creates/destroys
+                                 ▼
+External ──► Usher ──► NATS ──► Chimp ──► NATS ──► Bullhorn ──► Destinations
+ events      (in)    (inputs)  (work)   (outputs)   (out)
 ```
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed architecture documentation.
+Ringmaster doesn't sit in the message path. It watches the input stream and Kubernetes pod events, then decides when to spin up or tear down chimps.
 
-## Quick Start
+## Development
 
-### Prerequisites
+**Prerequisites:** Bun, Minikube, Helm
 
-- [Bun](https://bun.sh) runtime (v1.3.11 or later)
-- Kubernetes cluster (for production deployment)
-- Redis instance
-- NATS server with JetStream enabled
-- Anthropic API key
-
-### Local Development
-
-1. **Install dependencies**
-
-```bash
+```sh
 bun install
+./setup_dev.sh
 ```
 
-2. **Set up environment variables**
-
-Create a `.env` file in each package directory:
-
-```bash
-# packages/usher/.env
-REDIS_URL=redis://localhost:6379
-NATS_URL=nats://localhost:4222
-PORT=3000
-SLACK_SIGNING_SECRET=your-slack-secret
-
-# packages/ringmaster/.env
-REDIS_URL=redis://localhost:6379
-NATS_URL=nats://localhost:4222
-ANTHROPIC_API_KEY=your-anthropic-key
-NAMESPACE=default
-CHIMP_IMAGE=circus-chimp:latest
-
-# packages/chimp/.env
-ANTHROPIC_API_KEY=your-anthropic-key
-NATS_URL=nats://localhost:4222
-```
-
-3. **Run services locally**
-
-```bash
-# Terminal 1 - Start Usher
-cd packages/usher
-bun run dev
-
-# Terminal 2 - Start Ringmaster
-cd packages/ringmaster
-bun run dev
-```
-
-4. **Test with a webhook**
-
-```bash
-curl -X POST http://localhost:3000/webhooks/test \
-  -H "Content-Type: application/json" \
-  -d '{"userId": "user123", "content": "Hello, Claude!"}'
-```
+`setup_dev.sh` builds Docker images, sets up infrastructure, and deploys the Helm chart with dev values. See `deploy/dev/` for infrastructure details and `charts/circus/` for Helm configuration.
 
 ## Project Structure
 
 ```
-circus/
-├── packages/
-│   ├── chimp/         # Claude Agent worker
-│   ├── usher/         # Event correlation service
-│   ├── ringmaster/    # Lifecycle manager
-│   ├── bullhorn/      # Output handler service
-│   ├── protocol/      # Shared protocol types
-│   └── shared/        # Shared utilities (logging, errors)
-├── charts/
-│   └── circus/        # Helm chart for K8s deployment
-├── ARCHITECTURE.md    # Detailed architecture documentation
-└── PROTOCOL.md        # Message protocol specification
+packages/
+  shared/        Core types, protocol (Zod), naming standards, utilities
+  ringmaster/    Orchestrator — K8s + NATS + Redis
+  chimp/         Agent executor — pluggable AI brains
+  usher/         HTTP → NATS gateway — pluggable adapters
+  bullhorn/      NATS → destinations — pluggable output handlers
+  dashboard/     React monitoring UI
+  ledger/        State tracking (stub)
 ```
 
-## Packages
-
-- **[@mnke/circus-chimp](./packages/chimp)** - AI Agent worker that processes messages
-- **[@mnke/usher](./packages/usher)** - Event correlation and routing service
-- **[@mnke/ringmaster](./packages/ringmaster)** - Pod and stream lifecycle manager
-- **[@mnke/circus-bullhorn](./packages/bullhorn)** - Output handler for chimp responses
-- **[@mnke/circus-protocol](./packages/protocol)** - Message protocol validation (Zod schemas)
-- **[@mnke/circus-shared](./packages/shared)** - Shared utilities (Pino logging, error types)
-
-## Deployment
-
-### Kubernetes with Helm
-
-```bash
-# Create Anthropic API key secret
-kubectl create secret generic anthropic-api-key \
-  --from-literal=api-key=YOUR_ANTHROPIC_API_KEY
-
-# Install Circus
-helm install circus ./charts/circus
-```
-
-See [charts/circus/README.md](./charts/circus/README.md) for detailed deployment instructions.
-
-## Development
-
-### Type Checking
-
-```bash
-bun run typecheck
-```
-
-### Code Formatting
-
-```bash
-bun run format
-```
-
-### Building
-
-```bash
-bun run build
-```
-
-## Documentation
-
-- [ARCHITECTURE.md](./ARCHITECTURE.md) - System architecture and design decisions
-- [PROTOCOL.md](./PROTOCOL.md) - Message protocol specification
-
-## Technology Stack
-
-- **Runtime**: [Bun](https://bun.sh) - Fast JavaScript runtime
-- **Messaging**: [NATS](https://nats.io) JetStream - Durable, distributed messaging
-- **State**: Redis - Session state and correlation indexes
-- **AI**: Pluggable AI Agent SDK (default: Claude Agent SDK with full tool access)
-- **Orchestration**: Kubernetes - Production container orchestration
-- **Logging**: Pino - High-performance structured logging
-
-## License
-
-See LICENSE file for details.
+For design decisions and architecture details, see [ARCHITECTURE.md](ARCHITECTURE.md).
