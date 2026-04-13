@@ -3,15 +3,17 @@ import { Standards } from "@mnke/circus-shared";
 import { EnvReader as ER, Typing } from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
 import { createLogger } from "@mnke/circus-shared/logger";
-import {
-  type ChimpCommand,
-  type ChimpOutputMessage,
-  parseChimpCommand,
-  parseInitConfig,
-} from "@mnke/circus-shared/protocol";
-import { serve } from "bun";
-import { type Consumer, connect, type NatsConnection } from "nats";
+import { parseInitConfig } from "@mnke/circus-shared/protocol";
+import type { NatsConnection } from "nats";
+import { connect } from "nats";
 import type { ChimpBrain, PublishFn } from "@/chimp-brain";
+import {
+  type ChimpInput,
+  HttpInput,
+  type MessageHandler,
+  NatsInput,
+} from "@/chimp-input";
+import { type ChimpOutput, NatsOutput, StdoutOutput } from "@/chimp-output";
 
 const logger = createLogger("Chimp");
 
@@ -26,37 +28,21 @@ export interface ChimpConfig {
 
 export class Chimp {
   private config: ChimpConfig;
-  private brain: ChimpBrain;
+  private brainFactory: (chimpId: string, publish: PublishFn) => ChimpBrain;
   private nc: NatsConnection | null = null;
-  private consumer: Consumer | null = null;
+  private brain: ChimpBrain | null = null;
+  private input: ChimpInput | null = null;
+  private output: ChimpOutput | null = null;
   private isShuttingDown = false;
   private lastActivity = Date.now();
   private idleCheckTimer: Timer | null = null;
-  private server: ReturnType<typeof serve> | null = null;
 
   constructor(
     config: ChimpConfig,
-    chimpFactory: (chimpId: string, publish: PublishFn) => ChimpBrain,
+    brainFactory: (chimpId: string, publish: PublishFn) => ChimpBrain,
   ) {
     this.config = config;
-
-    const publishFn: PublishFn = (message: ChimpOutputMessage) => {
-      this.lastActivity = Date.now();
-      if (this.config.outputMode === "nats") {
-        if (!this.nc) {
-          throw new Error("Publish called before NATS connection established");
-        }
-        const outputSubject = Standards.Chimp.Naming.outputSubject(
-          this.config.chimpId,
-        );
-        this.nc.publish(outputSubject, JSON.stringify(message));
-      } else {
-        // stdout mode
-        console.log(JSON.stringify(message));
-      }
-    };
-
-    this.brain = chimpFactory(this.config.chimpId, publishFn);
+    this.brainFactory = brainFactory;
   }
 
   async start(): Promise<void> {
@@ -68,149 +54,91 @@ export class Chimp {
     process.on("SIGINT", () => this.shutdown("explicit_stop"));
     process.on("SIGTERM", () => this.shutdown("explicit_stop"));
 
-    await this.startOutput();
-    await this.brain.onStartup();
+    // 1. Connect NATS if needed by either input or output
+    if (this.config.outputMode === "nats" || this.config.inputMode === "nats") {
+      this.nc = await connect({
+        servers: this.config.natsUrl,
+        maxReconnectAttempts: -1,
+        reconnectTimeWait: 2000,
+      });
+      logger.info("Connected to NATS");
+    }
+
+    // 2. Create output
+    this.output = this.createOutput();
+    const output = this.output;
+
+    // 3. Create brain with publish wrapper
+    const publishFn: PublishFn = (message) => {
+      this.lastActivity = Date.now();
+      output.publish(message);
+    };
+    this.brain = this.brainFactory(this.config.chimpId, publishFn);
+    const brain = this.brain;
+
+    await brain.onStartup();
     logger.info("Chimp startup complete");
 
-    await this.executeInitConfig();
+    // 4. Execute init config
+    await this.executeInitConfig(brain);
     logger.info("Init config executed");
-    await this.startInput();
+
+    // 5. Create input
+    const onActivity = () => {
+      this.lastActivity = Date.now();
+    };
+    const onStopRequested = () => this.shutdown("explicit_stop");
+    const handler: MessageHandler = (command) => brain.handleMessage(command);
+
+    this.input = this.createInput(handler, onActivity, onStopRequested);
+
+    // 6. Start idle check BEFORE input (input may block in old designs)
     this.startIdleCheck();
+
+    // 7. Start input (non-blocking — fires async loop)
+    await this.input.start();
   }
 
-  private async startOutput() {
-    switch (this.config.inputMode) {
-      case "nats": {
-        this.nc = await connect({
-          servers: this.config.natsUrl,
-          maxReconnectAttempts: -1,
-          reconnectTimeWait: 2000,
-        });
-        logger.info("Connected to NATS");
-
-        const js = this.nc.jetstream();
-        const streamName = Standards.Chimp.Naming.inputStreamName();
-        const consumerName = `chimp-${this.config.chimpId}`;
-
-        this.consumer = await js.consumers.get(streamName, consumerName);
-        logger.info({ consumerName }, "Connected to JetStream consumer");
-        break;
-      }
-      case "http":
-        break;
+  private createOutput(): ChimpOutput {
+    switch (this.config.outputMode) {
+      case "nats":
+        if (!this.nc) throw new Error("NATS connection not established");
+        return new NatsOutput(this.nc, this.config.chimpId);
+      case "stdout":
+        return new StdoutOutput();
       default:
-        Typing.unreachable(this.config.inputMode);
+        return Typing.unreachable(this.config.outputMode);
     }
   }
 
-  private async startInput() {
+  private createInput(
+    handler: MessageHandler,
+    onActivity: () => void,
+    onStopRequested: () => Promise<void>,
+  ): ChimpInput {
     switch (this.config.inputMode) {
       case "nats":
-        await this.consumeNats();
-        break;
+        if (!this.nc) throw new Error("NATS connection not established");
+        return new NatsInput(
+          this.nc,
+          this.config.chimpId,
+          handler,
+          onActivity,
+          onStopRequested,
+        );
       case "http":
-        await this.listenHttp();
-        break;
+        return new HttpInput(
+          this.config.httpPort,
+          handler,
+          onActivity,
+          onStopRequested,
+        );
       default:
-        Typing.unreachable(this.config.inputMode);
+        return Typing.unreachable(this.config.inputMode);
     }
   }
 
-  private async consumeNats(): Promise<void> {
-    if (!this.consumer) {
-      throw new Error("Consumer not initialized");
-    }
-
-    const messages = await this.consumer.consume();
-
-    try {
-      for await (const msg of messages) {
-        this.lastActivity = Date.now();
-        logger.info({ subject: msg.subject, seq: msg.seq }, "Received message");
-
-        try {
-          const payload = JSON.parse(msg.string());
-          const command = parseChimpCommand(payload);
-
-          const result = await this.brain.handleMessage(command);
-
-          msg.ack();
-
-          logger.info({ seq: msg.seq }, "Processed message successfully");
-
-          if (result === "stop") {
-            await this.shutdown("explicit_stop");
-            return;
-          }
-        } catch (error) {
-          logger.error({ err: error }, "Error processing message");
-          msg.ack();
-        }
-      }
-    } catch (error) {
-      logger.error({ err: error }, "Error in message processing loop");
-      await this.shutdown("error");
-      process.exit(1);
-    }
-  }
-
-  private async listenHttp(): Promise<void> {
-    this.server = serve({
-      port: this.config.httpPort,
-      routes: {
-        "/command": {
-          POST: async (req) => {
-            this.lastActivity = Date.now();
-            try {
-              const payload = await req.json();
-              const command = parseChimpCommand(payload);
-
-              // Process async, return immediately
-              this.processHttpCommand(command).catch((error) => {
-                logger.error({ err: error }, "Error processing HTTP command");
-              });
-
-              return new Response(null, { status: 202 });
-            } catch (error) {
-              logger.error({ err: error }, "Invalid command");
-              return new Response(
-                JSON.stringify({ error: "Invalid command" }),
-                {
-                  status: 400,
-                  headers: { "Content-Type": "application/json" },
-                },
-              );
-            }
-          },
-        },
-        "/health": {
-          GET: () => new Response("OK"),
-        },
-      },
-    });
-
-    logger.info({ port: this.config.httpPort }, "HTTP server started");
-  }
-
-  private async processHttpCommand(command: ChimpCommand): Promise<void> {
-    logger.info({ command: command.command }, "Processing HTTP command");
-
-    try {
-      const result = await this.brain.handleMessage(command);
-      logger.info({ command: command.command }, "Processed HTTP command");
-
-      if (result === "stop") {
-        await this.shutdown("explicit_stop");
-      }
-    } catch (error) {
-      logger.error(
-        { err: error, command: command.command },
-        "Error processing HTTP command",
-      );
-    }
-  }
-
-  private async executeInitConfig(): Promise<void> {
+  private async executeInitConfig(brain: ChimpBrain): Promise<void> {
     const configPath = ER.str(Standards.Chimp.Env.initConfig).read(
       process.env,
     ).value;
@@ -224,7 +152,7 @@ export class Chimp {
 
     for (const cmd of config.commands) {
       logger.info({ command: cmd.command }, "Init command");
-      const result = await this.brain.handleMessage(cmd);
+      const result = await brain.handleMessage(cmd);
       if (result === "stop") {
         logger.info("Init command requested stop");
         break;
@@ -258,12 +186,17 @@ export class Chimp {
       clearInterval(this.idleCheckTimer);
     }
 
-    await this.brain.onShutdown();
-
-    if (this.server) {
-      this.server.stop();
+    // Stop input first (stop accepting messages)
+    if (this.input) {
+      await this.input.stop();
     }
 
+    // Then shutdown brain (finish in-flight work)
+    if (this.brain) {
+      await this.brain.onShutdown();
+    }
+
+    // Chimp owns NATS connection — drain and close last
     if (this.nc) {
       await this.nc.drain();
       await this.nc.close();

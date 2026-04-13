@@ -3,7 +3,8 @@
  */
 
 import * as path from "node:path";
-import { Typing } from "@mnke/circus-shared/lib";
+import type { S3Client } from "@aws-sdk/client-s3";
+import { EnvReader as ER, Typing } from "@mnke/circus-shared/lib";
 import { Either as E } from "@mnke/circus-shared/lib/fp";
 import {
   type ChimpCommand,
@@ -12,6 +13,13 @@ import {
 } from "@mnke/circus-shared/protocol";
 import * as Opencode from "@opencode-ai/sdk";
 import { ChimpBrain, type PublishFn } from "@/chimp-brain";
+import {
+  restoreOpencodeChimpStateFromS3,
+  restoreOpencodeStateFromS3,
+  saveOpencodeChimpStateToS3,
+  saveOpencodeStateToS3,
+} from "@/chimp-brain/opencode/session-storage";
+import { createS3Client, s3ConfigReader } from "@/lib/s3";
 import { cloneRepo } from "@/lib/tooling";
 
 export class OpencodeBrain extends ChimpBrain {
@@ -21,6 +29,8 @@ export class OpencodeBrain extends ChimpBrain {
   private sessionId: string | null = null;
   private workingDir = process.cwd();
   private eventAbortController: AbortController | null = null;
+  private s3Client: S3Client | null = null;
+  private s3Bucket: string | null = null;
 
   private async bindEventSubscription(directory: string): Promise<void> {
     if (this.eventAbortController) {
@@ -56,16 +66,90 @@ export class OpencodeBrain extends ChimpBrain {
   async onStartup(): Promise<void> {
     this.log("info", "OpencodeBrain starting up", { chimpId: this.chimpId });
 
+    // Read S3 config from env
+    const s3Result = s3ConfigReader.read(process.env).value;
+    if (E.isLeft(s3Result)) {
+      this.log("error", ER.formatReadError(s3Result.value));
+      throw new Error("S3 configuration missing");
+    }
+    const s3Config = s3Result.value;
+    this.s3Client = createS3Client(s3Config);
+    this.s3Bucket = s3Config.bucket;
+
+    // Restore opencode data dir from S3 before starting server
+    try {
+      await restoreOpencodeStateFromS3(
+        this.s3Client,
+        this.s3Bucket,
+        this.chimpId,
+      );
+      this.log("info", "Opencode state restored from S3");
+    } catch {
+      this.log("warn", "No existing opencode state found, starting fresh");
+    }
+
+    // Restore chimp metadata (workingDir, sessionId)
+    let savedSessionId: string | null = null;
+    try {
+      const savedState = await restoreOpencodeChimpStateFromS3(
+        this.s3Client,
+        this.s3Bucket,
+        this.chimpId,
+      );
+      if (savedState) {
+        this.workingDir = savedState.workingDir;
+        savedSessionId = savedState.sessionId;
+        this.log("info", "Chimp state restored from S3", {
+          workingDir: this.workingDir,
+          savedSessionId,
+        });
+      }
+    } catch {
+      this.log("warn", "Could not restore chimp state, using defaults");
+    }
+
     const opencode = await Opencode.createOpencode({});
 
     this.opencode = opencode;
     this.client = opencode.client;
 
-    const createResult = await this.client.session.create({
-      body: { title: `Chimp ${this.chimpId} session` },
-      throwOnError: true,
-    });
-    this.sessionId = createResult.data.id;
+    const sessionTitle = `Chimp ${this.chimpId} session`;
+
+    // Prefer resuming by saved session ID (exact match, no duplicate risk).
+    // Fall back to creating a new session if the ID is gone.
+    if (savedSessionId !== null) {
+      try {
+        const getResult = await this.client.session.get({
+          path: { id: savedSessionId },
+          throwOnError: true,
+        });
+        this.sessionId = getResult.data.id;
+        this.log("info", "Resumed existing session by ID", {
+          sessionId: this.sessionId,
+        });
+      } catch {
+        this.log(
+          "warn",
+          "Saved session ID no longer valid, creating new session",
+          {
+            savedSessionId,
+          },
+        );
+        const createResult = await this.client.session.create({
+          body: { title: sessionTitle },
+          throwOnError: true,
+        });
+        this.sessionId = createResult.data.id;
+        this.log("info", "Created new session", { sessionId: this.sessionId });
+      }
+    } else {
+      const createResult = await this.client.session.create({
+        body: { title: sessionTitle },
+        throwOnError: true,
+      });
+      this.sessionId = createResult.data.id;
+      this.log("info", "Created new session", { sessionId: this.sessionId });
+    }
 
     await this.bindEventSubscription(this.workingDir);
 
@@ -85,6 +169,27 @@ export class OpencodeBrain extends ChimpBrain {
     if (this.opencode) {
       this.opencode.server.close();
       this.log("info", "Opencode server closed");
+    }
+
+    // Save state to S3 after server closed so SQLite is flushed
+    if (this.s3Client && this.s3Bucket) {
+      try {
+        await saveOpencodeChimpStateToS3(
+          this.s3Client,
+          this.s3Bucket,
+          this.chimpId,
+          {
+            sessionId: this.sessionId,
+            workingDir: this.workingDir,
+          },
+        );
+        this.log("info", "Chimp state saved to S3");
+
+        await saveOpencodeStateToS3(this.s3Client, this.s3Bucket, this.chimpId);
+        this.log("info", "Opencode state saved to S3");
+      } catch (error) {
+        this.log("error", "Failed to save state", { err: error });
+      }
     }
   }
 
