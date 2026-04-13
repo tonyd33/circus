@@ -3,6 +3,7 @@
  */
 
 import * as path from "node:path";
+import type { S3Client } from "@aws-sdk/client-s3";
 import { EnvReader as ER, Typing } from "@mnke/circus-shared/lib";
 import { Either as E } from "@mnke/circus-shared/lib/fp";
 import {
@@ -17,6 +18,7 @@ import {
   saveChimpStateToS3,
   saveClaudeStateToS3,
 } from "@/chimp-brain/claude/session-storage";
+import { createS3Client, s3ConfigReader } from "@/lib/s3";
 import { cloneRepo } from "@/lib/tooling";
 
 export class ClaudeChimp extends ChimpBrain {
@@ -25,6 +27,8 @@ export class ClaudeChimp extends ChimpBrain {
   private model = "claude-haiku-4-5";
   private allowedTools: string[] = [];
   private workingDir = process.cwd();
+  private s3Client: S3Client | null = null;
+  private s3Bucket: string | null = null;
 
   async onStartup(): Promise<void> {
     this.log("info", "ClaudeChimp starting up", { chimpId: this.chimpId });
@@ -35,15 +39,33 @@ export class ClaudeChimp extends ChimpBrain {
       throw new Error("ANTHROPIC_API_KEY environment variable is required");
     }
 
+    // Read S3 config from env
+    const s3Result = s3ConfigReader.read(process.env).value;
+    if (E.isLeft(s3Result)) {
+      this.log("error", ER.formatReadError(s3Result.value));
+      throw new Error("S3 configuration missing");
+    }
+    const s3Config = s3Result.value;
+    this.s3Client = createS3Client(s3Config);
+    this.s3Bucket = s3Config.bucket;
+
     try {
-      await restoreClaudeStateFromS3(this.chimpId);
+      await restoreClaudeStateFromS3(
+        this.s3Client,
+        this.s3Bucket,
+        this.chimpId,
+      );
       this.log("info", "Claude state restored from S3");
     } catch (error) {
       this.log("warn", "No existing Claude state found, starting fresh");
     }
 
     try {
-      const savedState = await restoreChimpStateFromS3(this.chimpId);
+      const savedState = await restoreChimpStateFromS3(
+        this.s3Client,
+        this.s3Bucket,
+        this.chimpId,
+      );
       if (savedState) {
         this.sessionId = savedState.sessionId;
         this.workingDir = savedState.workingDir;
@@ -64,9 +86,9 @@ export class ClaudeChimp extends ChimpBrain {
   async onShutdown(): Promise<void> {
     this.log("info", "ClaudeChimp shutting down", { chimpId: this.chimpId });
 
-    if (this.sessionId) {
+    if (this.sessionId && this.s3Client && this.s3Bucket) {
       try {
-        await saveChimpStateToS3(this.chimpId, {
+        await saveChimpStateToS3(this.s3Client, this.s3Bucket, this.chimpId, {
           sessionId: this.sessionId,
           workingDir: this.workingDir,
           messageCount: this.messageCount,
@@ -75,7 +97,7 @@ export class ClaudeChimp extends ChimpBrain {
         });
         this.log("info", "Chimp state saved to S3");
 
-        await saveClaudeStateToS3(this.chimpId);
+        await saveClaudeStateToS3(this.s3Client, this.s3Bucket, this.chimpId);
         this.log("info", "Claude state saved to S3");
       } catch (error) {
         this.log("error", "Failed to save state", { err: error });

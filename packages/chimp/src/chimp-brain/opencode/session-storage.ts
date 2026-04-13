@@ -8,12 +8,14 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { S3Client } from "@aws-sdk/client-s3";
 import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import { downloadDirFromS3, uploadDirToS3 } from "@/lib/s3-tarball";
 
 export interface OpencodeChimpState {
   sessionId: string | null;
   workingDir: string;
 }
 
+// ~/.local/share/opencode — opencode's data directory (SQLite, auth, etc.)
 const OPENCODE_DATA_DIR = path.join(
   os.homedir(),
   ".local",
@@ -22,81 +24,39 @@ const OPENCODE_DATA_DIR = path.join(
 );
 
 /**
- * Save opencode data directory to S3 as tarball
+ * Save opencode data directory to S3 as tarball.
+ * @returns The s3:// URL of the uploaded tarball
  */
 export async function saveOpencodeStateToS3(
   s3Client: S3Client,
   bucket: string,
   chimpName: string,
 ): Promise<string> {
-  const parentDir = path.dirname(OPENCODE_DATA_DIR);
-  const dirName = path.basename(OPENCODE_DATA_DIR);
-  const tempDir = path.join(os.tmpdir(), `chimp-oc-${chimpName}-${Date.now()}`);
-  const tarballPath = path.join(tempDir, "opencode.tar.gz");
-
-  try {
-    await Bun.$`mkdir -p ${tempDir}`;
-    await Bun.$`tar -czf ${tarballPath} -C ${parentDir} ${dirName}`;
-
-    const fileContent = await Bun.file(tarballPath).arrayBuffer();
-
-    const s3Key = `${chimpName}/opencode.tar.gz`;
-
-    await s3Client.send(
-      new PutObjectCommand({
-        Bucket: bucket,
-        Key: s3Key,
-        Body: new Uint8Array(fileContent),
-        ContentType: "application/gzip",
-      }),
-    );
-
-    return `s3://${bucket}/${s3Key}`;
-  } finally {
-    await Bun.$`rm -rf ${tempDir}`.catch(() => {});
-  }
+  return uploadDirToS3(
+    s3Client,
+    bucket,
+    `${chimpName}/opencode.tar.gz`,
+    path.dirname(OPENCODE_DATA_DIR),
+    path.basename(OPENCODE_DATA_DIR),
+    `chimp-oc-${chimpName}`,
+  );
 }
 
 /**
- * Restore opencode data directory from S3 tarball
+ * Restore opencode data directory from S3 tarball.
  */
 export async function restoreOpencodeStateFromS3(
   s3Client: S3Client,
   bucket: string,
   chimpName: string,
 ): Promise<void> {
-  const parentDir = path.dirname(OPENCODE_DATA_DIR);
-  const tempDir = path.join(os.tmpdir(), `chimp-oc-${chimpName}-${Date.now()}`);
-  const tarballPath = path.join(tempDir, "opencode.tar.gz");
-
-  try {
-    await Bun.$`mkdir -p ${tempDir}`;
-
-    const key = `${chimpName}/opencode.tar.gz`;
-
-    const response = await s3Client.send(
-      new GetObjectCommand({
-        Bucket: bucket,
-        Key: key,
-      }),
-    );
-
-    if (!response.Body) {
-      throw new Error("Empty response from S3");
-    }
-
-    const chunks: Uint8Array[] = [];
-    for await (const chunk of response.Body as AsyncIterable<Uint8Array>) {
-      chunks.push(chunk);
-    }
-    const fileContent = Buffer.concat(chunks);
-
-    await Bun.write(tarballPath, fileContent);
-    await Bun.$`mkdir -p ${parentDir}`;
-    await Bun.$`tar -xzf ${tarballPath} -C ${parentDir}`;
-  } finally {
-    await Bun.$`rm -rf ${tempDir}`.catch(() => {});
-  }
+  return downloadDirFromS3(
+    s3Client,
+    bucket,
+    `${chimpName}/opencode.tar.gz`,
+    path.dirname(OPENCODE_DATA_DIR),
+    `chimp-oc-${chimpName}`,
+  );
 }
 
 /**
