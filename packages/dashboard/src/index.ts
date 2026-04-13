@@ -7,7 +7,7 @@ import { serve } from "bun";
 import index from "./index.html";
 import { createActivityRoute } from "./routes/activity";
 import { createChimpsRoutes } from "./routes/chimps";
-import { createMessageRoutes } from "./routes/messages";
+import { MessageRouter } from "./routes/messages";
 
 const logger = createLogger("Dashboard");
 
@@ -32,6 +32,28 @@ function getConfig(): Config {
 
 const config = getConfig();
 
+const messageRouter = new MessageRouter(config.natsUrl);
+await messageRouter.initialize();
+
+const shutdown = async (signal: string) => {
+  logger.info(`Received ${signal}, shutting down...`);
+  await messageRouter.cleanup();
+  process.exit(0);
+};
+
+process.on("SIGINT", () =>
+  shutdown("SIGINT").catch((e) => {
+    logger.error({ err: e }, "Shutdown error");
+    process.exit(1);
+  }),
+);
+process.on("SIGTERM", () =>
+  shutdown("SIGTERM").catch((e) => {
+    logger.error({ err: e }, "Shutdown error");
+    process.exit(1);
+  }),
+);
+
 async function proxyToLedger(path: string): Promise<Response> {
   const res = await fetch(`${config.ledgerUrl}${path}`);
   return new Response(res.body, {
@@ -45,7 +67,7 @@ const server = serve({
     "/*": index,
     "/api/chimp/:chimpId/activity": createActivityRoute(config.natsUrl),
     ...createChimpsRoutes(proxyToLedger),
-    ...createMessageRoutes(config.natsUrl),
+    ...messageRouter.routes,
   },
 
   development: process.env.NODE_ENV !== "production" && {
@@ -54,4 +76,4 @@ const server = serve({
   },
 });
 
-console.log(`🚀 Server running at ${server.url}`);
+logger.info({ url: server.url.toString() }, "Dashboard server started");
