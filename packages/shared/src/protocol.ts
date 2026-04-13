@@ -47,11 +47,16 @@ const SetWorkingDirCommandSchema = z.object({
   }),
 });
 
+const HeartbeatCommandSchema = z.object({
+  command: z.literal("heartbeat"),
+});
+
 const ChimpCommandSchema = z.discriminatedUnion("command", [
   SendAgentMessageCommandSchema,
   StopCommandSchema,
   CloneRepoCommandSchema,
   SetWorkingDirCommandSchema,
+  HeartbeatCommandSchema,
 ]);
 
 // ============================================================================

@@ -127,12 +127,15 @@ export class Chimp {
 
     try {
       for await (const msg of messages) {
-        this.lastActivity = Date.now();
         logger.info({ subject: msg.subject, seq: msg.seq }, "Received message");
 
         try {
           const payload = JSON.parse(msg.string());
           const command = parseChimpCommand(payload);
+
+          if (command.command !== "heartbeat") {
+            this.lastActivity = Date.now();
+          }
 
           const result = await this.brain.handleMessage(command);
 
@@ -162,10 +165,13 @@ export class Chimp {
       routes: {
         "/command": {
           POST: async (req) => {
-            this.lastActivity = Date.now();
             try {
               const payload = await req.json();
               const command = parseChimpCommand(payload);
+
+              if (command.command !== "heartbeat") {
+                this.lastActivity = Date.now();
+              }
 
               // Process async, return immediately
               this.processHttpCommand(command).catch((error) => {
