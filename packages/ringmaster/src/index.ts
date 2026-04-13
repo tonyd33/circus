@@ -1,97 +1,67 @@
 #!/usr/bin/env bun
 
-/**
- * Ringmaster - Main Entry Point
- *
- * Manages Chimp lifecycle (pods + NATS streams)
- */
-
-import {
-  getEnv,
-  getEnvInt,
-  validateRequiredEnv,
-} from "@mnke/circus-shared/config";
+import { Standards } from "@mnke/circus-shared";
+import { EnvReader as ER } from "@mnke/circus-shared/lib";
+import { Either } from "@mnke/circus-shared/lib/fp";
 import { createLogger } from "@mnke/circus-shared/logger";
-import { createMetrics } from "@mnke/circus-shared/metrics";
-import Redis from "ioredis";
 import type { RingmasterConfig } from "./core/types.ts";
-import { Reconciler } from "./reconciler.ts";
+import { loadChimpJobConfig } from "./lib/chimp-job-config.ts";
+import { Ringmaster } from "./ringmaster.ts";
 
 const logger = createLogger("Ringmaster");
 
-// Validate required environment variables
-validateRequiredEnv(["ANTHROPIC_API_KEY"]);
+let ringmaster: Ringmaster | null = null;
 
-// Configuration from environment
-const config: RingmasterConfig = {
-  redisUrl: getEnv("REDIS_URL", "redis://localhost:6379"),
-  natsUrl: getEnv("NATS_URL", "nats://localhost:4222"),
-  namespace: getEnv("NAMESPACE", "default"),
-  chimpImage: getEnv("CHIMP_IMAGE", "circus-chimp"),
-  anthropicApiKey: process.env.ANTHROPIC_API_KEY!, // Validated above
-  reconcileInterval: getEnvInt("RECONCILE_INTERVAL", 30000), // 30s default
-};
-
-// Get idle timeout from environment (default: 5 minutes)
-const idleTimeoutMs = getEnvInt("IDLE_TIMEOUT_MS", 300_000);
-
-logger.info(
-  {
-    redisUrl: config.redisUrl,
-    natsUrl: config.natsUrl,
-    namespace: config.namespace,
-    chimpImage: config.chimpImage,
-    reconcileInterval: config.reconcileInterval,
-    idleTimeoutMs,
-  },
-  "Ringmaster starting",
-);
-
-// Initialize metrics
-const metrics = createMetrics({ serviceName: "ringmaster" });
-
-// Connect to Redis
-const redis = new Redis(config.redisUrl);
-metrics.incActiveConnections("redis");
-
-// Create reconciler
-const reconciler = new Reconciler(config, redis, metrics, idleTimeoutMs);
-
-// Handle shutdown gracefully
-const shutdown = async (signal: string) => {
-  logger.info({ signal }, "Shutting down");
-  await reconciler.stop();
+async function shutdown() {
+  logger.info("Shutdown signal received");
+  if (ringmaster) {
+    await ringmaster.stop();
+  }
   process.exit(0);
-};
+}
 
-process.on("SIGINT", () => shutdown("SIGINT"));
-process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
 
-// Start metrics server
-const metricsPort = parseInt(process.env.METRICS_PORT || "9093", 10);
-Bun.serve({
-  port: metricsPort,
-  fetch: async (req) => {
-    const url = new URL(req.url);
+async function main() {
+  const result = ER.record({
+    natsUrl: ER.str("NATS_URL").fallback("nats://localhost:4222"),
+    redisUrl: ER.str("REDIS_URL").fallback("redis://localhost:6379"),
+    namespace: ER.str("NAMESPACE").fallback("default"),
+    chimpImage: ER.str("CHIMP_IMAGE").fallback("circus-chimp"),
+    chimpBrainType: ER.str(Standards.Chimp.Env.brainType).fallback("echo"),
+    chimpJobConfigPath: ER.str("CHIMP_JOB_CONFIG_PATH").fallback(""),
+  }).read(process.env).value;
 
-    if (url.pathname === "/metrics") {
-      const metricsData = await metrics.getMetrics();
-      return new Response(metricsData, {
-        headers: { "Content-Type": metrics.getContentType() },
-      });
-    }
+  if (Either.isLeft(result)) {
+    logger.error(ER.formatReadError(result.value));
+    process.exit(1);
+  }
 
-    if (url.pathname === "/healthz") {
-      return new Response("OK", { status: 200 });
-    }
+  const envConfig = result.value;
+  const chimpJobConfig = await loadChimpJobConfig(
+    envConfig.chimpJobConfigPath || undefined,
+  );
 
-    return new Response("Not Found", { status: 404 });
-  },
+  const config: RingmasterConfig = {
+    natsUrl: envConfig.natsUrl,
+    redisUrl: envConfig.redisUrl,
+    namespace: envConfig.namespace,
+    chimpImage: envConfig.chimpImage,
+    chimpBrainType: envConfig.chimpBrainType,
+    chimpJobConfig,
+  };
+
+  logger.info({ config }, "Ringmaster starting");
+
+  ringmaster = new Ringmaster(config);
+
+  await ringmaster.start();
+
+  logger.info("Ringmaster is running");
+}
+
+main().catch((error) => {
+  logger.error({ err: error }, "Fatal error");
+  process.exit(1);
 });
-
-logger.info({ port: metricsPort }, "Metrics server started");
-
-// Start reconciler
-await reconciler.start();
-
-logger.info("Ringmaster is running");

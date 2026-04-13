@@ -4,59 +4,19 @@
  * The Ringmaster manages Chimp lifecycle (pods + NATS streams)
  */
 
-/**
- * Chimp status
- * - pending: Pod is starting up
- * - running: Pod is running and healthy
- * - stopped: Pod exited normally (idle timeout, explicit stop) - can be restarted
- * - failed: Pod crashed or failed
- * - unknown: Status unknown (initial state or after cleanup)
- */
-export type ChimpStatus =
-  | "pending"
-  | "running"
-  | "stopped"
-  | "failed"
-  | "unknown";
-
-/**
- * Chimp state in Redis
- */
-export interface ChimpState {
-  chimpName: string;
-  podName: string;
-  streamName: string;
-  createdAt: number;
-  status: ChimpStatus;
-}
-
-/**
- * Chimp health (with TTL)
- */
-export interface ChimpHealth {
-  lastHeartbeat: number;
-  messageCount: number;
-}
+import type { ChimpStatus } from "@mnke/circus-shared/standards/chimp";
+import type { ChimpJobConfig } from "../lib/chimp-job-config.ts";
 
 /**
  * Configuration for Ringmaster
  */
 export interface RingmasterConfig {
-  redisUrl: string;
   natsUrl: string;
+  redisUrl: string;
   namespace: string;
   chimpImage: string;
-  anthropicApiKey: string;
-  reconcileInterval: number; // ms
-}
-
-/**
- * Heartbeat event from Chimp
- */
-export interface HeartbeatEvent {
-  chimpName: string;
-  timestamp: number;
-  messageCount: number;
+  chimpBrainType: string;
+  chimpJobConfig: ChimpJobConfig;
 }
 
 /**
@@ -73,3 +33,13 @@ export type PodPhase =
   | "Succeeded"
   | "Failed"
   | "Unknown";
+
+/**
+ * Actions that the effectful layer should perform
+ */
+export type Action =
+  | { type: "create_job" }
+  | { type: "create_consumer"; startSequence: number }
+  | { type: "delete_consumer" }
+  | { type: "upsert_state"; status: ChimpStatus }
+  | { type: "delete_state" };

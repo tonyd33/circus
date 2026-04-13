@@ -12,12 +12,6 @@
       "args": {
         "path": "/workspace"
       }
-    },
-    {
-      "command": "set-allowed-tools",
-      "args": {
-        "tools": ["Read", "Glob", "Grep", "Write", "Edit", "Bash"]
-      }
     }
   ]
 }

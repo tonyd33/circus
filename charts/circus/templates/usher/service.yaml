@@ -14,6 +14,6 @@ spec:
   ports:
     - name: usher
       port: {{ .Values.usher.service.port }}
-      targetPort: 3000
+      targetPort: 7392
       protocol: TCP
 {{- end }}

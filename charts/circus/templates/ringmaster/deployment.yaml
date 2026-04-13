@@ -33,18 +33,24 @@ spec:
                 fieldRef:
                   fieldPath: metadata.namespace
             - name: CHIMP_IMAGE
-              value: {{ .Values.ringmaster.env.chimpImage | quote }}
+              value: {{ .Values.chimp.image | quote }}
+            - name: CHIMP_BRAIN_TYPE
+              value: {{ .Values.chimp.brainType | quote }}
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.ringmaster.anthropicApiKey.existingSecret }}
                   key: {{ .Values.ringmaster.anthropicApiKey.key }}
-            - name: RECONCILE_INTERVAL
-              value: {{ .Values.ringmaster.env.reconcileInterval | quote }}
-            {{- if .Values.chimp.initConfig.enabled }}
-            - name: CHIMP_INIT_CONFIG_MAP
-              value: {{ include "circus.fullname" . }}-chimp-init-config
-            {{- end }}
+            - name: CHIMP_JOB_CONFIG_PATH
+              value: "/etc/circus/chimp-job-config.json"
+          volumeMounts:
+            - name: chimp-job-config
+              mountPath: /etc/circus
+              readOnly: true
           resources:
             {{- toYaml .Values.ringmaster.resources | nindent 12 }}
+      volumes:
+        - name: chimp-job-config
+          configMap:
+            name: {{ include "circus.fullname" . }}-chimp-job-config
 {{- end }}

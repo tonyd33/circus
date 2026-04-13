@@ -5,10 +5,12 @@
   "devDependencies": {
     "@biomejs/biome": "^2.4.10",
     "@types/bun": "latest",
-    "lint-staged": "^16.4.0"
+    "lint-staged": "^16.4.0",
+    "shadcn": "^4.2.0"
   },
   "peerDependencies": {
-    "typescript": "^5"
+    "typescript": "^6.0.2",
+    "@typescript/native-preview": "^7.0.0-dev.20260411.1"
   },
   "private": true,
   "scripts": {
@@ -23,6 +25,14 @@
   ],
   "dependencies": {
     "husky": "^9.1.7"
+  },
+  "catalog": {
+    "nats": "^2.28.2",
+    "ioredis": "^5.10.1",
+    "pino": "^10.3.1",
+    "zod": "^4.3.6",
+    "commander": "^14.0.3",
+    "@commander-js/extra-typings": "^14.0.0"
   },
   "lint-staged": {
     "*.{js,ts,jsx,tsx,json,jsonc}": [

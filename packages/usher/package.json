@@ -1,23 +1,25 @@
 {
-  "name": "@mnke/usher",
+  "name": "@mnke/circus-usher",
   "version": "0.1.0",
-  "module": "index.ts",
+  "module": "src/index.ts",
   "type": "module",
   "private": true,
   "devDependencies": {
     "@types/bun": "latest"
   },
   "peerDependencies": {
-    "typescript": "^5"
+    "@typescript/native-preview": "^7.0.0-dev.20260411.1"
   },
   "dependencies": {
     "@mnke/circus-shared": "workspace:*",
-    "ioredis": "^5.10.1",
-    "nats": "^2.29.3"
+    "commander": "catalog:",
+    "@commander-js/extra-typings": "catalog:",
+    "ioredis": "catalog:",
+    "nats": "catalog:"
   },
   "scripts": {
-    "dev": "bun --watch index.ts",
-    "typecheck": "bun tsc --noEmit",
-    "start": "bun index.ts"
+    "dev": "bun --watch src/index.ts --route adapter=debug,path=/debug",
+    "typecheck": "bun tsgo --noEmit",
+    "start": "bun src/index.ts"
   }
 }

@@ -5,8 +5,8 @@
  * (e.g., Slack, GitHub, Discord, console logging)
  */
 
-import type { Logger } from "@mnke/circus-shared";
-import type { ChimpOutputMessage } from "@mnke/circus-shared/protocol";
+import type { Logger, Protocol } from "@mnke/circus-shared";
+import { Typing } from "@mnke/circus-shared/lib";
 
 /**
  * Interface for handling chimp output messages
@@ -17,7 +17,10 @@ export interface OutputHandler {
    * @param chimpName - Name of the chimp that sent the message
    * @param message - The output message
    */
-  handle(chimpName: string, message: ChimpOutputMessage): Promise<void>;
+  handle(
+    chimpName: string,
+    message: Protocol.ChimpOutputMessage,
+  ): Promise<void>;
 
   /**
    * Optional: Initialize the handler (e.g., connect to external services)
@@ -38,31 +41,20 @@ export interface OutputHandler {
 export class ConsoleLoggerHandler implements OutputHandler {
   private logger;
 
-  constructor(logger: Logger) {
+  constructor(logger: Logger.Logger) {
     this.logger = logger;
   }
 
-  async handle(chimpName: string, message: ChimpOutputMessage): Promise<void> {
+  async handle(
+    chimpName: string,
+    message: Protocol.ChimpOutputMessage,
+  ): Promise<void> {
     // Log based on message type
     switch (message.type) {
       case "agent-message-response":
         this.logger.info(
           { chimpName, sessionId: message.sessionId },
           `[${chimpName}] Agent response: ${message.content}`,
-        );
-        break;
-
-      case "status-response":
-        this.logger.info(
-          { chimpName, ...message },
-          `[${chimpName}] Status: ${message.messageCount} messages, model: ${message.model}`,
-        );
-        break;
-
-      case "save-session-response":
-        this.logger.info(
-          { chimpName, sessionId: message.sessionId, s3Path: message.s3Path },
-          `[${chimpName}] Session saved: ${message.sessionId}`,
         );
         break;
 
@@ -89,10 +81,9 @@ export class ConsoleLoggerHandler implements OutputHandler {
         break;
 
       case "log": {
-        // Map chimp log levels to our logger
         const logLevel = message.level;
         this.logger[logLevel](
-          { chimpName, timestamp: message.timestamp },
+          { chimpName, timestamp: message.timestamp, ...message.data },
           `[${chimpName}] ${message.message}`,
         );
         break;
@@ -109,14 +100,17 @@ export class ConsoleLoggerHandler implements OutputHandler {
         );
         break;
 
-      default: {
-        // Exhaustive check - TypeScript will error if we miss a case
-        const _exhaustive: never = message;
-        this.logger.warn(
-          { chimpName, message: _exhaustive },
-          `[${chimpName}] Unknown message type`,
+      case "opencode-event":
+        this.logger.error(
+          {
+            chimpName,
+          },
+          `[${chimpName}] Event: ${message.event}`,
         );
-      }
+        break;
+
+      default:
+        return Typing.unreachable(message);
     }
   }
 }

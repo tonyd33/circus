@@ -6,92 +6,58 @@
  */
 
 import type * as k8s from "@kubernetes/client-node";
-import type { ChimpHealth, ChimpState } from "./types.ts";
+import type { ChimpStatus } from "@mnke/circus-shared/standards/chimp";
 
 /**
- * Activity tracking - when chimp last produced output
- */
-export interface ChimpActivity {
-  lastActivity: number; // Timestamp of last output message
-}
-
-/**
- * Core state - always includes ChimpState (if exists) + event-specific data
+ * Core state - minimal stub for decision making
  */
 export interface CoreState {
-  /** ChimpState from Redis (null if doesn't exist) */
-  chimpState: ChimpState | null;
-  /** Whether a session exists in Redis for this chimp */
-  sessionExists: boolean;
-  /** Health data from Redis (null if expired/missing) */
-  health: ChimpHealth | null;
-  /** Activity data from Redis (null if expired/missing) */
-  activity: ChimpActivity | null;
   /** Timestamp when this snapshot was taken */
   now: number;
-}
-
-/**
- * Get pod phase from pod object
- */
-export function getPodPhase(pod?: k8s.V1Pod | null): string {
-  return pod?.status?.phase || "Unknown";
 }
 
 /**
  * Event-specific payloads
  */
 export type EventPayload =
-  | { type: "completion"; reason: "idle_timeout" | "explicit_stop" | "error" }
   | {
       type: "pod_event";
-      event: "added" | "modified" | "deleted" | "failed";
-      pod: k8s.V1Pod | null;
+      eventType: string;
+      pod: k8s.V1Pod;
     }
-  | { type: "message_received" }
-  | { type: "reconcile_tick" }
-  | { type: "heartbeat_received" };
-
-/**
- * Check if a pod exited normally (Succeeded phase with exit code 0)
- */
-export function didPodExitNormally(pod?: k8s.V1Pod | null): boolean {
-  if (!pod) {
-    return false;
-  }
-
-  // Check if pod phase is Succeeded (normal exit)
-  if (pod.status?.phase === "Succeeded") {
-    return true;
-  }
-
-  // Also check container statuses for exit code 0
-  const containerStatuses = pod.status?.containerStatuses || [];
-  for (const status of containerStatuses) {
-    // Check terminated state with exit code 0
-    if (status.state?.terminated?.exitCode === 0) {
-      return true;
-    }
-  }
-
-  return false;
-}
+  | {
+      type: "message_received";
+      messageSequence: number;
+    };
 
 /**
  * Actions that the effectful layer should perform
  */
 export type Action =
-  | { type: "create_pod" }
-  | { type: "delete_pod" }
-  | { type: "create_stream" }
-  | { type: "delete_stream" }
-  | { type: "delete_session" }
-  | { type: "delete_health" }
-  | {
-      type: "update_chimp_state";
-      status: "pending" | "running" | "stopped" | "failed" | "unknown";
-    }
+  | { type: "create_job" }
+  | { type: "create_consumer"; startSequence: number }
+  | { type: "delete_consumer" }
+  | { type: "upsert_state"; status: ChimpStatus }
+  | { type: "delete_state" }
   | { type: "noop" };
+
+/**
+ * Map K8s pod phase to ChimpStatus
+ */
+function podPhaseToStatus(phase: string | undefined): ChimpStatus {
+  switch (phase) {
+    case "Pending":
+      return "pending";
+    case "Running":
+      return "running";
+    case "Succeeded":
+      return "stopped";
+    case "Failed":
+      return "failed";
+    default:
+      return "unknown";
+  }
+}
 
 /**
  * Decision result from pure logic
@@ -104,179 +70,31 @@ export interface Decision {
 }
 
 /**
- * Health check configuration
- */
-export interface HealthConfig {
-  /** Maximum age of heartbeat in milliseconds before considered unhealthy */
-  maxHeartbeatAge: number;
-  /** Maximum age of last activity in milliseconds before considered idle */
-  maxIdleAge: number;
-}
-
-/**
- * Default health configuration
- */
-export const DEFAULT_HEALTH_CONFIG: HealthConfig = {
-  maxHeartbeatAge: 30_000, // 30 seconds
-  maxIdleAge: 300_000, // 5 minutes
-};
-
-/**
- * Check if a chimp is healthy based on its health data
- */
-export function isHealthy(
-  health: ChimpHealth | null,
-  now: number,
-  config: HealthConfig = DEFAULT_HEALTH_CONFIG,
-): boolean {
-  if (!health) {
-    return false;
-  }
-
-  const age = now - health.lastHeartbeat;
-  return age < config.maxHeartbeatAge;
-}
-
-/**
- * Check if a chimp is idle based on its activity data
- */
-export function isIdle(
-  activity: ChimpActivity | null,
-  now: number,
-  config: HealthConfig = DEFAULT_HEALTH_CONFIG,
-): boolean {
-  if (!activity) {
-    // If no activity data exists, consider it idle
-    return true;
-  }
-
-  const age = now - activity.lastActivity;
-  return age >= config.maxIdleAge;
-}
-
-/**
- * Decide what to do when a chimp completes
- */
-export function decideOnCompletion(
-  state: CoreState,
-  reason: "idle_timeout" | "explicit_stop" | "error",
-): Decision {
-  const actions: Action[] = [];
-
-  // Always delete health when chimp completes
-  actions.push({ type: "delete_health" });
-
-  // If idle timeout, delete session to prevent recreation
-  if (reason === "idle_timeout") {
-    actions.push({ type: "delete_session" });
-  }
-
-  // Update state to mark as unknown
-  if (reason === "error") {
-    actions.push({ type: "update_chimp_state", status: "unknown" });
-  } else {
-    actions.push({ type: "update_chimp_state", status: "stopped" });
-  }
-
-  // Delete pod (will be recreated on demand if session still exists)
-  actions.push({ type: "delete_pod" });
-
-  return {
-    actions,
-    reason: `Chimp completed with reason: ${reason}`,
-  };
-}
-
-/**
  * Decide what to do when a pod event occurs
  */
 export function decideOnPodEvent(
   state: CoreState,
-  event: "added" | "modified" | "deleted" | "failed",
-  pod: k8s.V1Pod | null,
+  eventType: string,
+  pod: k8s.V1Pod,
 ): Decision {
-  const normalExit = didPodExitNormally(pod);
-  const phase = getPodPhase(pod);
+  const phase = pod.status?.phase;
+  const status = podPhaseToStatus(phase);
 
-  switch (event) {
-    case "added":
-      // Pod was created - update state to pending/running
-      return {
-        actions: [
-          {
-            type: "update_chimp_state",
-            status: phase === "Running" ? "running" : "pending",
-          },
-        ],
-        reason: "Pod was added",
-      };
-
-    case "modified":
-      // Pod status changed
-      if (phase === "Failed" || phase === "Unknown") {
-        // Pod failed - clear health and maybe recreate
-        const actions: Action[] = [{ type: "delete_health" }];
-
-        // Only recreate if:
-        // 1. Session exists AND
-        // 2. Pod did NOT exit normally (crashed or killed)
-        if (state.sessionExists && !normalExit) {
-          actions.push({ type: "create_pod" });
-          return {
-            actions,
-            reason: "Pod crashed and session exists - recreating",
-          };
-        }
-
-        return {
-          actions,
-          reason: normalExit
-            ? "Pod exited normally (idle timeout/explicit stop) - not recreating"
-            : "Pod failed but no session - not recreating",
-        };
-      }
-
-      return {
-        actions: [
-          {
-            type: "update_chimp_state",
-            status: phase === "Running" ? "running" : "pending",
-          },
-        ],
-        reason: "Pod status changed",
-      };
-
-    case "deleted": {
-      // Pod was deleted (manually or by K8s)
-      const actions: Action[] = [{ type: "delete_health" }];
-
-      // Only recreate if session exists AND pod didn't exit normally
-      if (state.sessionExists && !normalExit) {
-        actions.push({ type: "create_pod" });
-        return {
-          actions,
-          reason: "Pod deleted unexpectedly and session exists - recreating",
-        };
-      }
-
-      // Determine appropriate status based on exit reason
-      const status = normalExit ? "stopped" : "failed";
-
-      return {
-        actions: [
-          { type: "delete_health" },
-          { type: "update_chimp_state", status },
-        ],
-        reason: normalExit
-          ? "Pod exited normally - not recreating"
-          : "Pod deleted and no session - not recreating",
-      };
-    }
-
-    case "failed":
-      // Redundant with modified, but kept for clarity
-      return decideOnPodEvent(state, "modified", pod);
+  if (eventType === "DELETED") {
+    return {
+      actions: [
+        { type: "delete_consumer" },
+        { type: "upsert_state", status: "stopped" },
+      ],
+      reason: "Pod deleted - deleting consumer and state",
+    };
   }
+
+  // ADDED or MODIFIED: update state
+  return {
+    actions: [{ type: "upsert_state", status }],
+    reason: `Pod ${eventType} with phase ${phase} - updating state to ${status}`,
+  };
 }
 
 /**
@@ -284,111 +102,27 @@ export function decideOnPodEvent(
  */
 export function decideOnMessageReceived(
   state: CoreState,
-  config: HealthConfig = DEFAULT_HEALTH_CONFIG,
+  messageSequence: number,
 ): Decision {
-  // If already healthy, do nothing
-  if (isHealthy(state.health, state.now, config)) {
-    return {
-      actions: [{ type: "noop" }],
-      reason: "Chimp is already healthy",
-    };
-  }
-
-  // Chimp is unhealthy or missing - create it
+  // Idempotently ensure consumer and job exist
   return {
     actions: [
-      { type: "create_stream" },
-      { type: "create_pod" },
-      { type: "update_chimp_state", status: "pending" },
+      { type: "create_consumer", startSequence: messageSequence },
+      { type: "create_job" },
     ],
-    reason: "Message received but chimp is unhealthy - creating on-demand",
-  };
-}
-
-/**
- * Decide what to do when a heartbeat is received
- */
-export function decideOnHeartbeat(state: CoreState): Decision {
-  // If chimp state doesn't exist or status is not running, update to running
-  if (!state.chimpState || state.chimpState.status !== "running") {
-    return {
-      actions: [{ type: "update_chimp_state", status: "running" }],
-      reason: "Heartbeat received - updating status to running",
-    };
-  }
-
-  // Chimp is already running, do nothing
-  return {
-    actions: [{ type: "noop" }],
-    reason: "Heartbeat received - chimp already running",
-  };
-}
-
-/**
- * Decide what to do during reconciliation for a single chimp
- */
-export function decideOnReconcile(
-  state: CoreState,
-  config: HealthConfig = DEFAULT_HEALTH_CONFIG,
-): Decision {
-  const healthy = isHealthy(state.health, state.now, config);
-  const idle = isIdle(state.activity, state.now, config);
-  const stopped = state.chimpState?.status === "stopped";
-
-  // If chimp is healthy but idle for too long, stop it
-  if (healthy && idle) {
-    return {
-      actions: [
-        { type: "delete_session" }, // Delete session to prevent recreation
-        { type: "delete_health" },
-        { type: "delete_pod" },
-        // { type: "update_chimp_state", status: "stopped" },
-      ],
-      reason: "Chimp is idle - stopping due to inactivity",
-    };
-  }
-
-  // If healthy and active, do nothing
-  if (healthy || stopped) {
-    return {
-      actions: [{ type: "noop" }],
-      reason: "Chimp is healthy and active",
-    };
-  }
-
-  // Chimp is unhealthy or missing - ensure it exists
-  return {
-    actions: [
-      { type: "create_stream" },
-      { type: "create_pod" },
-      { type: "update_chimp_state", status: "pending" },
-    ],
-    reason: "Chimp is unhealthy during reconciliation - recreating",
+    reason: "Message received - ensuring consumer and job exist",
   };
 }
 
 /**
  * Main decision function that routes to specific handlers
  */
-export function decide(
-  state: CoreState,
-  payload: EventPayload,
-  config: HealthConfig = DEFAULT_HEALTH_CONFIG,
-): Decision {
+export function decide(state: CoreState, payload: EventPayload): Decision {
   switch (payload.type) {
-    case "completion":
-      return decideOnCompletion(state, payload.reason);
-
     case "pod_event":
-      return decideOnPodEvent(state, payload.event, payload.pod);
+      return decideOnPodEvent(state, payload.eventType, payload.pod);
 
     case "message_received":
-      return decideOnMessageReceived(state, config);
-
-    case "reconcile_tick":
-      return decideOnReconcile(state, config);
-
-    case "heartbeat_received":
-      return decideOnHeartbeat(state);
+      return decideOnMessageReceived(state, payload.messageSequence);
   }
 }

@@ -15,7 +15,7 @@ kubectl get secret anthropic-api-key || {
   kubectl create secret generic anthropic-api-key --from-env-file=.env
 }
 eval "$(minikube -p minikube docker-env)"
-docker buildx bake ringmaster-local chimp-local usher-local bullhorn-local
+docker buildx bake
 deploy/dev/setup.sh
 helm upgrade \
   --install \
