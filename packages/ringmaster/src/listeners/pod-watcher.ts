@@ -11,8 +11,6 @@ import { namespaceLabel } from "../lib/k8s.ts";
 
 const logger = createLogger("PodWatcher");
 
-class PodWatcherError extends Error {}
-
 export class PodWatcher {
   private kc: k8s.KubeConfig;
   private watch: k8s.Watch;
@@ -90,7 +88,11 @@ export class PodWatcher {
     const chimpLabel = pod.metadata?.labels?.[namespaceLabel("chimp-id")];
 
     if (!chimpLabel) {
-      throw new PodWatcherError("Unknown label");
+      logger.warn(
+        { podName: pod.metadata?.name },
+        "Pod missing chimp-id label, skipping",
+      );
+      return;
     }
 
     const chimpId = chimpLabel;
