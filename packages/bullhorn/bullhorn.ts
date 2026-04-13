@@ -105,40 +105,47 @@ export class Bullhorn {
 
     // Process messages
     (async () => {
-      for await (const msg of sub) {
-        const startTime = Date.now();
-        try {
-          // Extract chimp name from subject (e.g., "chimp.slack-C123.output" -> "slack-C123")
-          const subject = msg.subject;
-          this.metrics.recordNatsReceived(subject);
+      try {
+        for await (const msg of sub) {
+          const startTime = Date.now();
+          try {
+            // Extract chimp name from subject (e.g., "chimp.slack-C123.output" -> "slack-C123")
+            const subject = msg.subject;
+            this.metrics.recordNatsReceived(subject);
 
-          const parts = subject.split(".");
-          if (
-            parts.length !== 3 ||
-            parts[0] !== "chimp" ||
-            parts[2] !== "output"
-          ) {
-            this.logger.warn({ subject }, "Invalid subject format");
-            this.metrics.recordError("invalid_subject", "warning");
-            continue;
+            const parts = subject.split(".");
+            if (
+              parts.length !== 3 ||
+              parts[0] !== "chimp" ||
+              parts[2] !== "output"
+            ) {
+              this.logger.warn({ subject }, "Invalid subject format");
+              this.metrics.recordError("invalid_subject", "warning");
+              continue;
+            }
+
+            const chimpName = parts[1];
+            const rawMessage = msg.json();
+            if (chimpName == null) {
+              throw new Error("Invalid subject");
+            }
+
+            await this.handleMessage(chimpName, rawMessage);
+
+            const duration = (Date.now() - startTime) / 1000;
+            this.metrics.recordNatsProcessed(subject, true, duration);
+          } catch (error) {
+            this.logger.error(
+              { err: error },
+              "Error processing output message",
+            );
+            this.metrics.recordError("message_processing", "error");
+            const duration = (Date.now() - startTime) / 1000;
+            this.metrics.recordNatsProcessed(msg.subject, false, duration);
           }
-
-          const chimpName = parts[1];
-          const rawMessage = msg.json();
-          if (chimpName == null) {
-            throw new Error("Invalid subject");
-          }
-
-          await this.handleMessage(chimpName, rawMessage);
-
-          const duration = (Date.now() - startTime) / 1000;
-          this.metrics.recordNatsProcessed(subject, true, duration);
-        } catch (error) {
-          this.logger.error({ err: error }, "Error processing output message");
-          this.metrics.recordError("message_processing", "error");
-          const duration = (Date.now() - startTime) / 1000;
-          this.metrics.recordNatsProcessed(msg.subject, false, duration);
         }
+      } catch (error) {
+        this.logger.error({ err: error }, "Subscription error");
       }
     })();
 

@@ -65,34 +65,42 @@ export async function createActivityStream(
     type: "input" | "output",
   ): void {
     (async () => {
-      for await (const msg of messages) {
-        const raw: unknown = msg.json();
-        let event: ActivityEvent;
+      try {
+        for await (const msg of messages) {
+          const raw: unknown = msg.json();
+          let event: ActivityEvent;
 
-        if (type === "input") {
-          const parsed = safeParseChimpCommand(raw);
-          event = {
-            id: msg.seq.toString(),
-            type,
-            messageType: parsed.success ? parsed.data.command : "unknown",
-            timestamp: new Date(millis(msg.info.timestampNanos)).toISOString(),
-            data: parsed.success ? parsed.data : raw,
-          };
-        } else {
-          const parsed = safeParseChimpOutputMessage(raw);
-          event = {
-            id: msg.seq.toString(),
-            type,
-            messageType: parsed.success ? parsed.data.type : "unknown",
-            timestamp: new Date(millis(msg.info.timestampNanos)).toISOString(),
-            data: parsed.success ? parsed.data : raw,
-          };
-        }
+          if (type === "input") {
+            const parsed = safeParseChimpCommand(raw);
+            event = {
+              id: msg.seq.toString(),
+              type,
+              messageType: parsed.success ? parsed.data.command : "unknown",
+              timestamp: new Date(
+                millis(msg.info.timestampNanos),
+              ).toISOString(),
+              data: parsed.success ? parsed.data : raw,
+            };
+          } else {
+            const parsed = safeParseChimpOutputMessage(raw);
+            event = {
+              id: msg.seq.toString(),
+              type,
+              messageType: parsed.success ? parsed.data.type : "unknown",
+              timestamp: new Date(
+                millis(msg.info.timestampNanos),
+              ).toISOString(),
+              data: parsed.success ? parsed.data : raw,
+            };
+          }
 
-        const ctrl = controller;
-        if (ctrl) {
-          ctrl.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+          const ctrl = controller;
+          if (ctrl) {
+            ctrl.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+          }
         }
+      } catch (e) {
+        console.error("Activity stream error:", e);
       }
     })();
   }

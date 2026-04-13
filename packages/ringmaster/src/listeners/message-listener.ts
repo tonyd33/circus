@@ -57,42 +57,49 @@ export class MessageListener {
     this.stopConsumer = () => messages.stop();
 
     (async () => {
-      for await (const msg of messages) {
-        try {
-          // Extract chimpId from subject (chimps.inputs.{chimpId})
-          const parts = msg.subject.split(".");
-          if (
-            parts.length === 3 &&
-            parts[0] === "chimps" &&
-            parts[1] === "inputs"
-          ) {
-            const chimpId = parts[2];
-            if (!chimpId) {
-              logger.error({ subject: msg.subject }, "Invalid subject format");
+      try {
+        for await (const msg of messages) {
+          try {
+            // Extract chimpId from subject (chimps.inputs.{chimpId})
+            const parts = msg.subject.split(".");
+            if (
+              parts.length === 3 &&
+              parts[0] === "chimps" &&
+              parts[1] === "inputs"
+            ) {
+              const chimpId = parts[2];
+              if (!chimpId) {
+                logger.error(
+                  { subject: msg.subject },
+                  "Invalid subject format",
+                );
+                msg.ack();
+                continue;
+              }
+
+              // Extract message sequence number from JetStream metadata
+              const messageSequence = msg.seq;
+              logger.info(
+                { chimpId, messageSequence },
+                "Detected message for chimp",
+              );
+
+              // Trigger Chimp creation (if needed)
+              await this.eventHandler(chimpId, {
+                type: "message_received",
+                messageSequence,
+              });
+
+              // Acknowledge the message
               msg.ack();
-              continue;
             }
-
-            // Extract message sequence number from JetStream metadata
-            const messageSequence = msg.seq;
-            logger.info(
-              { chimpId, messageSequence },
-              "Detected message for chimp",
-            );
-
-            // Trigger Chimp creation (if needed)
-            await this.eventHandler(chimpId, {
-              type: "message_received",
-              messageSequence,
-            });
-
-            // Acknowledge the message
+          } catch (error) {
+            logger.error({ err: error }, "Error processing message");
             msg.ack();
           }
-        } catch (error) {
-          logger.error({ err: error }, "Error processing message");
-          msg.ack();
         }
+      } catch (error) {
+        logger.error({ err: error }, "Message consumer error");
       }
     })();
   }
