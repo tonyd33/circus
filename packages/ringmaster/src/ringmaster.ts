@@ -119,6 +119,20 @@ export class Ringmaster {
   }
 
   /**
+   * Get Redis manager for health checks
+   */
+  getRedisManager(): RedisManager | null {
+    return this.redisManager;
+  }
+
+  /**
+   * Get NATS connection for health checks
+   */
+  getNatsConnection(): NatsConnection | null {
+    return this.nc;
+  }
+
+  /**
    * Connect to Redis
    */
   private async connectRedis(): Promise<void> {

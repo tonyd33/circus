@@ -4,13 +4,17 @@ import { Standards } from "@mnke/circus-shared";
 import { EnvReader as ER } from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
 import { createLogger } from "@mnke/circus-shared/logger";
+import type { NatsConnection } from "nats";
 import type { RingmasterConfig } from "./core/types.ts";
 import { loadChimpJobConfig } from "./lib/chimp-job-config.ts";
+import type { RedisManager } from "./managers/redis-manager.ts";
 import { Ringmaster } from "./ringmaster.ts";
 
 const logger = createLogger("Ringmaster");
 
 let ringmaster: Ringmaster | null = null;
+let redis: RedisManager | null = null;
+let nats: NatsConnection | null = null;
 
 async function shutdown() {
   logger.info("Shutdown signal received");
@@ -58,7 +62,63 @@ async function main() {
 
   await ringmaster.start();
 
-  logger.info("Ringmaster is running");
+  // Extract connections for health checks
+  redis = ringmaster.getRedisManager();
+  nats = ringmaster.getNatsConnection();
+
+  // Health check endpoints
+  const routes = {
+    "/health": async () => {
+      const health: { redis: string; nats: string } = {
+        redis: "unknown",
+        nats: "unknown",
+      };
+
+      // Check Redis
+      if (redis) {
+        try {
+          const result = await redis.getClient().ping();
+          health.redis = result === "PONG" ? "ok" : "error";
+        } catch {
+          health.redis = "error";
+        }
+      }
+
+      // Check NATS - verify connection is active
+      if (nats) {
+        try {
+          const isClosed = nats.isClosed();
+          health.nats = !isClosed ? "ok" : "error";
+        } catch {
+          health.nats = "error";
+        }
+      }
+
+      const allHealthy = health.redis === "ok" && health.nats === "ok";
+      return new Response(JSON.stringify(health), {
+        status: allHealthy ? 200 : 503,
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+    "/health/live": () => {
+      return new Response(null, { status: 200 });
+    },
+  };
+
+  const port = parseInt(process.env.PORT || "3000", 10);
+  const server = Bun.serve({
+    port,
+    fetch(req) {
+      const url = new URL(req.url);
+      const handler = routes[url.pathname as keyof typeof routes];
+      if (handler) {
+        return handler();
+      }
+      return new Response("Not Found", { status: 404 });
+    },
+  });
+
+  logger.info(`Health server running on port ${server.port}`);
 }
 
 main().catch((error) => {

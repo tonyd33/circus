@@ -17,6 +17,10 @@ const logger = createLogger("RedisManager");
 export class RedisManager {
   constructor(private redis: Redis) {}
 
+  getClient(): Redis {
+    return this.redis;
+  }
+
   async upsert(chimpId: string, status: ChimpStatus): Promise<void> {
     const key = Naming.redisChimpKey(chimpId);
     const now = Date.now();
