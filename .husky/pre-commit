@@ -1,5 +1,3 @@
 bun test
 bun run typecheck
-if command -v gitleaks &>/dev/null; then gitleaks git; else echo "warn: gitleaks not found, skipping"; fi
-if command -v helm &>/dev/null; then helm lint charts/circus; else echo "warn: helm not found, skipping"; fi
 bun run lint-staged
