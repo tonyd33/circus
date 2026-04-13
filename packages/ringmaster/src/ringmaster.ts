@@ -32,6 +32,14 @@ import { RedisManager } from "./managers/redis-manager.ts";
 
 const logger = createLogger("Ringmaster");
 
+export type HealthStatus = "ok" | "error";
+
+export interface HealthCheckResult {
+  redis: HealthStatus;
+  nats: HealthStatus;
+  ok: boolean;
+}
+
 export class Ringmaster {
   private jobManager: JobManager;
   private consumerManager: ConsumerManager | null = null;
@@ -119,17 +127,37 @@ export class Ringmaster {
   }
 
   /**
-   * Get Redis manager for health checks
+   * Check health of Redis and NATS connections
    */
-  getRedisManager(): RedisManager | null {
-    return this.redisManager;
-  }
+  async checkHealth(): Promise<HealthCheckResult> {
+    const result: HealthCheckResult = {
+      redis: "error",
+      nats: "error",
+      ok: false,
+    };
 
-  /**
-   * Get NATS connection for health checks
-   */
-  getNatsConnection(): NatsConnection | null {
-    return this.nc;
+    // Check Redis
+    if (this.redisManager) {
+      try {
+        const pingResult = await this.redisManager.ping();
+        result.redis = pingResult === "PONG" ? "ok" : "error";
+      } catch {
+        result.redis = "error";
+      }
+    }
+
+    // Check NATS - verify connection is active
+    if (this.nc) {
+      try {
+        const isClosed = this.nc.isClosed();
+        result.nats = !isClosed ? "ok" : "error";
+      } catch {
+        result.nats = "error";
+      }
+    }
+
+    result.ok = result.redis === "ok" && result.nats === "ok";
+    return result;
   }
 
   /**
