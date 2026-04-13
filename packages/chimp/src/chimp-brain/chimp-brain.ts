@@ -18,8 +18,13 @@ import { createLogMessage } from "@mnke/circus-shared/protocol";
 
 /**
  * Publish function for sending output messages
+ * @param message - The message to publish
+ * @param countAsActivity - If true (default), resets idle timer. Pass false for background events.
  */
-export type PublishFn = (message: ChimpOutputMessage) => void;
+export type PublishFn = (
+  message: ChimpOutputMessage,
+  countAsActivity?: boolean,
+) => void;
 
 export abstract class ChimpBrain {
   protected chimpId: string;

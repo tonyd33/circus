@@ -40,8 +40,10 @@ export class Chimp {
   ) {
     this.config = config;
 
-    const publishFn: PublishFn = (message: ChimpOutputMessage) => {
-      this.lastActivity = Date.now();
+    const publishFn: PublishFn = (message, countAsActivity = true) => {
+      if (countAsActivity) {
+        this.lastActivity = Date.now();
+      }
       if (this.config.outputMode === "nats") {
         if (!this.nc) {
           throw new Error("Publish called before NATS connection established");

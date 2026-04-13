@@ -41,7 +41,7 @@ export class OpencodeBrain extends ChimpBrain {
       try {
         for await (const event of events.stream) {
           if (this.eventAbortController?.signal.aborted) break;
-          this.publish(createOpencodeEventMessage(event));
+          this.publish(createOpencodeEventMessage(event), false);
         }
       } catch (err) {
         if ((err as Error).name === "AbortError") {
