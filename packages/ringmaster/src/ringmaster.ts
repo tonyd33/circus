@@ -4,7 +4,7 @@
  * Manages Chimp lifecycle through event-driven orchestration
  */
 
-import { Logger, Standards } from "@mnke/circus-shared";
+import { type Logger, Standards } from "@mnke/circus-shared";
 import {
   isNatsAlreadyExists,
   isNatsNotFound,
@@ -19,10 +19,7 @@ import {
   StorageType,
 } from "nats";
 import type { ProfileLoader } from "./config/profile-loader.ts";
-import {
-  createEventHandler,
-  type RingmasterEventHandler,
-} from "./core/event-handler.ts";
+import { EventHandler } from "./core/event-handler.ts";
 import type { RingmasterConfig } from "./core/types.ts";
 import { MessageListener } from "./listeners/message-listener.ts";
 import { PodWatcher } from "./listeners/pod-watcher.ts";
@@ -30,24 +27,32 @@ import { ConsumerManager } from "./managers/consumer-manager.ts";
 import { JobManager } from "./managers/job-manager.ts";
 import { RedisManager } from "./managers/redis-manager.ts";
 
-const logger = Logger.createLogger("Ringmaster");
-
 export class Ringmaster {
   private jobManager: JobManager;
   private consumerManager: ConsumerManager | null = null;
   private redisManager: RedisManager | null = null;
   private messageListener: MessageListener | null = null;
   private podWatcher: PodWatcher | null = null;
-  private eventHandler: RingmasterEventHandler | null = null;
+  private eventHandler: EventHandler | null = null;
   private natsUrl: string;
   private redisUrl: string;
   private nc: NatsConnection | null = null;
   private jsm: JetStreamManager | null = null;
   private config: RingmasterConfig;
+  private logger: Logger.Logger;
 
-  constructor(config: RingmasterConfig, profileLoader: ProfileLoader) {
+  constructor(
+    config: RingmasterConfig,
+    profileLoader: ProfileLoader,
+    logger: Logger.Logger,
+  ) {
     this.config = config;
-    this.jobManager = new JobManager(config, profileLoader);
+    this.logger = logger;
+    this.jobManager = new JobManager(
+      config,
+      profileLoader,
+      logger.child({ component: "JobManager" }),
+    );
     this.natsUrl = config.natsUrl;
     this.redisUrl = config.redisUrl;
   }
@@ -70,23 +75,35 @@ export class Ringmaster {
       throw new Error("JetStream manager not initialized");
     }
 
-    this.consumerManager = new ConsumerManager(this.jsm);
+    this.consumerManager = new ConsumerManager(
+      this.jsm,
+      this.logger.child({ component: "ConsumerManager" }),
+    );
 
     if (!this.redisManager) {
       throw new Error("Redis manager not initialized");
     }
 
-    this.eventHandler = createEventHandler({
+    this.eventHandler = new EventHandler({
       jobManager: this.jobManager,
       consumerManager: this.consumerManager,
       redisManager: this.redisManager,
+      logger: this.logger.child({ component: "EventHandler" }),
     });
 
-    this.podWatcher = new PodWatcher(this.config.namespace, this.eventHandler);
-    this.messageListener = new MessageListener(this.nc, this.eventHandler);
+    this.podWatcher = new PodWatcher(
+      this.config.namespace,
+      this.eventHandler,
+      this.logger.child({ component: "PodWatcher" }),
+    );
+    this.messageListener = new MessageListener(
+      this.nc,
+      this.eventHandler,
+      this.logger.child({ component: "MessageListener" }),
+    );
 
     await Promise.all([this.messageListener.start(), this.podWatcher.start()]);
-    logger.info("Ringmaster started");
+    this.logger.info("Ringmaster started");
   }
 
   /**
@@ -107,15 +124,18 @@ export class Ringmaster {
       this.jsm = null;
     }
 
-    logger.info("Ringmaster stopped");
+    this.logger.info("Ringmaster stopped");
   }
 
   /**
    * Connect to Redis
    */
   private async connectRedis(): Promise<void> {
-    this.redisManager = new RedisManager(new Redis(this.redisUrl));
-    logger.info("Connected to Redis");
+    this.redisManager = new RedisManager(
+      new Redis(this.redisUrl),
+      this.logger.child({ component: "RedisManager" }),
+    );
+    this.logger.info("Connected to Redis");
   }
 
   /**
@@ -133,7 +153,7 @@ export class Ringmaster {
     });
 
     this.jsm = await this.nc.jetstreamManager();
-    logger.info("Connected to NATS JetStream");
+    this.logger.info("Connected to NATS JetStream");
   }
 
   /**
@@ -150,7 +170,7 @@ export class Ringmaster {
     // Check if stream already exists
     try {
       await this.jsm.streams.info(streamName);
-      logger.debug({ streamName }, "Stream already exists");
+      this.logger.debug({ streamName }, "Stream already exists");
       return;
     } catch (error) {
       if (!isNatsNotFound(error)) {
@@ -168,10 +188,13 @@ export class Ringmaster {
         max_msgs: 100_000,
         storage: StorageType.File,
       });
-      logger.info({ streamName }, "Created stream");
+      this.logger.info({ streamName }, "Created stream");
     } catch (createError) {
       if (isNatsAlreadyExists(createError)) {
-        logger.debug({ streamName }, "Stream already exists (race condition)");
+        this.logger.debug(
+          { streamName },
+          "Stream already exists (race condition)",
+        );
         return;
       }
       throw createError;

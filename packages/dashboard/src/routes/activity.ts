@@ -1,6 +1,7 @@
+import type { Logger } from "@mnke/circus-shared";
 import { createActivityStream } from "../streams/activity-stream";
 
-export function createActivityRoute(natsUrl: string) {
+export function createActivityRoute(natsUrl: string, logger: Logger.Logger) {
   return async (
     req: Bun.BunRequest<"/api/chimp/:chimpId/activity">,
   ): Promise<Response> => {
@@ -11,7 +12,7 @@ export function createActivityRoute(natsUrl: string) {
     }
 
     try {
-      const stream = await createActivityStream(chimpId, natsUrl);
+      const stream = await createActivityStream(chimpId, natsUrl, logger);
       return new Response(stream, {
         headers: {
           "Content-Type": "text/event-stream",
@@ -20,7 +21,7 @@ export function createActivityRoute(natsUrl: string) {
         },
       });
     } catch (e) {
-      console.error("SSE error:", e);
+      logger.error({ err: e }, "SSE error");
       return new Response("Internal Server Error", { status: 500 });
     }
   };

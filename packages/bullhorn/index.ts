@@ -25,16 +25,19 @@ async function main() {
 
   const config = result.value;
 
-  const bullhorn = new Bullhorn({ logger, natsUrl: config.natsUrl });
+  const bullhorn = new Bullhorn({
+    logger: logger.child({ component: "Bullhorn" }),
+    natsUrl: config.natsUrl,
+  });
 
-  const shutdown = async (signal: string) => {
-    logger.info(`Received ${signal}, shutting down...`);
-    await bullhorn.cleanup();
+  const shutdown = (signal: string) => async () => {
+    logger.info({ signal }, "Received shutdown signal");
+    await bullhorn.stop();
     process.exit(0);
   };
 
-  process.on("SIGINT", () => shutdown("SIGINT"));
-  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", shutdown("SIGINT"));
+  process.on("SIGTERM", shutdown("SIGTERM"));
 
   logger.info("Starting Bullhorn...");
   await bullhorn.initialize();
@@ -44,4 +47,7 @@ async function main() {
   await bullhorn.start();
 }
 
-main();
+main().catch((error) => {
+  logger.error({ err: error }, "Fatal error");
+  process.exit(1);
+});

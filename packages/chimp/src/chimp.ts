@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { Logger, Protocol, Standards } from "@mnke/circus-shared";
+import { type Logger, Protocol, Standards } from "@mnke/circus-shared";
 import { EnvReader as ER, Typing } from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
 import type { NatsConnection } from "nats";
@@ -13,8 +13,6 @@ import {
 } from "@/chimp-input";
 import { type ChimpOutput, NatsOutput, StdoutOutput } from "@/chimp-output";
 
-const logger = Logger.createLogger("Chimp");
-
 export interface ChimpConfig {
   chimpId: string;
   model: string;
@@ -23,14 +21,17 @@ export interface ChimpConfig {
   outputMode: "nats" | "stdout";
   httpPort: number;
   idleTimeoutMs: number;
+  logger: Logger.Logger;
 }
 
 export class Chimp {
   private config: ChimpConfig;
+  private logger: Logger.Logger;
   private brainFactory: (
     chimpId: string,
     model: string,
     publish: PublishFn,
+    logger: Logger.Logger,
   ) => ChimpBrain;
   private nc: NatsConnection | null = null;
   private brain: ChimpBrain | null = null;
@@ -46,14 +47,16 @@ export class Chimp {
       chimpId: string,
       model: string,
       publish: PublishFn,
+      logger: Logger.Logger,
     ) => ChimpBrain,
   ) {
     this.config = config;
+    this.logger = config.logger;
     this.brainFactory = brainFactory;
   }
 
   async start(): Promise<void> {
-    logger.info(
+    this.logger.info(
       { chimpId: this.config.chimpId, inputMode: this.config.inputMode },
       "Starting Chimp",
     );
@@ -67,7 +70,7 @@ export class Chimp {
         maxReconnectAttempts: -1,
         reconnectTimeWait: 2000,
       });
-      logger.info("Connected to NATS");
+      this.logger.info("Connected to NATS");
     }
 
     this.output = this.createOutput();
@@ -81,14 +84,15 @@ export class Chimp {
       this.config.chimpId,
       this.config.model,
       publishFn,
+      this.logger.child({ component: "Brain" }),
     );
     const brain = this.brain;
 
     await brain.onStartup();
-    logger.info("Chimp startup complete");
+    this.logger.info("Chimp startup complete");
 
     await this.executeInitConfig(brain);
-    logger.info("Init config executed");
+    this.logger.info("Init config executed");
 
     const onActivity = () => {
       this.lastActivity = Date.now();
@@ -129,6 +133,7 @@ export class Chimp {
           handler,
           onActivity,
           onStopRequested,
+          this.logger.child({ component: "NatsInput" }),
         );
       case "http":
         return new HttpInput(
@@ -136,6 +141,7 @@ export class Chimp {
           handler,
           onActivity,
           onStopRequested,
+          this.logger.child({ component: "HttpInput" }),
         );
       default:
         return Typing.unreachable(this.config.inputMode);
@@ -152,18 +158,21 @@ export class Chimp {
     const raw = await readFile(configPath.value, "utf-8");
     const config = Protocol.parseInitConfig(JSON.parse(raw));
 
-    logger.info({ commands: config.commands.length }, "Executing init config");
+    this.logger.info(
+      { commands: config.commands.length },
+      "Executing init config",
+    );
 
     for (const cmd of config.commands) {
-      logger.info({ command: cmd.command }, "Init command");
+      this.logger.info({ command: cmd.command }, "Init command");
       const result = await brain.handleMessage(cmd);
       if (result === "stop") {
-        logger.info("Init command requested stop");
+        this.logger.info("Init command requested stop");
         break;
       }
     }
 
-    logger.info("Init config complete");
+    this.logger.info("Init config complete");
   }
 
   private startIdleCheck(): void {
@@ -171,7 +180,7 @@ export class Chimp {
     this.idleCheckTimer = setInterval(() => {
       const idleMs = Date.now() - this.lastActivity;
       if (idleMs >= this.config.idleTimeoutMs) {
-        logger.info(
+        this.logger.info(
           { idleMs, timeoutMs: this.config.idleTimeoutMs },
           "Idle timeout reached, shutting down",
         );
@@ -184,7 +193,7 @@ export class Chimp {
     if (this.isShuttingDown) return;
     this.isShuttingDown = true;
 
-    logger.info({ reason }, "Shutting down");
+    this.logger.info({ reason }, "Shutting down");
 
     if (this.idleCheckTimer) {
       clearInterval(this.idleCheckTimer);
@@ -204,7 +213,7 @@ export class Chimp {
       await this.nc.close();
     }
 
-    logger.info("Shutdown complete");
+    this.logger.info("Shutdown complete");
     process.exit(0);
   }
 }

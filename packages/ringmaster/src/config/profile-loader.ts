@@ -4,19 +4,17 @@
  * Loads chimp profiles from file system only (no K8s).
  */
 
-import { Logger, Protocol } from "@mnke/circus-shared";
+import { type Logger, Protocol } from "@mnke/circus-shared";
 
-const logger = Logger.createLogger("ProfileLoader");
-
-/**
- * Profiles file format: { [name: string]: ChimpProfile }
- */
 type ProfilesFile = Record<string, Protocol.ChimpProfile>;
 
 export class ProfileLoader {
   private profiles: Map<string, Protocol.ChimpProfile> = new Map();
+  private logger: Logger.Logger;
 
-  constructor() {}
+  constructor(logger: Logger.Logger) {
+    this.logger = logger;
+  }
 
   /**
    * Set default profile when no config file available.
@@ -26,7 +24,7 @@ export class ProfileLoader {
       brain: "claude",
       model: "haiku-4-5",
     });
-    logger.info("Using default profile");
+    this.logger.info("Using default profile");
   }
 
   /**
@@ -47,18 +45,18 @@ export class ProfileLoader {
         const parsed = Protocol.ChimpProfileSchema.parse(profile);
         this.profiles.set(name, parsed);
         validCount++;
-        logger.debug({ name, profile: parsed }, "Loaded profile");
+        this.logger.debug({ name, profile: parsed }, "Loaded profile");
       }
 
       if (validCount === 0) {
-        logger.warn("No valid profiles found in file, using default");
+        this.logger.warn("No valid profiles found in file, using default");
         this.setDefault();
         return;
       }
 
-      logger.info({ count: this.profiles.size }, "Profiles loaded");
+      this.logger.info({ count: this.profiles.size }, "Profiles loaded");
     } catch (error) {
-      logger.warn(
+      this.logger.warn(
         { error, filePath },
         "Failed to load profiles, using default",
       );
@@ -95,8 +93,9 @@ export class ProfileLoader {
  */
 export async function createProfileLoader(
   filePath: string,
+  logger: Logger.Logger,
 ): Promise<ProfileLoader> {
-  const loader = new ProfileLoader();
+  const loader = new ProfileLoader(logger);
   await loader.load(filePath);
   return loader;
 }

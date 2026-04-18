@@ -9,7 +9,7 @@ import { parseKeyValueObjectForKeys } from "@/lib/parsers.ts";
 import type { RouteConfig } from "@/types.ts";
 import { Usher } from "@/usher.ts";
 
-const logger = Logger.createLogger("Usher");
+const logger = Logger.createLogger("usher");
 
 const parseRouteConfig = (v: string) =>
   parseKeyValueObjectForKeys(["adapter", "path"]).parse(v);
@@ -50,7 +50,12 @@ async function main() {
     process.exit(1);
   }
 
-  const usher = new Usher(routes, envResult.value.natsUrl, ADAPTER_REGISTRY);
+  const usher = new Usher(
+    routes,
+    envResult.value.natsUrl,
+    ADAPTER_REGISTRY,
+    logger.child({ component: "Usher" }),
+  );
 
   process.on("SIGINT", () => usher.shutdown());
   process.on("SIGTERM", () => usher.shutdown());

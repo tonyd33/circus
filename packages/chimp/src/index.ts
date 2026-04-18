@@ -11,7 +11,7 @@ import {
   type PublishFn,
 } from "./chimp-brain";
 
-const logger = Logger.createLogger("Chimp");
+const logger = Logger.createLogger("chimp");
 
 async function main() {
   const result = ER.record({
@@ -55,14 +55,19 @@ async function main() {
     "Starting Chimp",
   );
 
-  const brainFactory = (chimpId: string, model: string, publish: PublishFn) => {
+  const brainFactory = (
+    chimpId: string,
+    model: string,
+    publish: PublishFn,
+    brainLogger: Logger.Logger,
+  ) => {
     switch (config.brainType) {
       case "claude":
-        return new ClaudeChimp(chimpId, model, publish);
+        return new ClaudeChimp(chimpId, model, publish, brainLogger);
       case "opencode":
-        return new OpencodeBrain(chimpId, model, publish);
+        return new OpencodeBrain(chimpId, model, publish, brainLogger);
       case "echo":
-        return new EchoBrain(chimpId, model, publish);
+        return new EchoBrain(chimpId, model, publish, brainLogger);
       default:
         throw new Error(`Unknown brain type: ${config.brainType}`);
     }
@@ -77,6 +82,7 @@ async function main() {
       outputMode: config.outputMode as "nats" | "stdout",
       httpPort: config.httpPort,
       idleTimeoutMs: 5 * 60 * 1000,
+      logger: logger.child({ component: "Chimp" }),
     },
     brainFactory,
   );

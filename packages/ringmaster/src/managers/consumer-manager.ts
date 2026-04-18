@@ -5,20 +5,20 @@
  * Borrows NATS connection from Ringmaster - does not own the connection lifecycle
  */
 
-import { Logger, Standards } from "@mnke/circus-shared";
+import { type Logger, Standards } from "@mnke/circus-shared";
 import {
   isNatsAlreadyExists,
   isNatsNotFound,
 } from "@mnke/circus-shared/errors";
 import { AckPolicy, DeliverPolicy, type JetStreamManager } from "nats";
 
-const logger = Logger.createLogger("ConsumerManager");
-
 export class ConsumerManager {
   private jsm: JetStreamManager;
+  private logger: Logger.Logger;
 
-  constructor(jsm: JetStreamManager) {
+  constructor(jsm: JetStreamManager, logger: Logger.Logger) {
     this.jsm = jsm;
+    this.logger = logger;
   }
 
   /**
@@ -30,7 +30,7 @@ export class ConsumerManager {
 
     try {
       await this.jsm.consumers.info(inputStreamName, consumerName);
-      logger.debug(
+      this.logger.debug(
         { consumerName, chimpId },
         "Consumer already exists, skipping creation",
       );
@@ -51,11 +51,14 @@ export class ConsumerManager {
         opt_start_seq: startSequence,
       });
 
-      logger.info({ consumerName, chimpId, startSequence }, "Created consumer");
+      this.logger.info(
+        { consumerName, chimpId, startSequence },
+        "Created consumer",
+      );
     } catch (error) {
       // Handle race condition
       if (isNatsAlreadyExists(error)) {
-        logger.debug(
+        this.logger.debug(
           { consumerName, chimpId },
           "Consumer already exists (race condition), continuing",
         );
@@ -74,10 +77,10 @@ export class ConsumerManager {
 
     try {
       await this.jsm.consumers.delete(inputStreamName, consumerName);
-      logger.info({ consumerName, chimpId }, "Deleted consumer");
+      this.logger.info({ consumerName, chimpId }, "Deleted consumer");
     } catch (error) {
       if (isNatsNotFound(error)) {
-        logger.debug(
+        this.logger.debug(
           { consumerName, chimpId },
           "Consumer doesn't exist, skipping deletion",
         );

@@ -1,12 +1,10 @@
-import { Logger, Protocol, Standards } from "@mnke/circus-shared";
+import { type Logger, Protocol, Standards } from "@mnke/circus-shared";
 import type { Consumer, NatsConnection } from "nats";
 import {
   type ActivityCallback,
   ChimpInput,
   type MessageHandler,
 } from "./chimp-input";
-
-const logger = Logger.createLogger("NatsInput");
 
 export class NatsInput extends ChimpInput {
   private nc: NatsConnection;
@@ -16,6 +14,7 @@ export class NatsInput extends ChimpInput {
   private onStopRequested: () => Promise<void>;
   private consumer: Consumer | null = null;
   private stopConsumer: (() => void) | null = null;
+  private logger: Logger.Logger;
 
   constructor(
     nc: NatsConnection,
@@ -23,6 +22,7 @@ export class NatsInput extends ChimpInput {
     handler: MessageHandler,
     onActivity: ActivityCallback,
     onStopRequested: () => Promise<void>,
+    logger: Logger.Logger,
   ) {
     super();
     this.nc = nc;
@@ -30,6 +30,7 @@ export class NatsInput extends ChimpInput {
     this.handler = handler;
     this.onActivity = onActivity;
     this.onStopRequested = onStopRequested;
+    this.logger = logger;
   }
 
   async start(): Promise<void> {
@@ -37,7 +38,7 @@ export class NatsInput extends ChimpInput {
     const streamName = Standards.Chimp.Naming.inputStreamName();
     const consumerName = `chimp-${this.chimpId}`;
     this.consumer = await js.consumers.get(streamName, consumerName);
-    logger.info({ consumerName }, "Connected to JetStream consumer");
+    this.logger.info({ consumerName }, "Connected to JetStream consumer");
 
     const messages = await this.consumer.consume();
     this.stopConsumer = () => messages.stop();
@@ -46,7 +47,7 @@ export class NatsInput extends ChimpInput {
       try {
         for await (const msg of messages) {
           this.onActivity();
-          logger.info(
+          this.logger.info(
             { subject: msg.subject, seq: msg.seq },
             "Received message",
           );
@@ -57,19 +58,22 @@ export class NatsInput extends ChimpInput {
             const result = await this.handler(command);
 
             msg.ack();
-            logger.info({ seq: msg.seq }, "Processed message successfully");
+            this.logger.info(
+              { seq: msg.seq },
+              "Processed message successfully",
+            );
 
             if (result === "stop") {
               await this.onStopRequested();
               return;
             }
           } catch (error) {
-            logger.error({ err: error }, "Error processing message");
+            this.logger.error({ err: error }, "Error processing message");
             msg.ack();
           }
         }
       } catch (error) {
-        logger.error({ err: error }, "Error in message processing loop");
+        this.logger.error({ err: error }, "Error in message processing loop");
         await this.onStopRequested();
       }
     })();

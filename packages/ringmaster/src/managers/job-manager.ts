@@ -5,14 +5,12 @@
  */
 
 import * as k8s from "@kubernetes/client-node";
-import { Logger, Standards } from "@mnke/circus-shared";
+import { type Logger, Standards } from "@mnke/circus-shared";
 import type { ProfileLoader } from "../config/profile-loader.ts";
 import type { RingmasterConfig } from "../core/types.ts";
 import type { ChimpJobConfig } from "../lib/chimp-job-config.ts";
 import { namespaceLabel } from "../lib/k8s.ts";
 import { isK8sConflict } from "../utils/k8s-errors.ts";
-
-const logger = Logger.createLogger("JobManager");
 
 export class JobManager {
   private k8sBatchApi: k8s.BatchV1Api;
@@ -21,8 +19,13 @@ export class JobManager {
   private natsUrl: string;
   private profileLoader: ProfileLoader;
   private chimpJobConfig: ChimpJobConfig;
+  private logger: Logger.Logger;
 
-  constructor(config: RingmasterConfig, profileLoader: ProfileLoader) {
+  constructor(
+    config: RingmasterConfig,
+    profileLoader: ProfileLoader,
+    logger: Logger.Logger,
+  ) {
     const kc = new k8s.KubeConfig();
     kc.loadFromDefault();
 
@@ -32,6 +35,7 @@ export class JobManager {
     this.natsUrl = config.natsUrl;
     this.profileLoader = profileLoader;
     this.chimpJobConfig = config.chimpJobConfig;
+    this.logger = logger;
   }
 
   /**
@@ -111,11 +115,11 @@ export class JobManager {
         namespace: this.namespace,
         body: job,
       });
-      logger.info({ jobName, chimpId }, "Created job");
+      this.logger.info({ jobName, chimpId }, "Created job");
     } catch (error) {
       // Handle race condition - another ringmaster may have created it
       if (isK8sConflict(error)) {
-        logger.debug(
+        this.logger.debug(
           { jobName },
           "Job already exists (race condition), continuing",
         );

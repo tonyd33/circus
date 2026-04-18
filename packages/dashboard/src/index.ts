@@ -9,14 +9,9 @@ import { createActivityRoute } from "./routes/activity";
 import { createChimpsRoutes } from "./routes/chimps";
 import { MessageRouter } from "./routes/messages";
 
-const logger = Logger.createLogger("Dashboard");
+const logger = Logger.createLogger("dashboard");
 
-interface Config {
-  ledgerUrl: string;
-  natsUrl: string;
-}
-
-function getConfig(): Config {
+async function main() {
   const result = ER.record({
     ledgerUrl: ER.str("LEDGER_URL").fallback("http://localhost:6489"),
     natsUrl: ER.str("NATS_URL").fallback("nats://localhost:4222"),
@@ -27,53 +22,62 @@ function getConfig(): Config {
     process.exit(1);
   }
 
-  return result.value;
-}
+  const config = result.value;
 
-const config = getConfig();
+  const messageRouter = new MessageRouter(
+    config.natsUrl,
+    logger.child({ component: "MessageRouter" }),
+  );
+  await messageRouter.initialize();
 
-const messageRouter = new MessageRouter(config.natsUrl);
-await messageRouter.initialize();
+  const shutdown = async (signal: string) => {
+    logger.info(`Received ${signal}, shutting down...`);
+    await messageRouter.cleanup();
+    process.exit(0);
+  };
 
-const shutdown = async (signal: string) => {
-  logger.info(`Received ${signal}, shutting down...`);
-  await messageRouter.cleanup();
-  process.exit(0);
-};
+  process.on("SIGINT", () =>
+    shutdown("SIGINT").catch((e) => {
+      logger.error({ err: e }, "Shutdown error");
+      process.exit(1);
+    }),
+  );
+  process.on("SIGTERM", () =>
+    shutdown("SIGTERM").catch((e) => {
+      logger.error({ err: e }, "Shutdown error");
+      process.exit(1);
+    }),
+  );
 
-process.on("SIGINT", () =>
-  shutdown("SIGINT").catch((e) => {
-    logger.error({ err: e }, "Shutdown error");
-    process.exit(1);
-  }),
-);
-process.on("SIGTERM", () =>
-  shutdown("SIGTERM").catch((e) => {
-    logger.error({ err: e }, "Shutdown error");
-    process.exit(1);
-  }),
-);
+  async function proxyToLedger(path: string): Promise<Response> {
+    const res = await fetch(`${config.ledgerUrl}${path}`);
+    return new Response(res.body, {
+      status: res.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
-async function proxyToLedger(path: string): Promise<Response> {
-  const res = await fetch(`${config.ledgerUrl}${path}`);
-  return new Response(res.body, {
-    status: res.status,
-    headers: { "Content-Type": "application/json" },
+  const server = serve({
+    routes: {
+      "/*": index,
+      "/api/chimp/:chimpId/activity": createActivityRoute(
+        config.natsUrl,
+        logger.child({ component: "ActivityStream" }),
+      ),
+      ...createChimpsRoutes(proxyToLedger),
+      ...messageRouter.routes,
+    },
+
+    development: process.env.NODE_ENV !== "production" && {
+      hmr: true,
+      console: true,
+    },
   });
+
+  logger.info({ url: server.url.toString() }, "Dashboard server started");
 }
 
-const server = serve({
-  routes: {
-    "/*": index,
-    "/api/chimp/:chimpId/activity": createActivityRoute(config.natsUrl),
-    ...createChimpsRoutes(proxyToLedger),
-    ...messageRouter.routes,
-  },
-
-  development: process.env.NODE_ENV !== "production" && {
-    hmr: true,
-    console: true,
-  },
+main().catch((error) => {
+  logger.error({ err: error }, "Fatal error");
+  process.exit(1);
 });
-
-logger.info({ url: server.url.toString() }, "Dashboard server started");

@@ -5,7 +5,7 @@
  * Implementations should handle messages and define startup/shutdown behavior.
  */
 
-import { Logger, Protocol } from "@mnke/circus-shared";
+import { type Logger, Protocol } from "@mnke/circus-shared";
 
 /**
  * Publish function for sending output messages
@@ -16,13 +16,18 @@ export abstract class ChimpBrain {
   protected chimpId: string;
   protected model: string;
   protected publish: PublishFn;
-  private logger: Logger.Logger;
+  protected logger: Logger.Logger;
 
-  constructor(chimpId: string, model: string, publish: PublishFn) {
+  constructor(
+    chimpId: string,
+    model: string,
+    publish: PublishFn,
+    logger: Logger.Logger,
+  ) {
     this.chimpId = chimpId;
     this.model = model;
     this.publish = publish;
-    this.logger = Logger.createLogger("Chimp");
+    this.logger = logger;
   }
 
   /**

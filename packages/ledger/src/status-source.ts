@@ -4,17 +4,22 @@
  * Reads chimp status from Redis
  */
 
-import { Logger, Standards } from "@mnke/circus-shared";
+import { type Logger, Standards } from "@mnke/circus-shared";
 
 import type Redis from "ioredis";
-
-const logger = Logger.createLogger("RedisStatusSource");
 
 type ChimpState = Standards.Chimp.ChimpState;
 const Naming = Standards.Chimp.Naming;
 
 export class RedisStatusSource {
-  constructor(private redis: Redis) {}
+  private logger: Logger.Logger;
+
+  constructor(
+    private redis: Redis,
+    logger: Logger.Logger,
+  ) {
+    this.logger = logger;
+  }
 
   async list(): Promise<ChimpState[]> {
     const pattern = Naming.redisChimpPattern();

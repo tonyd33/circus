@@ -4,7 +4,7 @@
  * Manages chimp state in Redis
  */
 
-import { Logger, Standards } from "@mnke/circus-shared";
+import { type Logger, Standards } from "@mnke/circus-shared";
 
 type ChimpState = Standards.Chimp.ChimpState;
 type ChimpStatus = Standards.Chimp.ChimpStatus;
@@ -12,10 +12,15 @@ const Naming = Standards.Chimp.Naming;
 
 import type Redis from "ioredis";
 
-const logger = Logger.createLogger("RedisManager");
-
 export class RedisManager {
-  constructor(private redis: Redis) {}
+  private logger: Logger.Logger;
+
+  constructor(
+    private redis: Redis,
+    logger: Logger.Logger,
+  ) {
+    this.logger = logger;
+  }
 
   async upsert(chimpId: string, status: ChimpStatus): Promise<void> {
     const key = Naming.redisChimpKey(chimpId);
@@ -36,7 +41,7 @@ export class RedisManager {
     };
 
     await this.redis.set(key, JSON.stringify(state));
-    logger.debug({ chimpId, status }, "Upserted chimp state");
+    this.logger.debug({ chimpId, status }, "Upserted chimp state");
   }
 
   async get(chimpId: string): Promise<ChimpState | null> {
@@ -49,7 +54,7 @@ export class RedisManager {
   async delete(chimpId: string): Promise<void> {
     const key = Naming.redisChimpKey(chimpId);
     await this.redis.del(key);
-    logger.debug({ chimpId }, "Deleted chimp state");
+    this.logger.debug({ chimpId }, "Deleted chimp state");
   }
 
   async list(): Promise<ChimpState[]> {

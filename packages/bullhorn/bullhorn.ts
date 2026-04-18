@@ -5,7 +5,7 @@
  * (Slack, GitHub, Discord, console logging, etc.)
  */
 
-import { Logger, Protocol, Standards } from "@mnke/circus-shared";
+import { type Logger, Protocol, Standards } from "@mnke/circus-shared";
 import {
   createMetrics,
   type ServiceMetrics,
@@ -21,11 +21,7 @@ export interface BullhornConfig {
    */
   handlers?: OutputHandler[];
 
-  /**
-   * Logger instance
-   * If not provided, creates a default logger
-   */
-  logger?: any;
+  logger: Logger.Logger;
 
   /**
    * NATS URL (required)
@@ -54,7 +50,7 @@ export class Bullhorn {
   private nc: NatsConnection | null = null;
 
   constructor(config: BullhornConfig) {
-    this.logger = config.logger ?? Logger.createLogger("bullhorn");
+    this.logger = config.logger;
     this.metrics = createMetrics({ serviceName: "bullhorn" });
     this.natsUrl = config.natsUrl;
 
@@ -267,7 +263,7 @@ export class Bullhorn {
   /**
    * Cleanup all handlers
    */
-  async cleanup(): Promise<void> {
+  async stop(): Promise<void> {
     this.logger.info("Cleaning up Bullhorn...");
 
     for (const handler of this.handlers) {

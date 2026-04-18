@@ -8,7 +8,7 @@ import Redis from "ioredis";
 import { createStatusRoutes } from "./routes/status.ts";
 import { RedisStatusSource } from "./status-source.ts";
 
-const logger = Logger.createLogger("Ledger");
+const logger = Logger.createLogger("ledger");
 
 interface LedgerConfig {
   redisUrl: string;
@@ -44,7 +44,10 @@ async function main() {
   logger.info({ config }, "Ledger starting");
 
   redis = new Redis(config.redisUrl);
-  const statusSource = new RedisStatusSource(redis);
+  const statusSource = new RedisStatusSource(
+    redis,
+    logger.child({ component: "RedisStatusSource" }),
+  );
   const routes = createStatusRoutes(statusSource);
 
   const server = serve({

@@ -1,8 +1,7 @@
-import { Logger, Protocol, Standards } from "@mnke/circus-shared";
+import { type Logger, Protocol, Standards } from "@mnke/circus-shared";
 import { connect, type JetStreamClient, type NatsConnection } from "nats";
 import { z } from "zod";
 
-const logger = Logger.createLogger("MessageRouter");
 const Naming = Standards.Chimp.Naming;
 
 const SendMessageBody = z.object({
@@ -12,8 +11,14 @@ const SendMessageBody = z.object({
 export class MessageRouter {
   private nc: NatsConnection | null = null;
   private js: JetStreamClient | null = null;
+  private logger: Logger.Logger;
 
-  constructor(private natsUrl: string) {}
+  constructor(
+    private natsUrl: string,
+    logger: Logger.Logger,
+  ) {
+    this.logger = logger;
+  }
 
   async initialize(): Promise<void> {
     this.nc = await connect({
@@ -22,7 +27,7 @@ export class MessageRouter {
       reconnectTimeWait: 2000,
     });
     this.js = this.nc.jetstream();
-    logger.info({ url: this.natsUrl }, "MessageRouter connected to NATS");
+    this.logger.info({ url: this.natsUrl }, "MessageRouter connected to NATS");
   }
 
   async cleanup(): Promise<void> {
@@ -31,7 +36,7 @@ export class MessageRouter {
       await this.nc.close();
       this.nc = null;
       this.js = null;
-      logger.info("MessageRouter NATS connection closed");
+      this.logger.info("MessageRouter NATS connection closed");
     }
   }
 
@@ -58,7 +63,7 @@ export class MessageRouter {
           }
 
           if (!this.js) {
-            logger.error("MessageRouter not initialized");
+            this.logger.error("MessageRouter not initialized");
             return new Response("Service unavailable", { status: 503 });
           }
 
@@ -69,7 +74,7 @@ export class MessageRouter {
             );
             return Response.json({ ok: true });
           } catch (e) {
-            logger.error({ err: e }, "Failed to publish message");
+            this.logger.error({ err: e }, "Failed to publish message");
             return new Response("Failed to send message", { status: 500 });
           }
         },
@@ -77,8 +82,9 @@ export class MessageRouter {
       "/api/meta/events": {
         GET: (): Response => {
           const nc = this.nc;
+          const log = this.logger;
           if (!nc) {
-            logger.error("MessageRouter not initialized");
+            log.error("MessageRouter not initialized");
             return new Response("Service unavailable", { status: 503 });
           }
 
@@ -93,7 +99,7 @@ export class MessageRouter {
                     const parsed = Protocol.MetaEventSchema.safeParse(raw);
 
                     if (!parsed.success) {
-                      logger.warn(
+                      log.warn(
                         { error: parsed.error.issues },
                         "Invalid meta event",
                       );
@@ -107,7 +113,7 @@ export class MessageRouter {
                     );
                   }
                 } catch (e) {
-                  logger.error({ err: e }, "SSE stream error");
+                  log.error({ err: e }, "SSE stream error");
                 }
               })();
             },

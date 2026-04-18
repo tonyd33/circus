@@ -1,29 +1,30 @@
-import { Logger, Standards } from "@mnke/circus-shared";
+import { type Logger, Standards } from "@mnke/circus-shared";
 import { connect, type NatsConnection } from "nats";
 import type { Adapter } from "./adapters/index.ts";
 import type { RouteConfig } from "./types.ts";
-
-const logger = Logger.createLogger("Usher");
 
 export class Usher {
   private nc: NatsConnection | null = null;
   private natsUrl: string;
   private routes: RouteConfig[];
-  private adapterRegistry: Record<string, () => Adapter>;
+  private adapterRegistry: Record<string, (logger: Logger.Logger) => Adapter>;
+  private logger: Logger.Logger;
 
   constructor(
     routes: RouteConfig[],
     natsUrl: string,
-    adapterRegistry: Record<string, () => Adapter>,
+    adapterRegistry: Record<string, (logger: Logger.Logger) => Adapter>,
+    logger: Logger.Logger,
   ) {
     this.routes = routes;
     this.natsUrl = natsUrl;
     this.adapterRegistry = adapterRegistry;
+    this.logger = logger;
   }
 
   async serve(port: number): Promise<void> {
     this.nc = await connect({ servers: this.natsUrl });
-    logger.info("Connected to NATS");
+    this.logger.info("Connected to NATS");
 
     const routeHandlers = this.buildRouteHandlers(this.nc);
 
@@ -38,7 +39,7 @@ export class Usher {
       },
     });
 
-    logger.info({ port }, "Usher listening");
+    this.logger.info({ port }, "Usher listening");
   }
 
   private buildRouteHandlers(
@@ -55,7 +56,8 @@ export class Usher {
           `Unknown adapter: ${route.adapter}. Available: ${Object.keys(this.adapterRegistry).join(", ")}`,
         );
       }
-      const adapter = factory();
+      const adapterLogger = this.logger.child({ adapter: route.adapter });
+      const adapter = factory(adapterLogger);
       result[route.path] = {
         POST: async (req: Request) => {
           if (req.method !== "POST") {
@@ -70,13 +72,13 @@ export class Usher {
             const result = await adapter.handleEvent(body, headers);
             const subject = Standards.Chimp.Naming.inputSubject(result.chimpId);
             nc.publish(subject, JSON.stringify(result.command));
-            logger.info(
+            adapterLogger.info(
               { chimpId: result.chimpId, path: route.path },
               "Published command",
             );
             return new Response("OK", { status: 200 });
           } catch (error) {
-            logger.error(
+            adapterLogger.error(
               { err: error, path: route.path },
               "Error handling request",
             );
@@ -84,7 +86,7 @@ export class Usher {
           }
         },
       };
-      logger.info(
+      this.logger.info(
         { adapter: route.adapter, path: route.path },
         "Route mounted",
       );
@@ -98,6 +100,6 @@ export class Usher {
       await this.nc.drain();
       await this.nc.close();
     }
-    logger.info("Shutdown complete");
+    this.logger.info("Shutdown complete");
   }
 }

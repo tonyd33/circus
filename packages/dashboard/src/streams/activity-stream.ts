@@ -1,4 +1,4 @@
-import { Protocol, Standards } from "@mnke/circus-shared";
+import { type Logger, Protocol, Standards } from "@mnke/circus-shared";
 import {
   AckPolicy,
   type Consumer,
@@ -21,6 +21,7 @@ interface ActivityEvent {
 export async function createActivityStream(
   chimpId: string,
   natsUrl: string,
+  logger: Logger.Logger,
 ): Promise<ReadableStream> {
   const nc = await connect({ servers: natsUrl });
   const js = nc.jetstream();
@@ -123,7 +124,7 @@ export async function createActivityStream(
     outputMessages = await outputConsumer.consume();
     processMessages(outputMessages, "output");
   } catch (e) {
-    console.error("Failed to subscribe to activity:", e);
+    logger.error({ err: e }, "Failed to subscribe to activity");
     controller?.error(e instanceof Error ? e : new Error(String(e)));
   }
 

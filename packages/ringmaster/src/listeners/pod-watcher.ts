@@ -5,25 +5,29 @@
  */
 
 import * as k8s from "@kubernetes/client-node";
-import { Logger } from "@mnke/circus-shared";
-import type { RingmasterEventHandler } from "../core/event-handler.ts";
+import type { Logger } from "@mnke/circus-shared";
+import type { EventHandler } from "../core/event-handler.ts";
 import { namespaceLabel } from "../lib/k8s.ts";
-
-const logger = Logger.createLogger("PodWatcher");
 
 export class PodWatcher {
   private kc: k8s.KubeConfig;
   private watch: k8s.Watch;
   private namespace: string;
   private abortController: AbortController | null = null;
-  private eventHandler: RingmasterEventHandler;
+  private eventHandler: EventHandler;
+  private logger: Logger.Logger;
 
-  constructor(namespace: string, eventHandler: RingmasterEventHandler) {
+  constructor(
+    namespace: string,
+    eventHandler: EventHandler,
+    logger: Logger.Logger,
+  ) {
     this.kc = new k8s.KubeConfig();
     this.kc.loadFromDefault();
     this.watch = new k8s.Watch(this.kc);
     this.namespace = namespace;
     this.eventHandler = eventHandler;
+    this.logger = logger;
   }
 
   /**
@@ -37,7 +41,7 @@ export class PodWatcher {
       labelSelector: `${namespaceLabel("managed-by")}=ringmaster`,
     };
 
-    logger.info({ namespace: this.namespace }, "Starting to watch pods");
+    this.logger.info({ namespace: this.namespace }, "Starting to watch pods");
 
     // Start the watch
     const watchRequest = async () => {
@@ -50,10 +54,10 @@ export class PodWatcher {
           },
           (error: any) => {
             if (error) {
-              logger.error({ err: error }, "Watch error");
+              this.logger.error({ err: error }, "Watch error");
               // Reconnect after a delay
               if (!this.abortController?.signal.aborted) {
-                logger.info("Reconnecting in 5s...");
+                this.logger.info("Reconnecting in 5s...");
                 setTimeout(() => {
                   if (!this.abortController?.signal.aborted) {
                     watchRequest();
@@ -64,10 +68,10 @@ export class PodWatcher {
           },
         );
       } catch (error: any) {
-        logger.error({ err: error }, "Failed to start watch");
+        this.logger.error({ err: error }, "Failed to start watch");
         // Retry after delay
         if (!this.abortController?.signal.aborted) {
-          logger.info("Retrying in 5s...");
+          this.logger.info("Retrying in 5s...");
           setTimeout(() => {
             if (!this.abortController?.signal.aborted) {
               watchRequest();
@@ -88,7 +92,7 @@ export class PodWatcher {
     const chimpLabel = pod.metadata?.labels?.[namespaceLabel("chimp-id")];
 
     if (!chimpLabel) {
-      logger.warn(
+      this.logger.warn(
         { podName: pod.metadata?.name },
         "Pod missing chimp-id label, skipping",
       );
@@ -96,16 +100,16 @@ export class PodWatcher {
     }
 
     const chimpId = chimpLabel;
-    logger.info({ eventType: type, chimpId }, "Pod event");
+    this.logger.info({ eventType: type, chimpId }, "Pod event");
 
     try {
-      await this.eventHandler(chimpId, {
+      await this.eventHandler.handle(chimpId, {
         type: "pod_event",
         eventType: type,
         pod,
       });
     } catch (error) {
-      logger.error(
+      this.logger.error(
         { eventType: type, chimpId, err: error },
         "Error handling pod event",
       );
@@ -121,6 +125,6 @@ export class PodWatcher {
       this.abortController = null;
     }
 
-    logger.info("Stopped");
+    this.logger.info("Stopped");
   }
 }

@@ -1,4 +1,4 @@
-import { Logger, Protocol } from "@mnke/circus-shared";
+import { type Logger, Protocol } from "@mnke/circus-shared";
 import { serve } from "bun";
 import {
   type ActivityCallback,
@@ -6,26 +6,27 @@ import {
   type MessageHandler,
 } from "./chimp-input";
 
-const logger = Logger.createLogger("HttpInput");
-
 export class HttpInput extends ChimpInput {
   private port: number;
   private handler: MessageHandler;
   private onActivity: ActivityCallback;
   private onStopRequested: () => Promise<void>;
   private server: ReturnType<typeof serve> | null = null;
+  private logger: Logger.Logger;
 
   constructor(
     port: number,
     handler: MessageHandler,
     onActivity: ActivityCallback,
     onStopRequested: () => Promise<void>,
+    logger: Logger.Logger,
   ) {
     super();
     this.port = port;
     this.handler = handler;
     this.onActivity = onActivity;
     this.onStopRequested = onStopRequested;
+    this.logger = logger;
   }
 
   async start(): Promise<void> {
@@ -40,12 +41,15 @@ export class HttpInput extends ChimpInput {
               const command = Protocol.parseChimpCommand(payload);
 
               this.processCommand(command).catch((error) => {
-                logger.error({ err: error }, "Error processing HTTP command");
+                this.logger.error(
+                  { err: error },
+                  "Error processing HTTP command",
+                );
               });
 
               return new Response(null, { status: 202 });
             } catch (error) {
-              logger.error({ err: error }, "Invalid command");
+              this.logger.error({ err: error }, "Invalid command");
               return new Response(
                 JSON.stringify({ error: "Invalid command" }),
                 {
@@ -62,23 +66,23 @@ export class HttpInput extends ChimpInput {
       },
     });
 
-    logger.info({ port: this.port }, "HTTP server started");
+    this.logger.info({ port: this.port }, "HTTP server started");
   }
 
   private async processCommand(
     command: ReturnType<typeof Protocol.parseChimpCommand>,
   ): Promise<void> {
-    logger.info({ command: command.command }, "Processing HTTP command");
+    this.logger.info({ command: command.command }, "Processing HTTP command");
 
     try {
       const result = await this.handler(command);
-      logger.info({ command: command.command }, "Processed HTTP command");
+      this.logger.info({ command: command.command }, "Processed HTTP command");
 
       if (result === "stop") {
         await this.onStopRequested();
       }
     } catch (error) {
-      logger.error(
+      this.logger.error(
         { err: error, command: command.command },
         "Error processing HTTP command",
       );

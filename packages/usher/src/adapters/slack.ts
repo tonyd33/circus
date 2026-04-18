@@ -1,14 +1,13 @@
-import { Logger } from "@mnke/circus-shared";
+import type { Logger } from "@mnke/circus-shared";
 import type { Adapter, AdapterResult } from "./types.ts";
 
-const logger = Logger.createLogger("SlackAdapter");
-
 export class SlackAdapter implements Adapter {
+  constructor(private logger: Logger.Logger) {}
   async handleEvent(
     body: unknown,
     headers: Record<string, string>,
   ): Promise<AdapterResult> {
-    logger.info({ headers }, "Received Slack event");
+    this.logger.info({ headers }, "Received Slack event");
 
     const prompt = JSON.stringify(body);
 

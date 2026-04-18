@@ -1,9 +1,14 @@
-import type { Protocol } from "@mnke/circus-shared";
+import type { Logger, Protocol } from "@mnke/circus-shared";
 import { ChimpBrain, type PublishFn } from "@/chimp-brain";
 
 export class EchoBrain extends ChimpBrain {
-  constructor(chimpId: string, model: string, publish: PublishFn) {
-    super(chimpId, model, publish);
+  constructor(
+    chimpId: string,
+    model: string,
+    publish: PublishFn,
+    logger: Logger.Logger,
+  ) {
+    super(chimpId, model, publish, logger);
   }
 
   async handleMessage(

@@ -20,15 +20,15 @@ export interface Logger {
   warn(obj: object, msg?: string, ...args: unknown[]): void;
   error(msg: string, ...args: unknown[]): void;
   error(obj: object, msg?: string, ...args: unknown[]): void;
-  child(bindings: pino.Bindings): Logger;
+  child(bindings: Record<string, unknown>): Logger;
 }
 
-export function createLogger(component: string): Logger {
+export function createLogger(service: string): Logger {
   const baseLogger = pino({
     level: process.env.LOG_LEVEL || "info",
   });
 
-  return baseLogger.child({ component }) as unknown as Logger;
+  return baseLogger.child({ service }) as unknown as Logger;
 }
 
 /**
