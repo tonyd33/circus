@@ -16,7 +16,19 @@ kubectl get secret anthropic-api-key || {
 }
 eval "$(minikube -p minikube docker-env)"
 docker buildx bake
-deploy/dev/setup.sh
+
+# Deploy infra + OTel collector via kustomize
+kustomize build --enable-helm deploy/overlays/dev | kubectl apply -f-
+
+# Create MinIO test bucket
+echo "waiting to create test bucket..."
+kubectl wait --for=condition=available deploy/minio --timeout=5m
+kubectl exec -i deploy/minio -- sh <<EOF
+mc alias set local http://localhost:9000 minioadmin minioadmin
+mc mb --ignore-existing local/claude-sessions
+EOF
+
+# Deploy circus services via Helm
 helm upgrade \
   --install \
   circus \

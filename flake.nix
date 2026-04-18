@@ -40,6 +40,7 @@
               gitleaks
               kubernetes-helm
               redis
+              kustomize
             ];
           };
         }

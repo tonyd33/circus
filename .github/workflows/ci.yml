@@ -92,6 +92,3 @@ jobs:
 
       - name: Template Helm chart
         run: helm template circus charts/circus --values charts/circus/values.yaml
-
-      - name: Template Helm chart (dev values)
-        run: helm template circus charts/circus --values charts/circus/values-dev.yaml
