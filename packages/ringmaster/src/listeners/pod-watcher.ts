@@ -5,11 +5,11 @@
  */
 
 import * as k8s from "@kubernetes/client-node";
-import { createLogger } from "@mnke/circus-shared/logger";
+import { Logger } from "@mnke/circus-shared";
 import type { RingmasterEventHandler } from "../core/event-handler.ts";
 import { namespaceLabel } from "../lib/k8s.ts";
 
-const logger = createLogger("PodWatcher");
+const logger = Logger.createLogger("PodWatcher");
 
 export class PodWatcher {
   private kc: k8s.KubeConfig;

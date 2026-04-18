@@ -4,15 +4,15 @@
  * Manages chimp state in Redis
  */
 
-import { createLogger } from "@mnke/circus-shared/logger";
-import type {
-  ChimpState,
-  ChimpStatus,
-} from "@mnke/circus-shared/standards/chimp";
-import { Naming } from "@mnke/circus-shared/standards/chimp";
+import { Logger, Standards } from "@mnke/circus-shared";
+
+type ChimpState = Standards.Chimp.ChimpState;
+type ChimpStatus = Standards.Chimp.ChimpStatus;
+const Naming = Standards.Chimp.Naming;
+
 import type Redis from "ioredis";
 
-const logger = createLogger("RedisManager");
+const logger = Logger.createLogger("RedisManager");
 
 export class RedisManager {
   constructor(private redis: Redis) {}

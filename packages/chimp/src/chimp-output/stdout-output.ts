@@ -1,8 +1,8 @@
-import type { ChimpOutputMessage } from "@mnke/circus-shared/protocol";
+import type { Protocol } from "@mnke/circus-shared";
 import { ChimpOutput } from "./chimp-output";
 
 export class StdoutOutput extends ChimpOutput {
-  publish(message: ChimpOutputMessage): void {
+  publish(message: Protocol.ChimpOutputMessage): void {
     console.log(JSON.stringify(message));
   }
 }

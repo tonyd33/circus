@@ -1,5 +1,4 @@
-import { createLogger } from "@mnke/circus-shared/logger";
-import { parseChimpCommand } from "@mnke/circus-shared/protocol";
+import { Logger, Protocol } from "@mnke/circus-shared";
 import { serve } from "bun";
 import {
   type ActivityCallback,
@@ -7,7 +6,7 @@ import {
   type MessageHandler,
 } from "./chimp-input";
 
-const logger = createLogger("HttpInput");
+const logger = Logger.createLogger("HttpInput");
 
 export class HttpInput extends ChimpInput {
   private port: number;
@@ -38,7 +37,7 @@ export class HttpInput extends ChimpInput {
             this.onActivity();
             try {
               const payload = await req.json();
-              const command = parseChimpCommand(payload);
+              const command = Protocol.parseChimpCommand(payload);
 
               this.processCommand(command).catch((error) => {
                 logger.error({ err: error }, "Error processing HTTP command");
@@ -67,7 +66,7 @@ export class HttpInput extends ChimpInput {
   }
 
   private async processCommand(
-    command: ReturnType<typeof parseChimpCommand>,
+    command: ReturnType<typeof Protocol.parseChimpCommand>,
   ): Promise<void> {
     logger.info({ command: command.command }, "Processing HTTP command");
 

@@ -4,12 +4,11 @@
  * Manages Chimp lifecycle through event-driven orchestration
  */
 
-import { Standards } from "@mnke/circus-shared";
+import { Logger, Standards } from "@mnke/circus-shared";
 import {
   isNatsAlreadyExists,
   isNatsNotFound,
 } from "@mnke/circus-shared/errors";
-import { createLogger } from "@mnke/circus-shared/logger";
 import type { ServiceMetrics } from "@mnke/circus-shared/metrics";
 import Redis from "ioredis";
 import {
@@ -19,6 +18,7 @@ import {
   RetentionPolicy,
   StorageType,
 } from "nats";
+import type { ProfileLoader } from "./config/profile-loader.ts";
 import {
   createEventHandler,
   type RingmasterEventHandler,
@@ -30,7 +30,7 @@ import { ConsumerManager } from "./managers/consumer-manager.ts";
 import { JobManager } from "./managers/job-manager.ts";
 import { RedisManager } from "./managers/redis-manager.ts";
 
-const logger = createLogger("Ringmaster");
+const logger = Logger.createLogger("Ringmaster");
 
 export class Ringmaster {
   private jobManager: JobManager;
@@ -45,9 +45,9 @@ export class Ringmaster {
   private jsm: JetStreamManager | null = null;
   private config: RingmasterConfig;
 
-  constructor(config: RingmasterConfig) {
+  constructor(config: RingmasterConfig, profileLoader: ProfileLoader) {
     this.config = config;
-    this.jobManager = new JobManager(config);
+    this.jobManager = new JobManager(config, profileLoader);
     this.natsUrl = config.natsUrl;
     this.redisUrl = config.redisUrl;
   }
@@ -56,42 +56,35 @@ export class Ringmaster {
    * Initialize the Ringmaster
    */
   async start(): Promise<void> {
-    // Connect to Redis
     await this.connectRedis();
 
-    // Connect to NATS
     await this.connectNats();
 
     if (!this.nc) {
       throw new Error("Failed to establish NATS connection");
     }
 
-    // Ensure shared streams exist (idempotent)
     await this.ensureSharedStreams();
 
     if (!this.jsm) {
       throw new Error("JetStream manager not initialized");
     }
 
-    // Create components that need NATS connection
     this.consumerManager = new ConsumerManager(this.jsm);
 
     if (!this.redisManager) {
       throw new Error("Redis manager not initialized");
     }
 
-    // Create event handler with dependencies
     this.eventHandler = createEventHandler({
       jobManager: this.jobManager,
       consumerManager: this.consumerManager,
       redisManager: this.redisManager,
     });
 
-    // Create listeners that use the event handler
     this.podWatcher = new PodWatcher(this.config.namespace, this.eventHandler);
     this.messageListener = new MessageListener(this.nc, this.eventHandler);
 
-    // Start all listeners
     await Promise.all([this.messageListener.start(), this.podWatcher.start()]);
     logger.info("Ringmaster started");
   }
@@ -107,7 +100,6 @@ export class Ringmaster {
       await this.messageListener.stop();
     }
 
-    // Close Ringmaster's NATS connection (owned by Ringmaster)
     if (this.nc) {
       await this.nc.drain();
       await this.nc.close();

@@ -14,6 +14,26 @@ import { z } from "zod";
 export const PROTOCOL_VERSION = "0.1.0";
 
 // ============================================================================
+// CHIMP PROFILE TYPES
+// ============================================================================
+
+/**
+ * Brain type for Chimp agents
+ */
+export const BrainTypeEnum = z.enum(["claude", "opencode", "echo"]);
+export type ChimpBrainType = z.infer<typeof BrainTypeEnum>;
+
+/**
+ * Chimp profile configuration
+ */
+export const ChimpProfileSchema = z.object({
+  brain: BrainTypeEnum,
+  model: z.string(),
+  description: z.string().optional(),
+});
+export type ChimpProfile = z.infer<typeof ChimpProfileSchema>;
+
+// ============================================================================
 // INCOMING: Commands sent TO the chimp
 // ============================================================================
 
@@ -119,6 +139,17 @@ export const InitConfigSchema = z.object({
 });
 
 // ============================================================================
+// META EVENTS
+// ============================================================================
+
+export const MetaEventSchema = z.object({
+  type: z.enum(["output", "spawned"]),
+  profile: z.string(),
+  chimpId: z.string(),
+  timestamp: z.string(),
+});
+
+// ============================================================================
 // TypeScript types
 // ============================================================================
 
@@ -150,6 +181,9 @@ export type ChimpOutputMessage = z.infer<typeof ChimpOutputMessageSchema>;
 
 // Config type
 export type InitConfig = z.infer<typeof InitConfigSchema>;
+
+// Meta event types
+export type MetaEvent = z.infer<typeof MetaEventSchema>;
 
 // ============================================================================
 // Validation functions

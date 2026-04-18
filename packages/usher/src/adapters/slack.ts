@@ -1,7 +1,7 @@
-import { createLogger } from "@mnke/circus-shared/logger";
+import { Logger } from "@mnke/circus-shared";
 import type { Adapter, AdapterResult } from "./types.ts";
 
-const logger = createLogger("SlackAdapter");
+const logger = Logger.createLogger("SlackAdapter");
 
 export class SlackAdapter implements Adapter {
   async handleEvent(

@@ -1,15 +1,15 @@
 #!/usr/bin/env bun
 
+import { Logger } from "@mnke/circus-shared";
 import { EnvReader as ER } from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
-import { createLogger } from "@mnke/circus-shared/logger";
 import { serve } from "bun";
 import index from "./index.html";
 import { createActivityRoute } from "./routes/activity";
 import { createChimpsRoutes } from "./routes/chimps";
 import { MessageRouter } from "./routes/messages";
 
-const logger = createLogger("Dashboard");
+const logger = Logger.createLogger("Dashboard");
 
 interface Config {
   ledgerUrl: string;

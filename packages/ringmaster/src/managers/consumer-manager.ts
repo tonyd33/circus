@@ -5,15 +5,14 @@
  * Borrows NATS connection from Ringmaster - does not own the connection lifecycle
  */
 
-import { Standards } from "@mnke/circus-shared";
+import { Logger, Standards } from "@mnke/circus-shared";
 import {
   isNatsAlreadyExists,
   isNatsNotFound,
 } from "@mnke/circus-shared/errors";
-import { createLogger } from "@mnke/circus-shared/logger";
 import { AckPolicy, DeliverPolicy, type JetStreamManager } from "nats";
 
-const logger = createLogger("ConsumerManager");
+const logger = Logger.createLogger("ConsumerManager");
 
 export class ConsumerManager {
   private jsm: JetStreamManager;
@@ -29,7 +28,6 @@ export class ConsumerManager {
     const inputStreamName = Standards.Chimp.Naming.inputStreamName();
     const consumerName = `chimp-${chimpId}`;
 
-    // Check if consumer already exists
     try {
       await this.jsm.consumers.info(inputStreamName, consumerName);
       logger.debug(
@@ -38,16 +36,12 @@ export class ConsumerManager {
       );
       return;
     } catch (error) {
-      // Consumer doesn't exist (this is expected)
       if (isNatsNotFound(error)) {
-        // Continue to creation
       } else {
         throw error;
       }
     }
 
-    // Create durable consumer that only processes input messages for this chimp
-    // Start from the message sequence that triggered this creation
     try {
       await this.jsm.consumers.add(inputStreamName, {
         durable_name: consumerName,

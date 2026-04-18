@@ -1,9 +1,8 @@
 #!/usr/bin/env bun
 
-import { Standards } from "@mnke/circus-shared";
+import { Logger, Standards } from "@mnke/circus-shared";
 import { EnvReader as ER } from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
-import { createLogger } from "@mnke/circus-shared/logger";
 import { Chimp } from "./chimp";
 import {
   ClaudeChimp,
@@ -12,11 +11,12 @@ import {
   type PublishFn,
 } from "./chimp-brain";
 
-const logger = createLogger("Chimp");
+const logger = Logger.createLogger("Chimp");
 
 async function main() {
   const result = ER.record({
     chimpId: ER.str(Standards.Chimp.Env.chimpId),
+    model: ER.str(Standards.Chimp.Env.model).fallback("big-pickle"),
     natsUrl: ER.str(Standards.Chimp.Env.natsUrl).fallback(
       "nats://localhost:4222",
     ),
@@ -33,7 +33,6 @@ async function main() {
 
   const config = result.value;
 
-  // Validate input/output modes
   if (config.inputMode !== "nats" && config.inputMode !== "http") {
     logger.error(
       `Invalid input mode: ${config.inputMode}. Use "nats" or "http"`,
@@ -56,14 +55,14 @@ async function main() {
     "Starting Chimp",
   );
 
-  const brainFactory = (chimpId: string, publish: PublishFn) => {
+  const brainFactory = (chimpId: string, model: string, publish: PublishFn) => {
     switch (config.brainType) {
       case "claude":
-        return new ClaudeChimp(chimpId, publish);
+        return new ClaudeChimp(chimpId, model, publish);
       case "opencode":
-        return new OpencodeBrain(chimpId, publish);
+        return new OpencodeBrain(chimpId, model, publish);
       case "echo":
-        return new EchoBrain(chimpId, publish);
+        return new EchoBrain(chimpId, model, publish);
       default:
         throw new Error(`Unknown brain type: ${config.brainType}`);
     }
@@ -72,6 +71,7 @@ async function main() {
   const runtime = new Chimp(
     {
       chimpId: config.chimpId,
+      model: config.model,
       natsUrl: config.natsUrl,
       inputMode: config.inputMode as "nats" | "http",
       outputMode: config.outputMode as "nats" | "stdout",

@@ -58,7 +58,6 @@ export class ServiceMetrics {
     this.serviceName = config.serviceName;
     this.registry = config.registry || new Registry();
 
-    // Collect default metrics if enabled
     if (config.collectDefaultMetrics !== false) {
       collectDefaultMetrics({
         register: this.registry,
@@ -66,7 +65,6 @@ export class ServiceMetrics {
       });
     }
 
-    // HTTP metrics
     this.httpRequestDuration = new Histogram({
       name: `circus_${this.serviceName}_http_request_duration_seconds`,
       help: "Duration of HTTP requests in seconds",
@@ -82,7 +80,6 @@ export class ServiceMetrics {
       registers: [this.registry],
     });
 
-    // NATS metrics
     this.natsMessagesPublished = new Counter({
       name: `circus_${this.serviceName}_nats_messages_published_total`,
       help: "Total number of NATS messages published",
@@ -112,7 +109,6 @@ export class ServiceMetrics {
       buckets: [0.01, 0.05, 0.1, 0.5, 1, 2, 5, 10],
     });
 
-    // Error metrics
     this.errorTotal = new Counter({
       name: `circus_${this.serviceName}_errors_total`,
       help: "Total number of errors",
@@ -120,7 +116,6 @@ export class ServiceMetrics {
       registers: [this.registry],
     });
 
-    // Connection metrics
     this.activeConnections = new Gauge({
       name: `circus_${this.serviceName}_active_connections`,
       help: "Number of active connections",

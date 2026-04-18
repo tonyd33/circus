@@ -1,7 +1,7 @@
-import { createLogger } from "@mnke/circus-shared/logger";
+import { Logger } from "@mnke/circus-shared";
 import type { Adapter, AdapterResult } from "./types.ts";
 
-const logger = createLogger("DebugAdapter");
+const logger = Logger.createLogger("DebugAdapter");
 
 export class DebugAdapter implements Adapter {
   async handleEvent(

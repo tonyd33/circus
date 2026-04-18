@@ -1,7 +1,7 @@
-import type { ChimpCommand } from "@mnke/circus-shared/protocol";
+import type { Protocol } from "@mnke/circus-shared";
 
 export type MessageHandler = (
-  command: ChimpCommand,
+  command: Protocol.ChimpCommand,
 ) => Promise<"continue" | "stop">;
 
 export type ActivityCallback = () => void;

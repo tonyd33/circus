@@ -1,10 +1,9 @@
-import { Standards } from "@mnke/circus-shared";
-import { createLogger } from "@mnke/circus-shared/logger";
+import { Logger, Standards } from "@mnke/circus-shared";
 import { connect, type NatsConnection } from "nats";
 import type { Adapter } from "./adapters/index.ts";
 import type { RouteConfig } from "./types.ts";
 
-const logger = createLogger("Usher");
+const logger = Logger.createLogger("Usher");
 
 export class Usher {
   private nc: NatsConnection | null = null;

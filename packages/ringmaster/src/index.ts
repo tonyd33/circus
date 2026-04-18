@@ -1,14 +1,35 @@
 #!/usr/bin/env bun
 
-import { Standards } from "@mnke/circus-shared";
+import * as Commander from "@commander-js/extra-typings";
+import { Logger, Standards } from "@mnke/circus-shared";
 import { EnvReader as ER } from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
-import { createLogger } from "@mnke/circus-shared/logger";
+import { createProfileLoader } from "./config/profile-loader.ts";
 import type { RingmasterConfig } from "./core/types.ts";
 import { loadChimpJobConfig } from "./lib/chimp-job-config.ts";
 import { Ringmaster } from "./ringmaster.ts";
 
-const logger = createLogger("Ringmaster");
+const program = new Commander.Command()
+  .name("ringmaster")
+  .description("Chimp lifecycle orchestrator")
+  .option("-f, --profile-file <path>", "Path to profiles JSON file")
+  .option(
+    "-n, --nats-url <url>",
+    "NATS connection URL",
+    "nats://localhost:4222",
+  )
+  .option(
+    "-r, --redis-url <url>",
+    "Redis connection URL",
+    "redis://localhost:6379",
+  )
+  .option("--namespace <ns>", "Kubernetes namespace", "default")
+  .option("--chimp-image <image>", "Chimp container image", "circus-chimp")
+  .parse(process.argv);
+
+const opts = program.opts();
+
+const logger = Logger.createLogger("Ringmaster");
 
 let ringmaster: Ringmaster | null = null;
 
@@ -24,12 +45,9 @@ process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
 async function main() {
+  const profileFile = opts.profileFile;
+
   const result = ER.record({
-    natsUrl: ER.str("NATS_URL").fallback("nats://localhost:4222"),
-    redisUrl: ER.str("REDIS_URL").fallback("redis://localhost:6379"),
-    namespace: ER.str("NAMESPACE").fallback("default"),
-    chimpImage: ER.str("CHIMP_IMAGE").fallback("circus-chimp"),
-    chimpBrainType: ER.str(Standards.Chimp.Env.brainType).fallback("echo"),
     chimpJobConfigPath: ER.str("CHIMP_JOB_CONFIG_PATH").fallback(""),
   }).read(process.env).value;
 
@@ -43,18 +61,21 @@ async function main() {
     envConfig.chimpJobConfigPath || undefined,
   );
 
+  const profileLoader = await createProfileLoader(
+    profileFile ?? "/etc/circus/ringmaster/profiles.json",
+  );
+
   const config: RingmasterConfig = {
-    natsUrl: envConfig.natsUrl,
-    redisUrl: envConfig.redisUrl,
-    namespace: envConfig.namespace,
-    chimpImage: envConfig.chimpImage,
-    chimpBrainType: envConfig.chimpBrainType,
+    natsUrl: opts.natsUrl,
+    redisUrl: opts.redisUrl,
+    namespace: opts.namespace,
+    chimpImage: opts.chimpImage,
     chimpJobConfig,
   };
 
-  logger.info({ config }, "Ringmaster starting");
+  logger.info({ config, profileFile }, "Ringmaster starting");
 
-  ringmaster = new Ringmaster(config);
+  ringmaster = new Ringmaster(config, profileLoader);
 
   await ringmaster.start();
 

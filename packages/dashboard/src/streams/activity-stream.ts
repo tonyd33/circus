@@ -1,10 +1,4 @@
-import {
-  type ChimpCommand,
-  type ChimpOutputMessage,
-  safeParseChimpCommand,
-  safeParseChimpOutputMessage,
-} from "@mnke/circus-shared/protocol";
-import { Naming } from "@mnke/circus-shared/standards/chimp";
+import { Protocol, Standards } from "@mnke/circus-shared";
 import {
   AckPolicy,
   type Consumer,
@@ -21,7 +15,7 @@ interface ActivityEvent {
   type: "input" | "output";
   messageType: string;
   timestamp: string;
-  data: ChimpCommand | ChimpOutputMessage | unknown;
+  data: Protocol.ChimpCommand | Protocol.ChimpOutputMessage | unknown;
 }
 
 export async function createActivityStream(
@@ -70,7 +64,7 @@ export async function createActivityStream(
         let event: ActivityEvent;
 
         if (type === "input") {
-          const parsed = safeParseChimpCommand(raw);
+          const parsed = Protocol.safeParseChimpCommand(raw);
           event = {
             id: msg.seq.toString(),
             type,
@@ -79,7 +73,7 @@ export async function createActivityStream(
             data: parsed.success ? parsed.data : raw,
           };
         } else {
-          const parsed = safeParseChimpOutputMessage(raw);
+          const parsed = Protocol.safeParseChimpOutputMessage(raw);
           event = {
             id: msg.seq.toString(),
             type,
@@ -99,27 +93,31 @@ export async function createActivityStream(
 
   const tasks: Promise<void>[] = [];
   try {
-    // Input stream — ephemeral consumer
-    const inputInfo = await jsm.consumers.add(Naming.inputStreamName(), {
-      ack_policy: AckPolicy.None,
-      filter_subject: Naming.inputSubject(chimpId),
-      deliver_policy: DeliverPolicy.All,
-    });
+    const inputInfo = await jsm.consumers.add(
+      Standards.Chimp.Naming.inputStreamName(),
+      {
+        ack_policy: AckPolicy.None,
+        filter_subject: Standards.Chimp.Naming.inputSubject(chimpId),
+        deliver_policy: DeliverPolicy.All,
+      },
+    );
     inputConsumer = await js.consumers.get(
-      Naming.inputStreamName(),
+      Standards.Chimp.Naming.inputStreamName(),
       inputInfo.name,
     );
     inputMessages = await inputConsumer.consume();
     processMessages(inputMessages, "input");
 
-    // Output stream — ephemeral consumer
-    const outputInfo = await jsm.consumers.add(Naming.outputStreamName(), {
-      ack_policy: AckPolicy.None,
-      filter_subject: Naming.outputSubject(chimpId),
-      deliver_policy: DeliverPolicy.All,
-    });
+    const outputInfo = await jsm.consumers.add(
+      Standards.Chimp.Naming.outputStreamName(),
+      {
+        ack_policy: AckPolicy.None,
+        filter_subject: Standards.Chimp.Naming.outputSubject(chimpId),
+        deliver_policy: DeliverPolicy.All,
+      },
+    );
     outputConsumer = await js.consumers.get(
-      Naming.outputStreamName(),
+      Standards.Chimp.Naming.outputStreamName(),
       outputInfo.name,
     );
     outputMessages = await outputConsumer.consume();

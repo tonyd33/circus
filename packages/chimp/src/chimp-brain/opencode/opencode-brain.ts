@@ -4,13 +4,9 @@
 
 import * as path from "node:path";
 import type { S3Client } from "@aws-sdk/client-s3";
+import { Protocol } from "@mnke/circus-shared";
 import { EnvReader as ER, Typing } from "@mnke/circus-shared/lib";
 import { Either as E } from "@mnke/circus-shared/lib/fp";
-import {
-  type ChimpCommand,
-  createAgentMessageResponse,
-  createOpencodeEventMessage,
-} from "@mnke/circus-shared/protocol";
 import * as Opencode from "@opencode-ai/sdk";
 import { ChimpBrain, type PublishFn } from "@/chimp-brain";
 import {
@@ -51,7 +47,7 @@ export class OpencodeBrain extends ChimpBrain {
       try {
         for await (const event of events.stream) {
           if (this.eventAbortController?.signal.aborted) break;
-          this.publish(createOpencodeEventMessage(event));
+          this.publish(Protocol.createOpencodeEventMessage(event));
         }
       } catch (err) {
         if ((err as Error).name === "AbortError") {
@@ -193,7 +189,9 @@ export class OpencodeBrain extends ChimpBrain {
     }
   }
 
-  async handleMessage(command: ChimpCommand): Promise<"continue" | "stop"> {
+  async handleMessage(
+    command: Protocol.ChimpCommand,
+  ): Promise<"continue" | "stop"> {
     this.log("info", "Handling command", { command: command.command });
 
     if (this.client == null || this.sessionId == null) {
@@ -212,7 +210,7 @@ export class OpencodeBrain extends ChimpBrain {
             parts: [{ type: "text", text: userPrompt }],
             model: {
               providerID: "opencode",
-              modelID: "big-pickle",
+              modelID: this.model,
             },
           },
           throwOnError: true,
@@ -221,7 +219,9 @@ export class OpencodeBrain extends ChimpBrain {
           .flatMap((part) => (part.type === "text" ? [part.text] : []))
           .join("\n");
 
-        this.publish(createAgentMessageResponse(texts, this.sessionId));
+        this.publish(
+          Protocol.createAgentMessageResponse(texts, this.sessionId),
+        );
         break;
       }
 

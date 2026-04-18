@@ -5,14 +5,11 @@
  * (Slack, GitHub, Discord, console logging, etc.)
  */
 
-import { createLogger, type Logger } from "@mnke/circus-shared/logger";
+import { Logger, Protocol, Standards } from "@mnke/circus-shared";
 import {
   createMetrics,
   type ServiceMetrics,
 } from "@mnke/circus-shared/metrics";
-import type { ChimpOutputMessage } from "@mnke/circus-shared/protocol";
-import { safeParseChimpOutputMessage } from "@mnke/circus-shared/protocol";
-import { Naming } from "@mnke/circus-shared/standards/chimp";
 import { connect, type NatsConnection } from "nats";
 import type { OutputHandler } from "./handlers.ts";
 import { ConsoleLoggerHandler } from "./handlers.ts";
@@ -31,10 +28,15 @@ export interface BullhornConfig {
   logger?: any;
 
   /**
-   * NATS URL
-   * If not provided, uses NATS_URL env var or defaults to localhost
+   * NATS URL (required)
    */
-  natsUrl?: string;
+  natsUrl: string;
+
+  /**
+   * Port for metrics server
+   * If not provided, defaults to 9090
+   */
+  metricsPort?: number;
 }
 
 /**
@@ -46,18 +48,16 @@ export interface BullhornConfig {
  */
 export class Bullhorn {
   private handlers: OutputHandler[];
-  private logger: Logger;
+  private logger: Logger.Logger;
   private metrics: ServiceMetrics;
   private natsUrl: string;
   private nc: NatsConnection | null = null;
 
-  constructor(config: BullhornConfig = {}) {
-    this.logger = config.logger ?? createLogger("bullhorn");
+  constructor(config: BullhornConfig) {
+    this.logger = config.logger ?? Logger.createLogger("bullhorn");
     this.metrics = createMetrics({ serviceName: "bullhorn" });
-    this.natsUrl =
-      config.natsUrl ?? process.env.NATS_URL ?? "nats://localhost:4222";
+    this.natsUrl = config.natsUrl;
 
-    // Use provided handlers or default to ConsoleLoggerHandler
     this.handlers = config.handlers ?? [new ConsoleLoggerHandler(this.logger)];
   }
 
@@ -67,7 +67,6 @@ export class Bullhorn {
   async initialize(): Promise<void> {
     this.logger.info("Initializing Bullhorn...");
 
-    // Connect to NATS
     this.nc = await connect({
       servers: this.natsUrl,
       maxReconnectAttempts: -1,
@@ -77,7 +76,6 @@ export class Bullhorn {
     this.logger.info({ url: this.natsUrl }, "Connected to NATS");
     this.metrics.incActiveConnections("nats");
 
-    // Initialize all handlers
     for (const handler of this.handlers) {
       if (handler.initialize) {
         await handler.initialize();
@@ -98,29 +96,30 @@ export class Bullhorn {
       throw new Error("Bullhorn not initialized. Call initialize() first.");
     }
 
-    // Subscribe to all chimp output messages
     const sub = this.nc.subscribe("chimps.outputs.>");
     this.logger.info("Subscribed to chimps.outputs.>");
 
-    // Process messages
     (async () => {
       for await (const msg of sub) {
         const startTime = Date.now();
         try {
-          // Extract chimp ID from subject (e.g., "chimps.outputs.slack-C123" -> "slack-C123")
           const subject = msg.subject;
           this.metrics.recordNatsReceived(subject);
 
-          const chimpId = Naming.parseOutputSubject(subject);
-          if (chimpId == null) {
+          const parsed = Standards.Chimp.Naming.parseOutputSubject(subject);
+          if (parsed == null) {
             this.logger.warn({ subject }, "Invalid subject format");
             this.metrics.recordError("invalid_subject", "warning");
             continue;
           }
 
+          const { profile, chimpId } = parsed;
+
           const rawMessage = msg.json();
 
-          await this.handleMessage(chimpId, rawMessage);
+          await this.handleMessage(profile, chimpId, rawMessage);
+
+          await this.publishMetaEvent(profile, chimpId);
 
           const duration = (Date.now() - startTime) / 1000;
           this.metrics.recordNatsProcessed(subject, true, duration);
@@ -137,23 +136,26 @@ export class Bullhorn {
       "Bullhorn started. Listening for chimp output messages...",
     );
 
-    // Keep process alive
     await new Promise(() => {});
   }
 
   /**
    * Handle an output message from a chimp
    *
-   * @param chimpName - Name of the chimp that sent the message
+   * @param profile - Profile name (e.g., "slack", "github")
+   * @param chimpId - ID of the chimp that sent the message
    * @param message - The raw output message (will be validated)
    */
-  async handleMessage(chimpName: string, message: unknown): Promise<void> {
-    // Validate the message
-    const result = safeParseChimpOutputMessage(message);
+  async handleMessage(
+    profile: string,
+    chimpId: string,
+    message: unknown,
+  ): Promise<void> {
+    const result = Protocol.safeParseChimpOutputMessage(message);
 
     if (!result.success) {
       this.logger.error(
-        { chimpName, error: result.error, message },
+        { profile, chimpId, error: result.error, message },
         "Invalid output message from chimp",
       );
       return;
@@ -162,22 +164,19 @@ export class Bullhorn {
     const validatedMessage = result.data;
 
     this.logger.debug(
-      { chimpName, messageType: validatedMessage.type },
+      { profile, chimpId, messageType: validatedMessage.type },
       "Processing chimp output message",
     );
 
-    // Pass to all handlers
     await Promise.allSettled(
-      this.handlers.map((handler) =>
-        handler.handle(chimpName, validatedMessage),
-      ),
+      this.handlers.map((handler) => handler.handle(chimpId, validatedMessage)),
     ).then((results) => {
-      // Log any handler failures
       results.forEach((result, index) => {
         if (result.status === "rejected") {
           this.logger.error(
             {
-              chimpName,
+              profile,
+              chimpId,
               handlerIndex: index,
               error: result.reason,
             },
@@ -186,6 +185,37 @@ export class Bullhorn {
         }
       });
     });
+  }
+
+  /**
+   * Publish a meta event after handling an output message
+   */
+  private async publishMetaEvent(
+    profile: string,
+    chimpId: string,
+  ): Promise<void> {
+    if (!this.nc) {
+      return;
+    }
+
+    const metaEvent: Protocol.MetaEvent = {
+      type: "output",
+      profile,
+      chimpId,
+      timestamp: new Date().toISOString(),
+    };
+
+    const subject = Standards.Chimp.Naming.metaSubject(profile, chimpId);
+
+    try {
+      this.nc.publish(subject, JSON.stringify(metaEvent));
+      this.logger.debug({ subject, profile, chimpId }, "Published meta event");
+    } catch (error) {
+      this.logger.error(
+        { err: error, subject },
+        "Failed to publish meta event",
+      );
+    }
   }
 
   /**

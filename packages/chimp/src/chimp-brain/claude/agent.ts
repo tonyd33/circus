@@ -2,12 +2,11 @@
  * Claude Agent SDK integration and message processing
  */
 import * as ClaudeSDK from "@anthropic-ai/claude-agent-sdk";
-import type { LogLevel } from "@mnke/circus-shared/logger";
-import { createAgentMessageResponse } from "@mnke/circus-shared/protocol";
+import { type Logger, Protocol } from "@mnke/circus-shared";
 import type { PublishFn } from "@/chimp-brain";
 
 type LogFn = (
-  level: LogLevel,
+  level: Logger.LogLevel,
   message: string,
   data?: Record<string, unknown>,
 ) => void;
@@ -95,7 +94,7 @@ export async function processWithClaude(
         if (block.type === "text") {
           responseText += block.text;
           if (sessionId != null) {
-            publish(createAgentMessageResponse(block.text, sessionId));
+            publish(Protocol.createAgentMessageResponse(block.text, sessionId));
           }
         }
       }

@@ -6,7 +6,7 @@
  */
 
 import type * as k8s from "@kubernetes/client-node";
-import type { ChimpStatus } from "@mnke/circus-shared/standards/chimp";
+import type { Standards } from "@mnke/circus-shared";
 
 /**
  * Core state - minimal stub for decision making
@@ -37,14 +37,16 @@ export type Action =
   | { type: "create_job" }
   | { type: "create_consumer"; startSequence: number }
   | { type: "delete_consumer" }
-  | { type: "upsert_state"; status: ChimpStatus }
+  | { type: "upsert_state"; status: Standards.Chimp.ChimpStatus }
   | { type: "delete_state" }
   | { type: "noop" };
 
 /**
- * Map K8s pod phase to ChimpStatus
+ * Map K8s pod phase to Standards.Chimp.ChimpStatus
  */
-function podPhaseToStatus(phase: string | undefined): ChimpStatus {
+function podPhaseToStatus(
+  phase: string | undefined,
+): Standards.Chimp.ChimpStatus {
   switch (phase) {
     case "Pending":
       return "pending";
@@ -90,7 +92,6 @@ export function decideOnPodEvent(
     };
   }
 
-  // ADDED or MODIFIED: update state
   return {
     actions: [{ type: "upsert_state", status }],
     reason: `Pod ${eventType} with phase ${phase} - updating state to ${status}`,
@@ -104,13 +105,13 @@ export function decideOnMessageReceived(
   state: CoreState,
   messageSequence: number,
 ): Decision {
-  // Idempotently ensure consumer and job exist
   return {
     actions: [
       { type: "create_consumer", startSequence: messageSequence },
       { type: "create_job" },
+      { type: "upsert_state", status: "running" },
     ],
-    reason: "Message received - ensuring consumer and job exist",
+    reason: "Message received - ensuring consumer, job, and state exist",
   };
 }
 

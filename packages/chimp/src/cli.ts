@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import * as Commander from "@commander-js/extra-typings";
-import type { ChimpCommand } from "@mnke/circus-shared/protocol";
+import type { Protocol } from "@mnke/circus-shared";
 
 const DEFAULT_PORT = 5928;
 
@@ -9,7 +9,10 @@ interface GlobalOpts {
   port: string;
 }
 
-async function sendCommand(port: number, command: ChimpCommand): Promise<void> {
+async function sendCommand(
+  port: number,
+  command: Protocol.ChimpCommand,
+): Promise<void> {
   const res = await fetch(`http://localhost:${port}/command`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -36,7 +39,7 @@ program
   .action(async (localOpts, cmd) => {
     const globalOpts = cmd.optsWithGlobals() as GlobalOpts;
     const port = parseInt(globalOpts.port, 10);
-    const command: ChimpCommand = {
+    const command: Protocol.ChimpCommand = {
       command: "send-agent-message",
       args: { prompt: localOpts.prompt },
     };
@@ -53,7 +56,7 @@ program
   .action(async (localOpts, cmd) => {
     const globalOpts = cmd.optsWithGlobals() as GlobalOpts;
     const port = parseInt(globalOpts.port, 10);
-    const command: ChimpCommand = {
+    const command: Protocol.ChimpCommand = {
       command: "clone-repo",
       args: {
         url: localOpts.url,
@@ -72,7 +75,7 @@ program
   .action(async (localOpts, cmd) => {
     const globalOpts = cmd.optsWithGlobals() as GlobalOpts;
     const port = parseInt(globalOpts.port, 10);
-    const command: ChimpCommand = {
+    const command: Protocol.ChimpCommand = {
       command: "set-working-dir",
       args: { path: localOpts.path },
     };
@@ -86,7 +89,7 @@ program
   .action(async (_localOpts, cmd) => {
     const globalOpts = cmd.optsWithGlobals() as GlobalOpts;
     const port = parseInt(globalOpts.port, 10);
-    const command: ChimpCommand = {
+    const command: Protocol.ChimpCommand = {
       command: "stop",
     };
     await sendCommand(port, command);

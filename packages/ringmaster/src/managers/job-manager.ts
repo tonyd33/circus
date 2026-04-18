@@ -5,24 +5,24 @@
  */
 
 import * as k8s from "@kubernetes/client-node";
-import { Standards } from "@mnke/circus-shared";
-import { createLogger } from "@mnke/circus-shared/logger";
+import { Logger, Standards } from "@mnke/circus-shared";
+import type { ProfileLoader } from "../config/profile-loader.ts";
 import type { RingmasterConfig } from "../core/types.ts";
 import type { ChimpJobConfig } from "../lib/chimp-job-config.ts";
 import { namespaceLabel } from "../lib/k8s.ts";
 import { isK8sConflict } from "../utils/k8s-errors.ts";
 
-const logger = createLogger("JobManager");
+const logger = Logger.createLogger("JobManager");
 
 export class JobManager {
   private k8sBatchApi: k8s.BatchV1Api;
   private namespace: string;
   private chimpImage: string;
   private natsUrl: string;
-  private chimpBrainType: string;
+  private profileLoader: ProfileLoader;
   private chimpJobConfig: ChimpJobConfig;
 
-  constructor(config: RingmasterConfig) {
+  constructor(config: RingmasterConfig, profileLoader: ProfileLoader) {
     const kc = new k8s.KubeConfig();
     kc.loadFromDefault();
 
@@ -30,7 +30,7 @@ export class JobManager {
     this.namespace = config.namespace;
     this.chimpImage = config.chimpImage;
     this.natsUrl = config.natsUrl;
-    this.chimpBrainType = config.chimpBrainType;
+    this.profileLoader = profileLoader;
     this.chimpJobConfig = config.chimpJobConfig;
   }
 
@@ -39,6 +39,10 @@ export class JobManager {
    */
   async createJob(chimpId: string): Promise<void> {
     const jobName = Standards.Chimp.Naming.podName(chimpId);
+
+    const profileData = this.profileLoader.getProfile("default");
+    const brainType = profileData?.brain ?? "echo";
+    const model = profileData?.model ?? "haiku-4-5";
 
     const job: k8s.V1Job = {
       apiVersion: "batch/v1",
@@ -78,7 +82,11 @@ export class JobManager {
                   },
                   {
                     name: Standards.Chimp.Env.brainType,
-                    value: this.chimpBrainType,
+                    value: brainType,
+                  },
+                  {
+                    name: Standards.Chimp.Env.model,
+                    value: model,
                   },
                   ...this.chimpJobConfig.extraEnv,
                 ],

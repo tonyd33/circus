@@ -71,9 +71,12 @@ describe("decideOnMessageReceived", () => {
     expect(decision.actions).toEqual([
       { type: "create_consumer", startSequence: 42 },
       { type: "create_job" },
+      { type: "upsert_state", status: "running" },
     ]);
     expect(decision.reason).toContain("Message received");
-    expect(decision.reason).toContain("ensuring consumer and job exist");
+    expect(decision.reason).toContain(
+      "ensuring consumer, job, and state exist",
+    );
   });
 
   test("handles different message sequences", () => {
@@ -89,7 +92,7 @@ describe("decideOnMessageReceived", () => {
   test("always creates both consumer and job", () => {
     const decision = decideOnMessageReceived(baseState, 1);
 
-    expect(decision.actions).toHaveLength(2);
+    expect(decision.actions).toHaveLength(3);
     const [first, second] = decision.actions;
     expect(first?.type).toBe("create_consumer");
     expect(second?.type).toBe("create_job");
@@ -128,6 +131,7 @@ describe("decide (main router)", () => {
     expect(decision.actions).toEqual([
       { type: "create_consumer", startSequence: 50 },
       { type: "create_job" },
+      { type: "upsert_state", status: "running" },
     ]);
     expect(decision.reason).toContain("Message received");
   });
@@ -179,6 +183,7 @@ describe("Simplified event-driven architecture", () => {
     expect(decision.actions).toEqual([
       { type: "create_consumer", startSequence: 10 },
       { type: "create_job" },
+      { type: "upsert_state", status: "running" },
     ]);
   });
 
@@ -226,7 +231,7 @@ describe("Simplified event-driven architecture", () => {
       type: "message_received",
       messageSequence: 1,
     });
-    expect(decision1.actions).toHaveLength(2);
+    expect(decision1.actions).toHaveLength(3);
 
     const pod: any = {};
     const decision2 = decide(minimalState, {

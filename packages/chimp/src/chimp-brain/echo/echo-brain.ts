@@ -1,12 +1,14 @@
-import type { ChimpCommand } from "@mnke/circus-shared/protocol";
+import type { Protocol } from "@mnke/circus-shared";
 import { ChimpBrain, type PublishFn } from "@/chimp-brain";
 
 export class EchoBrain extends ChimpBrain {
-  constructor(chimpId: string, publish: PublishFn) {
-    super(chimpId, publish);
+  constructor(chimpId: string, model: string, publish: PublishFn) {
+    super(chimpId, model, publish);
   }
 
-  async handleMessage(command: ChimpCommand): Promise<"continue" | "stop"> {
+  async handleMessage(
+    command: Protocol.ChimpCommand,
+  ): Promise<"continue" | "stop"> {
     await new Promise((resolve) => setTimeout(resolve, 1000));
     this.log("info", `Echo: ${command.command}`);
     if (command.command === "stop") return "stop";

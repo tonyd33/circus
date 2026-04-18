@@ -1,5 +1,5 @@
-import type { ChimpOutputMessage } from "@mnke/circus-shared/protocol";
+import type { Protocol } from "@mnke/circus-shared";
 
 export abstract class ChimpOutput {
-  abstract publish(message: ChimpOutputMessage): void;
+  abstract publish(message: Protocol.ChimpOutputMessage): void;
 }

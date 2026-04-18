@@ -4,8 +4,10 @@
  * The Ringmaster manages Chimp lifecycle (pods + NATS streams)
  */
 
-import type { ChimpStatus } from "@mnke/circus-shared/standards/chimp";
+import type { Standards } from "@mnke/circus-shared";
 import type { ChimpJobConfig } from "../lib/chimp-job-config.ts";
+
+type ChimpStatus = Standards.Chimp.ChimpStatus;
 
 /**
  * Configuration for Ringmaster
@@ -15,7 +17,6 @@ export interface RingmasterConfig {
   redisUrl: string;
   namespace: string;
   chimpImage: string;
-  chimpBrainType: string;
   chimpJobConfig: ChimpJobConfig;
 }
 

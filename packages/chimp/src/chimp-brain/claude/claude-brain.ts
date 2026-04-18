@@ -4,12 +4,9 @@
 
 import * as path from "node:path";
 import type { S3Client } from "@aws-sdk/client-s3";
+import { Protocol } from "@mnke/circus-shared";
 import { EnvReader as ER, Typing } from "@mnke/circus-shared/lib";
 import { Either as E } from "@mnke/circus-shared/lib/fp";
-import {
-  type ChimpCommand,
-  createAgentMessageResponse,
-} from "@mnke/circus-shared/protocol";
 import { ChimpBrain, type PublishFn } from "@/chimp-brain";
 import { processWithClaude } from "@/chimp-brain/claude/agent";
 import {
@@ -24,7 +21,6 @@ import { cloneRepo } from "@/lib/tooling";
 export class ClaudeChimp extends ChimpBrain {
   private messageCount = 0;
   private sessionId?: string;
-  private model = "claude-haiku-4-5";
   private allowedTools: string[] = [];
   private workingDir = process.cwd();
   private s3Client: S3Client | null = null;
@@ -105,7 +101,9 @@ export class ClaudeChimp extends ChimpBrain {
     }
   }
 
-  async handleMessage(command: ChimpCommand): Promise<"continue" | "stop"> {
+  async handleMessage(
+    command: Protocol.ChimpCommand,
+  ): Promise<"continue" | "stop"> {
     this.log("info", "Handling command", { command: command.command });
 
     switch (command.command) {
@@ -132,7 +130,9 @@ export class ClaudeChimp extends ChimpBrain {
         this.sessionId = sessionId;
         this.messageCount++;
 
-        this.publish(createAgentMessageResponse(agentResponse, sessionId));
+        this.publish(
+          Protocol.createAgentMessageResponse(agentResponse, sessionId),
+        );
         break;
       }
 

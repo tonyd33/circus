@@ -1,14 +1,14 @@
 #!/usr/bin/env bun
 
+import { Logger } from "@mnke/circus-shared";
 import { EnvReader as ER } from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
-import { createLogger } from "@mnke/circus-shared/logger";
 import { serve } from "bun";
 import Redis from "ioredis";
 import { createStatusRoutes } from "./routes/status.ts";
 import { RedisStatusSource } from "./status-source.ts";
 
-const logger = createLogger("Ledger");
+const logger = Logger.createLogger("Ledger");
 
 interface LedgerConfig {
   redisUrl: string;

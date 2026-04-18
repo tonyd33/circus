@@ -1,6 +1,4 @@
-import { Standards } from "@mnke/circus-shared";
-import { createLogger } from "@mnke/circus-shared/logger";
-import { parseChimpCommand } from "@mnke/circus-shared/protocol";
+import { Logger, Protocol, Standards } from "@mnke/circus-shared";
 import type { Consumer, NatsConnection } from "nats";
 import {
   type ActivityCallback,
@@ -8,7 +6,7 @@ import {
   type MessageHandler,
 } from "./chimp-input";
 
-const logger = createLogger("NatsInput");
+const logger = Logger.createLogger("NatsInput");
 
 export class NatsInput extends ChimpInput {
   private nc: NatsConnection;
@@ -44,7 +42,6 @@ export class NatsInput extends ChimpInput {
     const messages = await this.consumer.consume();
     this.stopConsumer = () => messages.stop();
 
-    // Fire-and-forget async loop (like ringmaster message-listener)
     (async () => {
       try {
         for await (const msg of messages) {
@@ -56,7 +53,7 @@ export class NatsInput extends ChimpInput {
 
           try {
             const payload = JSON.parse(msg.string());
-            const command = parseChimpCommand(payload);
+            const command = Protocol.parseChimpCommand(payload);
             const result = await this.handler(command);
 
             msg.ack();

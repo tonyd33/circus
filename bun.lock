@@ -114,8 +114,10 @@
       "name": "@mnke/ringmaster",
       "version": "0.1.0",
       "dependencies": {
+        "@commander-js/extra-typings": "catalog:",
         "@kubernetes/client-node": "1.3.0",
         "@mnke/circus-shared": "workspace:*",
+        "commander": "catalog:",
         "ioredis": "catalog:",
         "nats": "catalog:",
         "zod": "catalog:",

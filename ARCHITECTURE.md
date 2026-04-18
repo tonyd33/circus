@@ -36,6 +36,39 @@ Each chimp gets a dedicated consumer on the inputs stream, created by the ringma
 
 JetStream over core NATS because: messages must survive chimp restarts, and new chimps need to replay messages that arrived before they existed.
 
+### Subject Topology
+
+Profile-based subjects partition chimps by configuration:
+
+- `chimp.inputs.{profile}.{chimpId}` — inbound commands
+- `chimp.outputs.{profile}.{chimpId}` — outbound messages
+- `chimp.meta.{profile}.{chimpId}` — lifecycle meta events (spawned, output)
+
+Legacy subjects `chimps.inputs.{chimpId}` and `chimps.outputs.{chimpId}` remain supported for back-compatibility.
+
+### Chimp Profiles
+
+A profile is a named preset defining brain, model, resources, env, and volumes for a chimp. Profiles are stored in a K8s ConfigMap `chimp-profiles` under key `profiles.json`, with fallback to the file at `CHIMP_PROFILES_PATH` or `/etc/circus/profiles.json`.
+
+Default profile: brain=claude, model=haiku-4-5.
+
+```json
+{
+  "default": { "brain": "claude", "model": "claude-haiku-4-5" },
+  "fast": { "brain": "claude", "model": "claude-haiku-4-5" },
+  "powerful": { "brain": "claude", "model": "claude-opus-4-5" }
+}
+```
+
+### Meta Events
+
+Lifecycle events emitted to `chimp.meta.{profile}.{chimpId}`:
+
+- **spawned** — ringmaster creates a K8s job for the chimp
+- **output** — bullhorn receives output from the chimp
+
+Dashboard subscribes via SSE at `GET /api/meta/events`.
+
 Naming conventions and stream configuration live in `packages/shared/src/standards/`.
 
 ## Chimp Lifecycle

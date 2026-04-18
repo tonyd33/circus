@@ -7,13 +7,10 @@
   "exports": {
     ".": "./src/index.ts",
     "./errors": "./src/errors.ts",
-    "./logger": "./src/logger.ts",
-    "./protocol": "./src/protocol.ts",
     "./metrics": "./src/metrics.ts",
     "./lib": "./src/lib/index.ts",
     "./lib/fp": "./src/lib/fp/index.ts",
-    "./standards": "./src/standards/index.ts",
-    "./standards/chimp": "./src/standards/chimp.ts"
+    "./standards": "./src/standards/index.ts"
   },
   "scripts": {
     "typecheck": "bun tsgo --noEmit",

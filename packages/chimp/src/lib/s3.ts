@@ -1,10 +1,3 @@
-/**
- * Shared S3 client initialization
- *
- * Config read from env via EnvReader in caller's startup lifecycle,
- * then passed here to construct client.
- */
-
 import { S3Client } from "@aws-sdk/client-s3";
 import { EnvReader as ER } from "@mnke/circus-shared/lib";
 

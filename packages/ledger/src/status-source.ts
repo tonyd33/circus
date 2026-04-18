@@ -4,13 +4,14 @@
  * Reads chimp status from Redis
  */
 
-import { createLogger } from "@mnke/circus-shared/logger";
-import type { ChimpState } from "@mnke/circus-shared/standards/chimp";
-import { Naming } from "@mnke/circus-shared/standards/chimp";
+import { Logger, Standards } from "@mnke/circus-shared";
 
 import type Redis from "ioredis";
 
-const logger = createLogger("RedisStatusSource");
+const logger = Logger.createLogger("RedisStatusSource");
+
+type ChimpState = Standards.Chimp.ChimpState;
+const Naming = Standards.Chimp.Naming;
 
 export class RedisStatusSource {
   constructor(private redis: Redis) {}

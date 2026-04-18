@@ -1,9 +1,7 @@
 import { readFile } from "node:fs/promises";
-import { Standards } from "@mnke/circus-shared";
+import { Logger, Protocol, Standards } from "@mnke/circus-shared";
 import { EnvReader as ER, Typing } from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
-import { createLogger } from "@mnke/circus-shared/logger";
-import { parseInitConfig } from "@mnke/circus-shared/protocol";
 import type { NatsConnection } from "nats";
 import { connect } from "nats";
 import type { ChimpBrain, PublishFn } from "@/chimp-brain";
@@ -15,10 +13,11 @@ import {
 } from "@/chimp-input";
 import { type ChimpOutput, NatsOutput, StdoutOutput } from "@/chimp-output";
 
-const logger = createLogger("Chimp");
+const logger = Logger.createLogger("Chimp");
 
 export interface ChimpConfig {
   chimpId: string;
+  model: string;
   natsUrl: string;
   inputMode: "nats" | "http";
   outputMode: "nats" | "stdout";
@@ -28,7 +27,11 @@ export interface ChimpConfig {
 
 export class Chimp {
   private config: ChimpConfig;
-  private brainFactory: (chimpId: string, publish: PublishFn) => ChimpBrain;
+  private brainFactory: (
+    chimpId: string,
+    model: string,
+    publish: PublishFn,
+  ) => ChimpBrain;
   private nc: NatsConnection | null = null;
   private brain: ChimpBrain | null = null;
   private input: ChimpInput | null = null;
@@ -39,7 +42,11 @@ export class Chimp {
 
   constructor(
     config: ChimpConfig,
-    brainFactory: (chimpId: string, publish: PublishFn) => ChimpBrain,
+    brainFactory: (
+      chimpId: string,
+      model: string,
+      publish: PublishFn,
+    ) => ChimpBrain,
   ) {
     this.config = config;
     this.brainFactory = brainFactory;
@@ -54,7 +61,6 @@ export class Chimp {
     process.on("SIGINT", () => this.shutdown("explicit_stop"));
     process.on("SIGTERM", () => this.shutdown("explicit_stop"));
 
-    // 1. Connect NATS if needed by either input or output
     if (this.config.outputMode === "nats" || this.config.inputMode === "nats") {
       this.nc = await connect({
         servers: this.config.natsUrl,
@@ -64,26 +70,26 @@ export class Chimp {
       logger.info("Connected to NATS");
     }
 
-    // 2. Create output
     this.output = this.createOutput();
     const output = this.output;
 
-    // 3. Create brain with publish wrapper
     const publishFn: PublishFn = (message) => {
       this.lastActivity = Date.now();
       output.publish(message);
     };
-    this.brain = this.brainFactory(this.config.chimpId, publishFn);
+    this.brain = this.brainFactory(
+      this.config.chimpId,
+      this.config.model,
+      publishFn,
+    );
     const brain = this.brain;
 
     await brain.onStartup();
     logger.info("Chimp startup complete");
 
-    // 4. Execute init config
     await this.executeInitConfig(brain);
     logger.info("Init config executed");
 
-    // 5. Create input
     const onActivity = () => {
       this.lastActivity = Date.now();
     };
@@ -92,10 +98,8 @@ export class Chimp {
 
     this.input = this.createInput(handler, onActivity, onStopRequested);
 
-    // 6. Start idle check BEFORE input (input may block in old designs)
     this.startIdleCheck();
 
-    // 7. Start input (non-blocking — fires async loop)
     await this.input.start();
   }
 
@@ -146,7 +150,7 @@ export class Chimp {
     if (Either.isLeft(configPath) || !configPath.value) return;
 
     const raw = await readFile(configPath.value, "utf-8");
-    const config = parseInitConfig(JSON.parse(raw));
+    const config = Protocol.parseInitConfig(JSON.parse(raw));
 
     logger.info({ commands: config.commands.length }, "Executing init config");
 
@@ -186,12 +190,10 @@ export class Chimp {
       clearInterval(this.idleCheckTimer);
     }
 
-    // Stop input first (stop accepting messages)
     if (this.input) {
       await this.input.stop();
     }
 
-    // Then shutdown brain (finish in-flight work)
     if (this.brain) {
       await this.brain.onShutdown();
     }

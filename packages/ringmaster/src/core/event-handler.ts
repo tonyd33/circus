@@ -4,14 +4,14 @@
  * Main event handling logic that bridges events to core decision-making
  */
 
+import { Logger } from "@mnke/circus-shared";
 import { Typing } from "@mnke/circus-shared/lib";
-import { createLogger } from "@mnke/circus-shared/logger";
 import { type Action, decide, type EventPayload } from "../core/core.ts";
 import type { ConsumerManager } from "../managers/consumer-manager.ts";
 import type { JobManager } from "../managers/job-manager.ts";
 import type { RedisManager } from "../managers/redis-manager.ts";
 
-const logger = createLogger("EventHandler");
+const logger = Logger.createLogger("EventHandler");
 
 /**
  * Dependencies needed by the event handler
@@ -86,15 +86,12 @@ export function createEventHandler(
 ): RingmasterEventHandler {
   return async (chimpId: string, payload: EventPayload): Promise<void> => {
     try {
-      // Gather core state (just timestamp)
       const state = { now: Date.now() };
 
-      // Make decision (pure logic)
       const decision = decide(state, payload);
 
       logger.info({ chimpId, reason: decision.reason }, "Executing decision");
 
-      // Execute actions
       for (const action of decision.actions) {
         await executeAction(action, chimpId, deps);
       }
