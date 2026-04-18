@@ -29,11 +29,6 @@ jobs:
       id-token: write
       attestations: write
 
-    strategy:
-      matrix:
-        target: [chimp, ringmaster, usher, bullhorn, ledger, dashboard]
-      fail-fast: false
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -49,27 +44,43 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/${{ matrix.target }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=latest,enable={{is_default_branch}}
+      - name: Build and push all images
+        run: |
+          TARGETS=(chimp ringmaster usher bullhorn ledger dashboard)
+          PUSH="${{ github.event_name != 'pull_request' }}"
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          target: ${{ matrix.target }}
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.target }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.target }}
-          platforms: linux/amd64,linux/arm64
+          for target in "${TARGETS[@]}"; do
+            IMAGE="${REGISTRY}/${IMAGE_NAME}/${target}"
+            TAGS=""
+
+            if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+              VERSION="${GITHUB_REF#refs/tags/v}"
+              MAJOR="${VERSION%%.*}"
+              MINOR="${VERSION%.*}"
+              TAGS="-t ${IMAGE}:${VERSION} -t ${IMAGE}:${MINOR} -t ${IMAGE}:${MAJOR} -t ${IMAGE}:latest"
+            elif [[ "$GITHUB_REF" == refs/pull/* ]]; then
+              PR_NUM="${GITHUB_REF#refs/pull/}"
+              PR_NUM="${PR_NUM%/merge}"
+              TAGS="-t ${IMAGE}:pr-${PR_NUM}"
+            else
+              BRANCH="${GITHUB_REF#refs/heads/}"
+              TAGS="-t ${IMAGE}:${BRANCH}"
+              if [[ "$BRANCH" == "master" || "$BRANCH" == "main" ]]; then
+                TAGS="${TAGS} -t ${IMAGE}:latest"
+              fi
+            fi
+
+            OUTPUT="type=image"
+            if [[ "$PUSH" == "true" ]]; then
+              OUTPUT="${OUTPUT},push=true"
+            fi
+
+            docker buildx build \
+              --platform linux/amd64,linux/arm64 \
+              --target "$target" \
+              ${TAGS} \
+              --output "${OUTPUT}" \
+              --cache-from type=gha,scope="${target}" \
+              --cache-to type=gha,mode=max,scope="${target}" \
+              .
+          done
