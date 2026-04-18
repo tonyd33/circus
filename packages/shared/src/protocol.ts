@@ -29,6 +29,7 @@ export type ChimpBrainType = z.infer<typeof BrainTypeEnum>;
 export const ChimpProfileSchema = z.object({
   brain: BrainTypeEnum,
   model: z.string(),
+  image: z.string(),
   description: z.string().optional(),
 });
 export type ChimpProfile = z.infer<typeof ChimpProfileSchema>;

@@ -16,18 +16,7 @@ async function main() {
     .name("ringmaster")
     .description("Chimp lifecycle orchestrator")
     .option("-f, --profile-file <path>", "Path to profiles JSON file")
-    .option(
-      "-n, --nats-url <url>",
-      "NATS connection URL",
-      "nats://localhost:4222",
-    )
-    .option(
-      "-r, --redis-url <url>",
-      "Redis connection URL",
-      "redis://localhost:6379",
-    )
     .option("--namespace <ns>", "Kubernetes namespace", "default")
-    .option("--chimp-image <image>", "Chimp container image", "circus-chimp")
     .parse(process.argv);
 
   const opts = program.opts();
@@ -35,6 +24,8 @@ async function main() {
   const profileFile = opts.profileFile;
 
   const result = ER.record({
+    natsUrl: ER.str("NATS_URL").fallback("nats://localhost:4222"),
+    redisUrl: ER.str("REDIS_URL").fallback("redis://localhost:6379"),
     chimpJobConfigPath: ER.str("CHIMP_JOB_CONFIG_PATH").fallback(""),
   }).read(process.env).value;
 
@@ -54,10 +45,9 @@ async function main() {
   );
 
   const config: RingmasterConfig = {
-    natsUrl: opts.natsUrl,
-    redisUrl: opts.redisUrl,
+    natsUrl: envConfig.natsUrl,
+    redisUrl: envConfig.redisUrl,
     namespace: opts.namespace,
-    chimpImage: opts.chimpImage,
     chimpJobConfig,
   };
 

@@ -23,6 +23,7 @@ export class ProfileLoader {
     this.profiles.set("default", {
       brain: "claude",
       model: "haiku-4-5",
+      image: "circus-chimp",
     });
     this.logger.info("Using default profile");
   }

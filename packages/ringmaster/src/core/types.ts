@@ -16,7 +16,6 @@ export interface RingmasterConfig {
   natsUrl: string;
   redisUrl: string;
   namespace: string;
-  chimpImage: string;
   chimpJobConfig: ChimpJobConfig;
 }
 

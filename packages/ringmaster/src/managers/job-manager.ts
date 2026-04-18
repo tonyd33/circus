@@ -15,7 +15,6 @@ import { isK8sConflict } from "../utils/k8s-errors.ts";
 export class JobManager {
   private k8sBatchApi: k8s.BatchV1Api;
   private namespace: string;
-  private chimpImage: string;
   private natsUrl: string;
   private profileLoader: ProfileLoader;
   private chimpJobConfig: ChimpJobConfig;
@@ -31,7 +30,6 @@ export class JobManager {
 
     this.k8sBatchApi = kc.makeApiClient(k8s.BatchV1Api);
     this.namespace = config.namespace;
-    this.chimpImage = config.chimpImage;
     this.natsUrl = config.natsUrl;
     this.profileLoader = profileLoader;
     this.chimpJobConfig = config.chimpJobConfig;
@@ -47,6 +45,7 @@ export class JobManager {
     const profileData = this.profileLoader.getProfile("default");
     const brainType = profileData?.brain ?? "echo";
     const model = profileData?.model ?? "haiku-4-5";
+    const image = profileData?.image ?? "circus-chimp";
 
     const job: k8s.V1Job = {
       apiVersion: "batch/v1",
@@ -73,7 +72,7 @@ export class JobManager {
             containers: [
               {
                 name: "chimp",
-                image: this.chimpImage,
+                image,
                 imagePullPolicy: this.chimpJobConfig.imagePullPolicy ?? "Never",
                 env: [
                   {
