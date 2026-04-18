@@ -112,6 +112,69 @@ describe(ER.int, () => {
   });
 });
 
+describe(ER.enm, () => {
+  test("reads valid enum value", () => {
+    const env = { MODE: "fast" };
+    const reader = ER.enm("MODE", ["fast", "slow", "normal"]);
+    const result = reader.read(env);
+
+    expect(result.isRight()).toBe(true);
+    expect(result.unwrap()).toBe("fast");
+  });
+
+  test("returns error for missing key", () => {
+    const env = {};
+    const reader = ER.enm("MODE", ["fast", "slow"]);
+    const result = reader.read(env);
+
+    expect(result.isLeft()).toBe(true);
+    expect(result.unwrap()).toEqual({ type: "not_found", key: "MODE" });
+  });
+
+  test("returns validation error for invalid value", () => {
+    const env = { MODE: "turbo" };
+    const reader = ER.enm("MODE", ["fast", "slow"]);
+    const result = reader.read(env);
+
+    expect(result.isLeft()).toBe(true);
+    expect(result.unwrap()).toEqual({
+      type: "invalid",
+      key: "MODE",
+      why: "Must be one of: fast, slow",
+    });
+  });
+
+  test("works with fallback", () => {
+    const env = {};
+    const reader = ER.enm("MODE", ["fast", "slow"]).fallback("slow");
+    const result = reader.read(env);
+
+    expect(result.isRight()).toBe(true);
+    expect(result.unwrap()).toBe("slow");
+  });
+
+  test("fallback on invalid value", () => {
+    const env = { MODE: "turbo" };
+    const reader = ER.enm("MODE", ["fast", "slow"]).fallback("slow");
+    const result = reader.read(env);
+
+    expect(result.isRight()).toBe(true);
+    expect(result.unwrap()).toBe("slow");
+  });
+
+  test("works in record", () => {
+    const env = { MODE: "fast", PORT: "8080" };
+    const reader = ER.record({
+      mode: ER.enm("MODE", ["fast", "slow"]),
+      port: ER.int("PORT"),
+    });
+    const result = reader.read(env);
+
+    expect(result.isRight()).toBe(true);
+    expect(result.unwrap()).toEqual({ mode: "fast", port: 8080 });
+  });
+});
+
 describe("ER.fallback", () => {
   test("uses value when present", () => {
     const env = { FOO: "bar" };

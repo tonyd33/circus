@@ -21,9 +21,18 @@ async function main() {
     natsUrl: ER.str(Standards.Chimp.Env.natsUrl).fallback(
       "nats://localhost:4222",
     ),
-    brainType: ER.str(Standards.Chimp.Env.brainType).fallback("echo"),
-    inputMode: ER.str(Standards.Chimp.Env.inputMode).fallback("nats"),
-    outputMode: ER.str(Standards.Chimp.Env.outputMode).fallback("nats"),
+    brainType: ER.enm(Standards.Chimp.Env.brainType, [
+      "claude",
+      "opencode",
+      "echo",
+    ]).fallback("echo"),
+    inputMode: ER.enm(Standards.Chimp.Env.inputMode, ["nats", "http"]).fallback(
+      "nats",
+    ),
+    outputMode: ER.enm(Standards.Chimp.Env.outputMode, [
+      "nats",
+      "stdout",
+    ]).fallback("nats"),
     httpPort: ER.int(Standards.Chimp.Env.httpPort).fallback(5928),
   }).read(process.env).value;
 
@@ -33,19 +42,6 @@ async function main() {
   }
 
   const config = result.value;
-
-  if (config.inputMode !== "nats" && config.inputMode !== "http") {
-    logger.error(
-      `Invalid input mode: ${config.inputMode}. Use "nats" or "http"`,
-    );
-    process.exit(1);
-  }
-  if (config.outputMode !== "nats" && config.outputMode !== "stdout") {
-    logger.error(
-      `Invalid output mode: ${config.outputMode}. Use "nats" or "stdout"`,
-    );
-    process.exit(1);
-  }
 
   logger.info(
     {
@@ -80,8 +76,8 @@ async function main() {
       profile: config.profile,
       model: config.model,
       natsUrl: config.natsUrl,
-      inputMode: config.inputMode as "nats" | "http",
-      outputMode: config.outputMode as "nats" | "stdout",
+      inputMode: config.inputMode,
+      outputMode: config.outputMode,
       httpPort: config.httpPort,
       idleTimeoutMs: 5 * 60 * 1000,
       logger: logger.child({ component: "Chimp" }),
