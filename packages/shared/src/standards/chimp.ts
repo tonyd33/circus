@@ -1,21 +1,21 @@
+import * as P from "../lib/parser/string";
+
 export const Env = {
   chimpId: "CHIMP_ID",
   natsUrl: "NATS_URL",
   brainType: "CHIMP_BRAIN_TYPE",
   model: "CHIMP_MODEL",
+  profile: "CHIMP_PROFILE",
   initConfig: "CHIMP_INIT_CONFIG",
   inputMode: "CHIMP_INPUT_MODE",
   outputMode: "CHIMP_OUTPUT_MODE",
   httpPort: "CHIMP_HTTP_PORT",
 };
+
 export const Prefix = {
-  INPUTS: "chimps.inputs",
-  OUTPUTS: "chimps.outputs",
-  // New topology (without 's')
-  CHIMP: "chimp",
-  CHIMP_INPUTS: "chimp.inputs",
-  CHIMP_OUTPUTS: "chimp.outputs",
-  CHIMP_META: "chimp.meta",
+  INPUTS: "chimp.inputs",
+  OUTPUTS: "chimp.outputs",
+  META: "chimp.meta",
 };
 
 export type ChimpStatus =
@@ -32,72 +32,51 @@ export interface ChimpState {
   updatedAt: number;
 }
 
+const segment = P.flat(P.many1(P.noneOf(".")));
+
+function subjectParser(prefix: string) {
+  return P.Do()
+    .do(P.str(prefix))
+    .do(P.grapheme("."))
+    .bind("profile", segment)
+    .do(P.grapheme("."))
+    .bind("chimpId", segment)
+    .return((env) => env);
+}
+
+function parseSubject(
+  prefix: string,
+  subject: string,
+): { profile: string; chimpId: string } | null {
+  const result = subjectParser(prefix).parse(subject);
+  return result.unwrapOr(null);
+}
+
 export const Naming = {
   inputStreamName(): string {
-    return "chimps-inputs";
+    return "chimp-inputs";
   },
   outputStreamName(): string {
-    return "chimps-outputs";
+    return "chimp-outputs";
   },
-  inputSubject(chimpId: string): string {
-    return `chimps.inputs.${chimpId}`;
+  inputSubject(profile: string, chimpId: string): string {
+    return `${Prefix.INPUTS}.${profile}.${chimpId}`;
   },
-  outputSubject(chimpId: string): string {
-    return `chimps.outputs.${chimpId}`;
+  outputSubject(profile: string, chimpId: string): string {
+    return `${Prefix.OUTPUTS}.${profile}.${chimpId}`;
+  },
+  metaSubject(profile: string, chimpId: string): string {
+    return `${Prefix.META}.${profile}.${chimpId}`;
   },
   parseInputSubject(
     subject: string,
   ): { profile: string; chimpId: string } | null {
-    // Support both old topology (chimps.inputs.{id}) and new (chimp.inputs.{profile}.{id})
-    const oldPrefix = "chimps.inputs.";
-    const newPrefix = "chimp.inputs.";
-
-    if (subject.startsWith(newPrefix)) {
-      // New format: chimp.inputs.{profile}.{chimpId}
-      const rest = subject.slice(newPrefix.length);
-      const dotIndex = rest.indexOf(".");
-      if (dotIndex === -1) return null;
-      const profile = rest.slice(0, dotIndex);
-      const chimpId = rest.slice(dotIndex + 1);
-      return profile && chimpId ? { profile, chimpId } : null;
-    }
-
-    if (subject.startsWith(oldPrefix)) {
-      // Old format: chimps.inputs.{chimpId} - treat entire as chimpId
-      const chimpId = subject.slice(oldPrefix.length);
-      return chimpId ? { profile: "", chimpId } : null;
-    }
-
-    return null;
+    return parseSubject(Prefix.INPUTS, subject);
   },
   parseOutputSubject(
     subject: string,
   ): { profile: string; chimpId: string } | null {
-    // Support both old topology (chimps.outputs.{id}) and new (chimp.outputs.{profile}.{chimpId})
-    const oldPrefix = "chimps.outputs.";
-    const newPrefix = "chimp.outputs.";
-
-    if (subject.startsWith(newPrefix)) {
-      // New format: chimp.outputs.{profile}.{chimpId}
-      const rest = subject.slice(newPrefix.length);
-      const dotIndex = rest.indexOf(".");
-      if (dotIndex === -1) return null;
-      const profile = rest.slice(0, dotIndex);
-      const chimpId = rest.slice(dotIndex + 1);
-      return profile && chimpId ? { profile, chimpId } : null;
-    }
-
-    if (subject.startsWith(oldPrefix)) {
-      // Old format: chimps.outputs.{chimpId} - treat entire as chimpId
-      const chimpId = subject.slice(oldPrefix.length);
-      return chimpId ? { profile: "", chimpId } : null;
-    }
-
-    return null;
-  },
-
-  metaSubject(profile: string, chimpId: string): string {
-    return `chimp.meta.${profile}.${chimpId}`;
+    return parseSubject(Prefix.OUTPUTS, subject);
   },
   podName(chimpId: string): string {
     return `chimp-${chimpId.toLowerCase()}`;

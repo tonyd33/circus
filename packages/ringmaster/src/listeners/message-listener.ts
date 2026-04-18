@@ -50,7 +50,7 @@ export class MessageListener {
 
     this.consumer = js.consumers.getPullConsumerFor(consumer);
 
-    this.logger.info("Created ephemeral consumer for chimps.inputs.*");
+    this.logger.info("Created consumer for chimp.inputs.*");
 
     const messages = await this.consumer.consume();
     this.stopConsumer = () => messages.stop();

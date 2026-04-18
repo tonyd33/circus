@@ -69,7 +69,7 @@ export class MessageRouter {
 
           try {
             await this.js.publish(
-              Naming.inputSubject(chimpId),
+              Naming.inputSubject("default", chimpId),
               JSON.stringify(Protocol.createAgentCommand(parsed.data.prompt)),
             );
             return Response.json({ ok: true });

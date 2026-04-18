@@ -15,6 +15,7 @@ import { type ChimpOutput, NatsOutput, StdoutOutput } from "@/chimp-output";
 
 export interface ChimpConfig {
   chimpId: string;
+  profile: string;
   model: string;
   natsUrl: string;
   inputMode: "nats" | "http";
@@ -111,7 +112,11 @@ export class Chimp {
     switch (this.config.outputMode) {
       case "nats":
         if (!this.nc) throw new Error("NATS connection not established");
-        return new NatsOutput(this.nc, this.config.chimpId);
+        return new NatsOutput(
+          this.nc,
+          this.config.profile,
+          this.config.chimpId,
+        );
       case "stdout":
         return new StdoutOutput();
       default:

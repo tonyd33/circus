@@ -61,7 +61,7 @@ export class Either<E, A> {
     return this._value.value;
   }
 
-  unwrapOr(defaultValue: A): A {
+  unwrapOr<B>(defaultValue: B): A | B {
     if (this._value.type === "left") {
       return defaultValue;
     } else {

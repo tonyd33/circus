@@ -91,6 +91,10 @@ export class JobManager {
                     name: Standards.Chimp.Env.model,
                     value: model,
                   },
+                  {
+                    name: Standards.Chimp.Env.profile,
+                    value: "default",
+                  },
                   ...this.chimpJobConfig.extraEnv,
                 ],
                 ...(this.chimpJobConfig.volumeMounts.length > 0 && {

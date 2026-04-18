@@ -92,8 +92,8 @@ export class Bullhorn {
       throw new Error("Bullhorn not initialized. Call initialize() first.");
     }
 
-    const sub = this.nc.subscribe("chimps.outputs.>");
-    this.logger.info("Subscribed to chimps.outputs.>");
+    const sub = this.nc.subscribe("chimp.outputs.>");
+    this.logger.info("Subscribed to chimp.outputs.>");
 
     (async () => {
       for await (const msg of sub) {

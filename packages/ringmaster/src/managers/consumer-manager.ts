@@ -46,7 +46,7 @@ export class ConsumerManager {
       await this.jsm.consumers.add(inputStreamName, {
         durable_name: consumerName,
         ack_policy: AckPolicy.Explicit,
-        filter_subject: Standards.Chimp.Naming.inputSubject(chimpId),
+        filter_subject: Standards.Chimp.Naming.inputSubject("default", chimpId),
         deliver_policy: DeliverPolicy.StartSequence,
         opt_start_seq: startSequence,
       });

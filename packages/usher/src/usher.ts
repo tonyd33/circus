@@ -70,7 +70,10 @@ export class Usher {
               headers[key] = value;
             });
             const result = await adapter.handleEvent(body, headers);
-            const subject = Standards.Chimp.Naming.inputSubject(result.chimpId);
+            const subject = Standards.Chimp.Naming.inputSubject(
+              "default",
+              result.chimpId,
+            );
             nc.publish(subject, JSON.stringify(result.command));
             adapterLogger.info(
               { chimpId: result.chimpId, path: route.path },

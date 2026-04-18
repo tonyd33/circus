@@ -6,10 +6,10 @@ export class NatsOutput extends ChimpOutput {
   private nc: NatsConnection;
   private outputSubject: string;
 
-  constructor(nc: NatsConnection, chimpId: string) {
+  constructor(nc: NatsConnection, profile: string, chimpId: string) {
     super();
     this.nc = nc;
-    this.outputSubject = Standards.Chimp.Naming.outputSubject(chimpId);
+    this.outputSubject = Standards.Chimp.Naming.outputSubject(profile, chimpId);
   }
 
   publish(message: Protocol.ChimpOutputMessage): void {

@@ -98,7 +98,7 @@ export async function createActivityStream(
       Standards.Chimp.Naming.inputStreamName(),
       {
         ack_policy: AckPolicy.None,
-        filter_subject: Standards.Chimp.Naming.inputSubject(chimpId),
+        filter_subject: Standards.Chimp.Naming.inputSubject("default", chimpId),
         deliver_policy: DeliverPolicy.All,
       },
     );
@@ -113,7 +113,10 @@ export async function createActivityStream(
       Standards.Chimp.Naming.outputStreamName(),
       {
         ack_policy: AckPolicy.None,
-        filter_subject: Standards.Chimp.Naming.outputSubject(chimpId),
+        filter_subject: Standards.Chimp.Naming.outputSubject(
+          "default",
+          chimpId,
+        ),
         deliver_policy: DeliverPolicy.All,
       },
     );

@@ -16,6 +16,7 @@ const logger = Logger.createLogger("chimp");
 async function main() {
   const result = ER.record({
     chimpId: ER.str(Standards.Chimp.Env.chimpId),
+    profile: ER.str(Standards.Chimp.Env.profile).fallback("default"),
     model: ER.str(Standards.Chimp.Env.model).fallback("big-pickle"),
     natsUrl: ER.str(Standards.Chimp.Env.natsUrl).fallback(
       "nats://localhost:4222",
@@ -76,6 +77,7 @@ async function main() {
   const runtime = new Chimp(
     {
       chimpId: config.chimpId,
+      profile: config.profile,
       model: config.model,
       natsUrl: config.natsUrl,
       inputMode: config.inputMode as "nats" | "http",
