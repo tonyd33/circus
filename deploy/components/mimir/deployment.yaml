@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mimir
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mimir
+  template:
+    metadata:
+      labels:
+        app: mimir
+    spec:
+      containers:
+        - name: mimir
+          image: grafana/mimir:2.11.0
+          args:
+            - -config.file=/etc/mimir/mimir.yaml
+            - -target=all
+          ports:
+            - containerPort: 9009
+              name: http
+            - containerPort: 9095
+              name: grpc
+          volumeMounts:
+            - name: config
+              mountPath: /etc/mimir
+            - name: storage
+              mountPath: /data
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 9009
+            initialDelaySeconds: 45
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 9009
+            initialDelaySeconds: 45
+            periodSeconds: 10
+      volumes:
+        - name: config
+          configMap:
+            name: mimir-config
+        - name: storage
+          emptyDir: {}

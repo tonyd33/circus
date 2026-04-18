@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mimir
+spec:
+  type: ClusterIP
+  selector:
+    app: mimir
+  ports:
+    - name: http
+      port: 9009
+      targetPort: 9009
+    - name: grpc
+      port: 9095
+      targetPort: 9095
