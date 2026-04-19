@@ -1,4 +1,4 @@
-import type { Logger, Protocol } from "@mnke/circus-shared";
+import { type Logger, Protocol } from "@mnke/circus-shared";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
@@ -8,6 +8,7 @@ type PublishFn = (message: Protocol.ChimpOutputMessage) => void;
 export class CircusMcp {
   private mcpServer: McpServer;
   private transport: WebStandardStreamableHTTPServerTransport;
+  private eventContext: Protocol.EventContext | undefined;
   private httpServer: ReturnType<typeof Bun.serve> | null = null;
   private logger: Logger.Logger;
 
@@ -24,6 +25,10 @@ export class CircusMcp {
     });
 
     this.registerTools(publish);
+  }
+
+  setEventContext(context: Protocol.EventContext | undefined): void {
+    this.eventContext = context;
   }
 
   private registerTools(publish: PublishFn): void {
@@ -57,6 +62,44 @@ export class CircusMcp {
             {
               type: "text" as const,
               text: `Chimp requested: ${args.chimpId} (profile: ${args.profile})`,
+            },
+          ],
+        };
+      },
+    );
+
+    this.mcpServer.tool(
+      "respond",
+      "Send a response back to the originating platform (Discord, GitHub, dashboard, etc.)",
+      {
+        content: z.string().describe("Response content to send"),
+      },
+      async (args) => {
+        const ctx = this.eventContext;
+        this.logger.info(
+          { tool: "respond", source: ctx?.source ?? "unknown" },
+          "MCP tool called: respond",
+        );
+
+        if (!ctx || ctx.source === "unknown" || ctx.source === "dashboard") {
+          publish(
+            Protocol.createAgentMessageResponse(args.content, "mcp-respond"),
+          );
+        } else if (ctx.source === "discord") {
+          publish({
+            type: "discord-response",
+            interactionToken: ctx.interactionToken,
+            applicationId: ctx.applicationId,
+            content: args.content,
+          });
+        }
+        // github-comment: future
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Response sent via ${ctx?.source ?? "default"}`,
             },
           ],
         };

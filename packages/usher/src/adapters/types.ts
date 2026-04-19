@@ -6,9 +6,14 @@ export interface AdapterResult {
   command: Protocol.ChimpCommand;
 }
 
+export interface AdapterResponse {
+  result: AdapterResult | null;
+  response: Response;
+}
+
 export interface Adapter {
   handleEvent(
     body: unknown,
     headers: Record<string, string>,
-  ): Promise<AdapterResult>;
+  ): Promise<AdapterResponse>;
 }

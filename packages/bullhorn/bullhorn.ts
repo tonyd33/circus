@@ -1,52 +1,18 @@
-/**
- * Bullhorn - Chimp Output Handler
- *
- * Processes chimp output messages and routes them to appropriate destinations
- * (Slack, GitHub, Discord, console logging, etc.)
- */
-
 import { type Logger, Protocol, Standards } from "@mnke/circus-shared";
+import { Typing } from "@mnke/circus-shared/lib";
 import {
   createMetrics,
   type ServiceMetrics,
 } from "@mnke/circus-shared/metrics";
 import { connect, type NatsConnection } from "nats";
-import {
-  ChimpRequestHandler,
-  ConsoleLoggerHandler,
-  type OutputHandler,
-} from "./handlers.ts";
 
 export interface BullhornConfig {
-  /**
-   * Custom output handlers to use
-   * If not provided, uses ConsoleLoggerHandler by default
-   */
-  handlers?: OutputHandler[];
-
   logger: Logger.Logger;
-
-  /**
-   * NATS URL (required)
-   */
   natsUrl: string;
-
-  /**
-   * Port for metrics server
-   * If not provided, defaults to 9090
-   */
   metricsPort?: number;
 }
 
-/**
- * Bullhorn - Routes chimp output messages to handlers
- *
- * Bullhorn is the "announcer" component in the Circus architecture.
- * It receives output messages from chimps and broadcasts them to
- * appropriate destinations (Slack, GitHub, console, etc.)
- */
 export class Bullhorn {
-  private handlers: OutputHandler[];
   private logger: Logger.Logger;
   private metrics: ServiceMetrics;
   private natsUrl: string;
@@ -56,13 +22,8 @@ export class Bullhorn {
     this.logger = config.logger;
     this.metrics = createMetrics({ serviceName: "bullhorn" });
     this.natsUrl = config.natsUrl;
-
-    this.handlers = config.handlers ?? [new ConsoleLoggerHandler(this.logger)];
   }
 
-  /**
-   * Initialize connection and handlers
-   */
   async initialize(): Promise<void> {
     this.logger.info("Initializing Bullhorn...");
 
@@ -74,27 +35,11 @@ export class Bullhorn {
 
     this.logger.info({ url: this.natsUrl }, "Connected to NATS");
     this.metrics.incActiveConnections("nats");
-
-    this.handlers.push(new ChimpRequestHandler(this.nc, this.logger));
-
-    for (const handler of this.handlers) {
-      if (handler.initialize) {
-        await handler.initialize();
-      }
-    }
-
-    this.logger.info(
-      { handlerCount: this.handlers.length },
-      "Bullhorn initialized",
-    );
   }
 
-  /**
-   * Start listening for chimp output messages
-   */
   async start(): Promise<void> {
     if (!this.nc) {
-      throw new Error("Bullhorn not initialized. Call initialize() first.");
+      throw new Error("Bullhorn not initialized");
     }
 
     const sub = this.nc.subscribe("chimp.outputs.>");
@@ -115,12 +60,10 @@ export class Bullhorn {
           }
 
           const { profile, chimpId } = parsed;
-
           const rawMessage = msg.json();
 
           await this.handleMessage(profile, chimpId, rawMessage);
-
-          await this.publishMetaEvent(profile, chimpId);
+          this.publishMetaEvent(profile, chimpId);
 
           const duration = (Date.now() - startTime) / 1000;
           this.metrics.recordNatsProcessed(subject, true, duration);
@@ -133,71 +76,123 @@ export class Bullhorn {
       }
     })();
 
-    this.logger.info(
-      "Bullhorn started. Listening for chimp output messages...",
-    );
-
+    this.logger.info("Bullhorn started");
     await new Promise(() => {});
   }
 
-  /**
-   * Handle an output message from a chimp
-   *
-   * @param profile - Profile name (e.g., "slack", "github")
-   * @param chimpId - ID of the chimp that sent the message
-   * @param message - The raw output message (will be validated)
-   */
-  async handleMessage(
+  private async handleMessage(
     profile: string,
     chimpId: string,
-    message: unknown,
+    raw: unknown,
   ): Promise<void> {
-    const result = Protocol.safeParseChimpOutputMessage(message);
-
+    const result = Protocol.safeParseChimpOutputMessage(raw);
     if (!result.success) {
       this.logger.error(
-        { profile, chimpId, error: result.error, message },
-        "Invalid output message from chimp",
+        { profile, chimpId, error: result.error },
+        "Invalid output message",
       );
       return;
     }
 
-    const validatedMessage = result.data;
+    const msg = result.data;
 
-    this.logger.debug(
-      { profile, chimpId, messageType: validatedMessage.type },
-      "Processing chimp output message",
-    );
+    switch (msg.type) {
+      case "agent-message-response":
+        this.logger.info(
+          { chimpId, sessionId: msg.sessionId },
+          `[${chimpId}] ${msg.content.slice(0, 200)}`,
+        );
+        break;
 
-    await Promise.allSettled(
-      this.handlers.map((handler) => handler.handle(chimpId, validatedMessage)),
-    ).then((results) => {
-      results.forEach((result, index) => {
-        if (result.status === "rejected") {
-          this.logger.error(
-            {
-              profile,
-              chimpId,
-              handlerIndex: index,
-              error: result.reason,
-            },
-            "Handler failed to process message",
+      case "artifact":
+        this.logger.info(
+          { chimpId, artifactType: msg.artifactType, name: msg.name },
+          `[${chimpId}] Artifact: ${msg.name}`,
+        );
+        break;
+
+      case "progress":
+        this.logger.info(
+          { chimpId, percentage: msg.percentage },
+          `[${chimpId}] ${msg.message}`,
+        );
+        break;
+
+      case "log":
+        this.logger[msg.level](
+          { chimpId, ...msg.data },
+          `[${chimpId}] ${msg.message}`,
+        );
+        break;
+
+      case "error":
+        this.logger.error(
+          { chimpId, command: msg.command, details: msg.details },
+          `[${chimpId}] Error: ${msg.error}`,
+        );
+        break;
+
+      case "thought":
+        this.logger.debug(
+          { chimpId, brain: msg.brain },
+          `[${chimpId}] Thought`,
+        );
+        break;
+
+      case "chimp-request":
+        if (this.nc) {
+          const subject = Standards.Chimp.Naming.inputSubject(
+            msg.profile,
+            msg.chimpId,
+          );
+          this.nc.publish(
+            subject,
+            JSON.stringify(Protocol.createAgentCommand(msg.message)),
+          );
+          this.logger.info(
+            { chimpId, targetChimpId: msg.chimpId, targetProfile: msg.profile },
+            "Forwarded chimp request",
           );
         }
-      });
-    });
+        break;
+
+      case "discord-response":
+        await this.handleDiscordResponse(msg);
+        break;
+
+      default:
+        Typing.unreachable(msg);
+    }
   }
 
-  /**
-   * Publish a meta event after handling an output message
-   */
-  private async publishMetaEvent(
-    profile: string,
-    chimpId: string,
+  private async handleDiscordResponse(
+    msg: Protocol.ChimpOutputMessage & { type: "discord-response" },
   ): Promise<void> {
-    if (!this.nc) {
-      return;
+    const url = `https://discord.com/api/v10/webhooks/${msg.applicationId}/${msg.interactionToken}/messages/@original`;
+    try {
+      const res = await fetch(url, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: msg.content }),
+      });
+      if (!res.ok) {
+        this.logger.error(
+          { status: res.status, applicationId: msg.applicationId },
+          "Failed to post Discord follow-up",
+        );
+      } else {
+        this.logger.info(
+          { applicationId: msg.applicationId },
+          "Posted Discord follow-up",
+        );
+      }
+    } catch (err) {
+      this.logger.error({ err }, "Discord API error");
     }
+  }
+
+  private publishMetaEvent(profile: string, chimpId: string): void {
+    if (!this.nc) return;
 
     const metaEvent: Protocol.MetaEvent = {
       type: "bullhorn-dispatched",
@@ -207,10 +202,8 @@ export class Bullhorn {
     };
 
     const subject = Standards.Chimp.Naming.metaSubject(profile, chimpId);
-
     try {
       this.nc.publish(subject, JSON.stringify(metaEvent));
-      this.logger.debug({ subject, profile, chimpId }, "Published meta event");
     } catch (error) {
       this.logger.error(
         { err: error, subject },
@@ -219,69 +212,31 @@ export class Bullhorn {
     }
   }
 
-  /**
-   * Add a new handler
-   */
-  addHandler(handler: OutputHandler): void {
-    this.handlers.push(handler);
-    this.logger.info("Added new output handler");
-  }
-
-  /**
-   * Remove a handler
-   */
-  removeHandler(handler: OutputHandler): void {
-    const index = this.handlers.indexOf(handler);
-    if (index > -1) {
-      this.handlers.splice(index, 1);
-      this.logger.info("Removed output handler");
-    }
-  }
-
-  /**
-   * Start HTTP server for metrics endpoint
-   */
-  async startMetricsServer(port: number = 9090): Promise<void> {
+  async startMetricsServer(port = 9090): Promise<void> {
     Bun.serve({
       port,
       fetch: async (req) => {
         const url = new URL(req.url);
-
         if (url.pathname === "/metrics") {
           const metrics = await this.metrics.getMetrics();
           return new Response(metrics, {
             headers: { "Content-Type": this.metrics.getContentType() },
           });
         }
-
         if (url.pathname === "/healthz") {
           return new Response("OK", { status: 200 });
         }
-
         return new Response("Not Found", { status: 404 });
       },
     });
-
     this.logger.info({ port }, "Metrics server started");
   }
 
-  /**
-   * Cleanup all handlers
-   */
   async stop(): Promise<void> {
-    this.logger.info("Cleaning up Bullhorn...");
-
-    for (const handler of this.handlers) {
-      if (handler.cleanup) {
-        await handler.cleanup();
-      }
-    }
-
     if (this.nc) {
       await this.nc.close();
       this.metrics.decActiveConnections("nats");
     }
-
-    this.logger.info("Bullhorn cleanup complete");
+    this.logger.info("Bullhorn stopped");
   }
 }

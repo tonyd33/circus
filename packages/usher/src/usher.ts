@@ -70,17 +70,22 @@ export class Usher {
             req.headers.forEach((value, key) => {
               headers[key] = value;
             });
-            const result = await adapter.handleEvent(body, headers);
-            const subject = Standards.Chimp.Naming.inputSubject(
-              result.profile,
-              result.chimpId,
+            const { result, response } = await adapter.handleEvent(
+              body,
+              headers,
             );
-            nc.publish(subject, JSON.stringify(result.command));
-            adapterLogger.info(
-              { chimpId: result.chimpId, path: route.path },
-              "Published command",
-            );
-            return new Response("ok", { status: 200 });
+            if (result) {
+              const subject = Standards.Chimp.Naming.inputSubject(
+                result.profile,
+                result.chimpId,
+              );
+              nc.publish(subject, JSON.stringify(result.command));
+              adapterLogger.info(
+                { chimpId: result.chimpId, path: route.path },
+                "Published command",
+              );
+            }
+            return response;
           } catch (error) {
             adapterLogger.error(
               { err: error, path: route.path },

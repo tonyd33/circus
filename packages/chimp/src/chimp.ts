@@ -98,7 +98,12 @@ export class Chimp {
       this.lastActivity = Date.now();
     };
     const onStopRequested = () => this.shutdown("explicit_stop");
-    const handler: MessageHandler = (command) => brain.handleMessage(command);
+    const handler: MessageHandler = (command) => {
+      if (command.command === "send-agent-message" && command.args.context) {
+        this.mcp?.setEventContext(command.args.context);
+      }
+      return brain.handleMessage(command);
+    };
 
     this.input = this.createInput(handler, onActivity, onStopRequested);
 

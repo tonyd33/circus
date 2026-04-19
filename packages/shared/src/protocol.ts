@@ -16,10 +16,28 @@ export const PROTOCOL_VERSION = "0.1.0";
 // INCOMING: Commands sent TO the chimp
 // ============================================================================
 
+export const EventContextSchema = z.discriminatedUnion("source", [
+  z.object({
+    source: z.literal("discord"),
+    interactionToken: z.string(),
+    applicationId: z.string(),
+  }),
+  z.object({
+    source: z.literal("github"),
+    repo: z.string(),
+    issueNumber: z.number(),
+    commentId: z.number(),
+  }),
+  z.object({ source: z.literal("dashboard") }),
+  z.object({ source: z.literal("unknown") }),
+]);
+export type EventContext = z.infer<typeof EventContextSchema>;
+
 const SendAgentMessageCommandSchema = z.object({
   command: z.literal("send-agent-message"),
   args: z.object({
     prompt: z.string(),
+    context: EventContextSchema.optional(),
   }),
 });
 
@@ -203,6 +221,13 @@ export const ChimpRequestSchema = z.object({
   message: z.string(),
 });
 
+export const DiscordResponseSchema = z.object({
+  type: z.literal("discord-response"),
+  interactionToken: z.string(),
+  applicationId: z.string(),
+  content: z.string(),
+});
+
 export const ChimpOutputMessageSchema = z.discriminatedUnion("type", [
   AgentMessageResponseSchema,
   ArtifactMessageSchema,
@@ -211,6 +236,7 @@ export const ChimpOutputMessageSchema = z.discriminatedUnion("type", [
   ErrorResponseSchema,
   ThoughtSchema,
   ChimpRequestSchema,
+  DiscordResponseSchema,
 ]);
 
 /**
@@ -344,10 +370,13 @@ export function safeParseInitConfig(config: unknown) {
 /**
  * Create a send-agent-message command
  */
-export function createAgentCommand(prompt: string): ChimpCommand {
+export function createAgentCommand(
+  prompt: string,
+  context?: EventContext,
+): ChimpCommand {
   return {
     command: "send-agent-message",
-    args: { prompt },
+    args: { prompt, ...(context && { context }) },
   };
 }
 
