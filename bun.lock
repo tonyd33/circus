@@ -33,7 +33,7 @@
       },
       "peerDependencies": {
         "@typescript/native-preview": "^7.0.0-dev.20260411.1",
-        "typescript": "^5",
+        "typescript": "^5 || ^6.0.0",
       },
     },
     "packages/chimp": {
@@ -59,7 +59,7 @@
       },
       "peerDependencies": {
         "@typescript/native-preview": "^7.0.0-dev.20260411.1",
-        "typescript": "^5",
+        "typescript": "^5 || ^6.0.0",
       },
     },
     "packages/dashboard": {
@@ -117,7 +117,7 @@
         "@types/node": "latest",
       },
       "peerDependencies": {
-        "typescript": "^5",
+        "typescript": "^5 || ^6.0.0",
       },
     },
     "packages/shared": {
@@ -134,7 +134,7 @@
       "peerDependencies": {
         "@typescript/native-preview": "^7.0.0-dev.20260411.1",
         "nats": "catalog:",
-        "typescript": "^5",
+        "typescript": "^5 || ^6.0.0",
         "zod": "catalog:",
       },
     },

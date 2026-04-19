@@ -17,7 +17,7 @@
     "@types/bun": "latest"
   },
   "peerDependencies": {
-    "typescript": "^5",
+    "typescript": "^5 || ^6.0.0",
     "@typescript/native-preview": "^7.0.0-dev.20260411.1"
   },
   "dependencies": {
