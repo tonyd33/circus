@@ -195,7 +195,7 @@ export class Bullhorn {
     }
 
     const metaEvent: Protocol.MetaEvent = {
-      type: "output",
+      type: "bullhorn-dispatched",
       profile,
       chimpId,
       timestamp: new Date().toISOString(),

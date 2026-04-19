@@ -22,6 +22,7 @@ import {
   StateManager,
 } from "@/executors";
 import { MessageListener, PodWatcher } from "@/listeners";
+import { PodCache } from "@/state/pod-cache";
 
 export class Ringmaster {
   private config: RingmasterConfig;
@@ -35,6 +36,8 @@ export class Ringmaster {
   private jobManager: JobManager | null = null;
   private consumerManager: ConsumerManager | null = null;
   private metaPublisher: MetaPublisher | null = null;
+
+  private podCache: PodCache | null = null;
 
   private eventHandler: EventHandler | null = null;
 
@@ -83,11 +86,17 @@ export class Ringmaster {
       this.logger.child({ component: "JobManager" }),
     );
 
+    this.podCache = new PodCache(
+      this.config.namespace,
+      this.logger.child({ component: "PodCache" }),
+    );
+
     this.eventHandler = new EventHandler({
       jobManager: this.jobManager,
       consumerManager: this.consumerManager,
       stateManager: this.stateManager,
       metaPublisher: this.metaPublisher,
+      getPod: (chimpId) => this.podCache!.getPod(chimpId),
       logger: this.logger.child({ component: "EventHandler" }),
     });
 
@@ -103,6 +112,7 @@ export class Ringmaster {
     );
 
     await Promise.all([
+      this.podCache.start(),
       this.messageListener.start(),
       this.podWatcher.start(),
       this.stateManager.start(),
@@ -116,6 +126,7 @@ export class Ringmaster {
    */
   async stop(): Promise<void> {
     await Promise.all([
+      this.podCache?.stop(),
       this.podWatcher?.stop(),
       this.messageListener?.stop(),
       this.stateManager?.stop(),

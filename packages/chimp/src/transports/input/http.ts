@@ -4,7 +4,7 @@ import {
   type ActivityCallback,
   ChimpInput,
   type MessageHandler,
-} from "./chimp-input";
+} from "./input";
 
 export class HttpInput extends ChimpInput {
   private port: number;

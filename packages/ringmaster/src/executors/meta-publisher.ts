@@ -16,19 +16,23 @@ export class MetaPublisher {
     this.logger = logger;
   }
 
-  async publishSpawned(profile: string, chimpId: string): Promise<void> {
+  async publishStatus(
+    profile: string,
+    chimpId: string,
+    status: Standards.Chimp.ChimpStatus,
+  ): Promise<void> {
     const event: Protocol.MetaEvent = {
-      type: "spawned",
+      type: "status",
       timestamp: new Date().toISOString(),
       profile,
       chimpId,
+      status,
     };
     const subject = Standards.Chimp.Naming.metaSubject(profile, chimpId);
-    const payload = JSON.stringify(event);
-    this.nc.publish(subject, payload);
+    this.nc.publish(subject, JSON.stringify(event));
     this.logger.info(
-      { subject, chimpId, profile },
-      "Published spawned meta event",
+      { subject, chimpId, profile, status },
+      "Published status meta event",
     );
   }
 }

@@ -8,15 +8,21 @@ import { Protocol } from "@mnke/circus-shared";
 import { EnvReader as ER, Typing } from "@mnke/circus-shared/lib";
 import { Either as E } from "@mnke/circus-shared/lib/fp";
 import * as Opencode from "@opencode-ai/sdk";
-import { ChimpBrain, type PublishFn } from "@/chimp-brain";
+import { createS3Client, s3ConfigReader } from "@/lib/s3";
+import { cloneRepo } from "@/lib/tooling";
+import { ChimpBrain, type PublishFn } from "../chimp-brain";
 import {
   restoreOpencodeChimpStateFromS3,
   restoreOpencodeStateFromS3,
   saveOpencodeChimpStateToS3,
   saveOpencodeStateToS3,
-} from "@/chimp-brain/opencode/session-storage";
-import { createS3Client, s3ConfigReader } from "@/lib/s3";
-import { cloneRepo } from "@/lib/tooling";
+} from "./session-storage";
+
+// Undocumented/noisy events that shouldn't trigger publish (and thus reset idle timer)
+const IGNORED_EVENTS: Set<string> = new Set([
+  "session.idle",
+  "server.heartbeat",
+]);
 
 export class OpencodeBrain extends ChimpBrain {
   private opencode: Awaited<ReturnType<typeof Opencode.createOpencode>> | null =
@@ -47,6 +53,7 @@ export class OpencodeBrain extends ChimpBrain {
       try {
         for await (const event of events.stream) {
           if (this.eventAbortController?.signal.aborted) break;
+          if (IGNORED_EVENTS.has(event.type)) continue;
           this.publish(Protocol.createOpencodeEventMessage(event));
         }
       } catch (err) {

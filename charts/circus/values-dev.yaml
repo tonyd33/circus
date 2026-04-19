@@ -2,8 +2,6 @@ ringmaster:
   enabled: true
   image:
     repository: ringmaster
-  chimp:
-    image: "chimp:latest"
 
 usher:
   enabled: true
@@ -15,18 +13,17 @@ bullhorn:
   image:
     repository: bullhorn
 
-ledger:
-  enabled: true
-  image:
-    repository: ledger
-
 dashboard:
   enabled: true
   image:
     repository: dashboard
 
 chimp:
-  brainType: opencode
+  profiles:
+    default:
+      brain: opencode
+      model: big-pickle
+      image: "chimp:latest"
   extraEnv:
     - name: ANTHROPIC_API_KEY
       valueFrom:

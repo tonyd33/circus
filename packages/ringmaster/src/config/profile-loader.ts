@@ -68,8 +68,13 @@ export class ProfileLoader {
   /**
    * Get a profile by name.
    */
-  getProfile(name: string): Protocol.ChimpProfile | undefined {
-    return this.profiles.get(name);
+  getProfile(name: string): Protocol.ChimpProfile {
+    const profile = this.profiles.get(name);
+    if (profile == null) {
+      throw new Error("Unknown profile");
+    } else {
+      return profile;
+    }
   }
 
   /**

@@ -9,6 +9,7 @@ export class Usher {
   private routes: RouteConfig[];
   private adapterRegistry: Record<string, (logger: Logger.Logger) => Adapter>;
   private logger: Logger.Logger;
+  private server: Bun.Server<Bun.WebSocket> | null = null;
 
   constructor(
     routes: RouteConfig[],
@@ -28,10 +29,10 @@ export class Usher {
 
     const routeHandlers = this.buildRouteHandlers(this.nc);
 
-    Bun.serve({
+    this.server = Bun.serve({
       port,
       routes: {
-        "/healthz": new Response("OK"),
+        "/healthz": new Response("ok"),
         ...routeHandlers,
       },
       fetch(_) {
@@ -71,7 +72,7 @@ export class Usher {
             });
             const result = await adapter.handleEvent(body, headers);
             const subject = Standards.Chimp.Naming.inputSubject(
-              "default",
+              result.profile,
               result.chimpId,
             );
             nc.publish(subject, JSON.stringify(result.command));
@@ -79,7 +80,7 @@ export class Usher {
               { chimpId: result.chimpId, path: route.path },
               "Published command",
             );
-            return new Response("OK", { status: 200 });
+            return new Response("ok", { status: 200 });
           } catch (error) {
             adapterLogger.error(
               { err: error, path: route.path },
@@ -99,6 +100,7 @@ export class Usher {
   }
 
   async shutdown(): Promise<void> {
+    await this.server?.stop();
     if (this.nc) {
       await this.nc.drain();
       await this.nc.close();

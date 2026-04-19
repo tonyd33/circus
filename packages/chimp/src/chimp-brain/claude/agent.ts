@@ -3,7 +3,7 @@
  */
 import * as ClaudeSDK from "@anthropic-ai/claude-agent-sdk";
 import { type Logger, Protocol } from "@mnke/circus-shared";
-import type { PublishFn } from "@/chimp-brain";
+import type { PublishFn } from "@/chimp-brain/chimp-brain";
 
 type LogFn = (
   level: Logger.LogLevel,

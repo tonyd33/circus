@@ -28,7 +28,11 @@ export class StateManager {
     await this.redis.quit();
   }
 
-  async upsert(chimpId: string, status: ChimpStatus): Promise<void> {
+  async upsert(
+    chimpId: string,
+    profile: string,
+    status: ChimpStatus,
+  ): Promise<void> {
     const key = Naming.redisChimpKey(chimpId);
     const now = Date.now();
 
@@ -41,6 +45,7 @@ export class StateManager {
 
     const state: ChimpState = {
       chimpId,
+      profile,
       status,
       createdAt,
       updatedAt: now,

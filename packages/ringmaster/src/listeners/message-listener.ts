@@ -77,6 +77,7 @@ export class MessageListener {
 
           await this.eventHandler.handle(chimpId, {
             type: "message_received",
+            profile,
             messageSequence,
           });
 

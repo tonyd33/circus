@@ -3,12 +3,12 @@ import {
   AckPolicy,
   type Consumer,
   type ConsumerMessages,
-  connect,
   DeliverPolicy,
   millis,
+  type NatsConnection,
 } from "nats";
 
-const PING_INTERVAL_MS = 15_000;
+const PING_INTERVAL_MS = 3_000;
 
 interface ActivityEvent {
   id: string;
@@ -19,11 +19,11 @@ interface ActivityEvent {
 }
 
 export async function createActivityStream(
+  profile: string,
   chimpId: string,
-  natsUrl: string,
+  nc: NatsConnection,
   logger: Logger.Logger,
 ): Promise<ReadableStream> {
-  const nc = await connect({ servers: natsUrl });
   const js = nc.jetstream();
   const jsm = await nc.jetstreamManager();
 
@@ -49,9 +49,16 @@ export async function createActivityStream(
       clearInterval(pingInterval);
       inputMessages?.stop();
       outputMessages?.stop();
-      inputConsumer?.delete().catch(() => {});
-      outputConsumer?.delete().catch(() => {});
-      nc.close();
+      inputConsumer
+        ?.delete()
+        .catch((e) =>
+          logger.error({ err: e }, "Failed to delete input consumer"),
+        );
+      outputConsumer
+        ?.delete()
+        .catch((e) =>
+          logger.error({ err: e }, "Failed to delete output consumer"),
+        );
     },
   });
 
@@ -60,34 +67,43 @@ export async function createActivityStream(
     type: "input" | "output",
   ): void {
     (async () => {
-      for await (const msg of messages) {
-        const raw: unknown = msg.json();
-        let event: ActivityEvent;
+      try {
+        for await (const msg of messages) {
+          const raw: unknown = msg.json();
+          let event: ActivityEvent;
 
-        if (type === "input") {
-          const parsed = Protocol.safeParseChimpCommand(raw);
-          event = {
-            id: msg.seq.toString(),
-            type,
-            messageType: parsed.success ? parsed.data.command : "unknown",
-            timestamp: new Date(millis(msg.info.timestampNanos)).toISOString(),
-            data: parsed.success ? parsed.data : raw,
-          };
-        } else {
-          const parsed = Protocol.safeParseChimpOutputMessage(raw);
-          event = {
-            id: msg.seq.toString(),
-            type,
-            messageType: parsed.success ? parsed.data.type : "unknown",
-            timestamp: new Date(millis(msg.info.timestampNanos)).toISOString(),
-            data: parsed.success ? parsed.data : raw,
-          };
-        }
+          if (type === "input") {
+            const parsed = Protocol.safeParseChimpCommand(raw);
+            event = {
+              id: msg.seq.toString(),
+              type,
+              messageType: parsed.success ? parsed.data.command : "unknown",
+              timestamp: new Date(
+                millis(msg.info.timestampNanos),
+              ).toISOString(),
+              data: parsed.success ? parsed.data : raw,
+            };
+          } else {
+            const parsed = Protocol.safeParseChimpOutputMessage(raw);
+            event = {
+              id: msg.seq.toString(),
+              type,
+              messageType: parsed.success ? parsed.data.type : "unknown",
+              timestamp: new Date(
+                millis(msg.info.timestampNanos),
+              ).toISOString(),
+              data: parsed.success ? parsed.data : raw,
+            };
+          }
 
-        const ctrl = controller;
-        if (ctrl) {
-          ctrl.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+          const ctrl = controller;
+          if (ctrl) {
+            ctrl.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+          }
         }
+      } catch (e) {
+        logger.error({ err: e, type }, "Activity stream error");
+        controller?.error(e);
       }
     })();
   }
@@ -98,7 +114,7 @@ export async function createActivityStream(
       Standards.Chimp.Naming.inputStreamName(),
       {
         ack_policy: AckPolicy.None,
-        filter_subject: Standards.Chimp.Naming.inputSubject("default", chimpId),
+        filter_subject: Standards.Chimp.Naming.inputSubject(profile, chimpId),
         deliver_policy: DeliverPolicy.All,
       },
     );
@@ -113,10 +129,7 @@ export async function createActivityStream(
       Standards.Chimp.Naming.outputStreamName(),
       {
         ack_policy: AckPolicy.None,
-        filter_subject: Standards.Chimp.Naming.outputSubject(
-          "default",
-          chimpId,
-        ),
+        filter_subject: Standards.Chimp.Naming.outputSubject(profile, chimpId),
         deliver_policy: DeliverPolicy.All,
       },
     );

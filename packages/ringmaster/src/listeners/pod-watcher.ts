@@ -7,7 +7,7 @@
 import * as k8s from "@kubernetes/client-node";
 import type { Logger } from "@mnke/circus-shared";
 import type { EventHandler } from "../core/event-handler.ts";
-import { namespaceLabel } from "../lib/k8s.ts";
+import { Labels } from "../lib/k8s.ts";
 
 export class PodWatcher {
   private kc: k8s.KubeConfig;
@@ -38,7 +38,7 @@ export class PodWatcher {
 
     const path = `/api/v1/namespaces/${this.namespace}/pods`;
     const queryParams = {
-      labelSelector: `${namespaceLabel("managed-by")}=ringmaster`,
+      labelSelector: `${Labels.MANAGED_BY}=ringmaster`,
     };
 
     this.logger.info({ namespace: this.namespace }, "Starting to watch pods");
@@ -89,22 +89,23 @@ export class PodWatcher {
    * Handle a pod event
    */
   private async handlePodEvent(type: string, pod: k8s.V1Pod): Promise<void> {
-    const chimpLabel = pod.metadata?.labels?.[namespaceLabel("chimp-id")];
+    const chimpId = pod.metadata?.labels?.[Labels.CHIMP_ID];
+    const profile = pod.metadata?.labels?.[Labels.CHIMP_PROFILE];
 
-    if (!chimpLabel) {
+    if (!chimpId || !profile) {
       this.logger.warn(
         { podName: pod.metadata?.name },
-        "Pod missing chimp-id label, skipping",
+        "Pod missing chimp-id or chimp-profile label, skipping",
       );
       return;
     }
 
-    const chimpId = chimpLabel;
-    this.logger.info({ eventType: type, chimpId }, "Pod event");
+    this.logger.info({ eventType: type, chimpId, profile }, "Pod event");
 
     try {
       await this.eventHandler.handle(chimpId, {
         type: "pod_event",
+        profile,
         eventType: type,
         pod,
       });

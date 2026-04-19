@@ -36,10 +36,6 @@ ringmaster:
     limits:
       memory: "512Mi"
       cpu: "500m"
-  # Anthropic API key - should be provided via secret
-  anthropicApiKey:
-    existingSecret: "anthropic-api-key"
-    key: "ANTHROPIC_API_KEY"
 
 # Usher configuration
 usher:
@@ -79,25 +75,6 @@ bullhorn:
       memory: "256Mi"
       cpu: "200m"
 
-# Ledger configuration
-ledger:
-  enabled: true
-  image:
-    repository: ledger
-    tag: latest
-    pullPolicy: IfNotPresent
-  replicaCount: 1
-  service:
-    type: ClusterIP
-    port: 6489
-  resources:
-    requests:
-      memory: "128Mi"
-      cpu: "100m"
-    limits:
-      memory: "256Mi"
-      cpu: "200m"
-
 # Dashboard configuration
 dashboard:
   enabled: true
@@ -119,8 +96,13 @@ dashboard:
 
 # Chimp configuration
 chimp:
-  image: "chimp:latest"
-  brainType: echo
+  # Profiles define brain, model, and image per named preset
+  profiles:
+    default:
+      brain: echo
+      model: haiku-4-5
+      image: "chimp:latest"
+  # Job config shared across all chimp pods
   imagePullPolicy: IfNotPresent
   extraEnv: []
   # extraEnv:

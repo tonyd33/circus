@@ -7,11 +7,13 @@ import { connect } from "nats";
 import type { BrainFactory, ChimpBrain, PublishFn } from "@/chimp-brain";
 import {
   type ChimpInput,
+  type ChimpOutput,
   HttpInput,
   type MessageHandler,
   NatsInput,
-} from "@/chimp-input";
-import { type ChimpOutput, NatsOutput, StdoutOutput } from "@/chimp-output";
+  NatsOutput,
+  StdoutOutput,
+} from "@/transports";
 
 export interface ChimpConfig {
   chimpId: string;

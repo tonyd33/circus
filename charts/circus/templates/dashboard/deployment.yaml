@@ -23,8 +23,8 @@ spec:
           image: "{{ .Values.dashboard.image.repository }}:{{ .Values.dashboard.image.tag }}"
           imagePullPolicy: {{ .Values.dashboard.image.pullPolicy }}
           env:
-            - name: LEDGER_URL
-              value: "http://{{ include "circus.fullname" . }}-ledger:{{ .Values.ledger.service.port }}"
+            - name: REDIS_URL
+              value: {{ .Values.externalServices.redis.url | quote }}
             - name: NATS_URL
               value: {{ .Values.externalServices.nats.url | quote }}
             - name: NODE_ENV

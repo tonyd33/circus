@@ -1,6 +1,6 @@
 import { type Protocol, Standards } from "@mnke/circus-shared";
 import type { NatsConnection } from "nats";
-import { ChimpOutput } from "./chimp-output";
+import { ChimpOutput } from "./output";
 
 export class NatsOutput extends ChimpOutput {
   private nc: NatsConnection;

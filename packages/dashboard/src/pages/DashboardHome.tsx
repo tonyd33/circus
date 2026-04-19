@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useChimps } from "@/hooks/useChimps";
 import type { ChimpState } from "@/lib/chimp-api";
-import { pollChimps } from "@/lib/chimp-api";
 
 const statusColors: Record<ChimpState["status"], string> = {
+  scheduled: "bg-blue-400",
   pending: "bg-yellow-500",
   running: "bg-green-500",
   stopped: "bg-gray-500",
@@ -15,6 +16,7 @@ const statusColors: Record<ChimpState["status"], string> = {
 };
 
 const statusBorders: Record<ChimpState["status"], string> = {
+  scheduled: "border-l-blue-400",
   pending: "border-l-yellow-500",
   running: "border-l-green-500",
   stopped: "border-l-gray-500",
@@ -24,6 +26,7 @@ const statusBorders: Record<ChimpState["status"], string> = {
 
 interface StatusCounts {
   total: number;
+  scheduled: number;
   pending: number;
   running: number;
   stopped: number;
@@ -33,6 +36,7 @@ interface StatusCounts {
 
 const initialCounts: StatusCounts = {
   total: 0,
+  scheduled: 0,
   pending: 0,
   running: 0,
   stopped: 0,
@@ -65,17 +69,7 @@ const statCards: Array<{
 ];
 
 export function DashboardHome() {
-  const [chimps, setChimps] = useState<ChimpState[]>([]);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setError(null);
-    const stop = pollChimps(
-      (data) => setChimps(data),
-      (err) => setError(err.message),
-    );
-    return stop;
-  }, []);
+  const { chimps, error } = useChimps();
 
   const counts = useMemo<StatusCounts>(() => {
     return chimps.reduce<StatusCounts>(
@@ -137,7 +131,7 @@ export function DashboardHome() {
               {recentChimps.map((chimp) => (
                 <Link
                   key={chimp.chimpId}
-                  to={`/chimps/${chimp.chimpId}/activity`}
+                  to={`/chimps/${chimp.profile}/${chimp.chimpId}/activity`}
                   className="flex items-center gap-3 p-2 rounded-md hover:bg-muted transition-colors"
                 >
                   <span

@@ -19,6 +19,7 @@ export const Prefix = {
 };
 
 export type ChimpStatus =
+  | "scheduled"
   | "pending"
   | "running"
   | "stopped"
@@ -27,6 +28,7 @@ export type ChimpStatus =
 
 export interface ChimpState {
   chimpId: string;
+  profile: string;
   status: ChimpStatus;
   createdAt: number;
   updatedAt: number;

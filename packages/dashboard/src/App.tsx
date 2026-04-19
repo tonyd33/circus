@@ -28,7 +28,10 @@ export function App() {
       <Routes>
         <Route path="/" element={<DashboardHome />} />
         <Route path="/chimps" element={<ChimpsList />} />
-        <Route path="/chimps/:chimpId/activity" element={<ChimpActivity />} />
+        <Route
+          path="/chimps/:profile/:chimpId/activity"
+          element={<ChimpActivity />}
+        />
       </Routes>
     </BrowserRouter>
   );

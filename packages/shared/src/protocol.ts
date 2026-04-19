@@ -143,12 +143,32 @@ export const InitConfigSchema = z.object({
 // META EVENTS
 // ============================================================================
 
-export const MetaEventSchema = z.object({
-  type: z.enum(["output", "spawned"]),
+const MetaEventBase = z.object({
   profile: z.string(),
   chimpId: z.string(),
   timestamp: z.string(),
 });
+
+export const StatusMetaEventSchema = MetaEventBase.extend({
+  type: z.literal("status"),
+  status: z.enum([
+    "scheduled",
+    "pending",
+    "running",
+    "stopped",
+    "failed",
+    "unknown",
+  ]),
+});
+
+export const BullhornDispatchedMetaEventSchema = MetaEventBase.extend({
+  type: z.literal("bullhorn-dispatched"),
+});
+
+export const MetaEventSchema = z.discriminatedUnion("type", [
+  StatusMetaEventSchema,
+  BullhornDispatchedMetaEventSchema,
+]);
 
 // ============================================================================
 // TypeScript types

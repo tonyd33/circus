@@ -12,6 +12,7 @@ export class SlackAdapter implements Adapter {
     const prompt = JSON.stringify(body);
 
     return {
+      profile: "default",
       chimpId: "stub",
       command: {
         command: "send-agent-message",

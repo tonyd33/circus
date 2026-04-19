@@ -14,8 +14,8 @@ const logger = Logger.createLogger("bullhorn");
 
 async function main() {
   const result = ER.record({
-    natsUrl: ER.str("BULLHORN_NATS_URL").fallback("nats://localhost:4222"),
-    metricsPort: ER.int("BULLHORN_METRICS_PORT").fallback(9090),
+    natsUrl: ER.str("NATS_URL").fallback("nats://localhost:4222"),
+    metricsPort: ER.int("METRICS_PORT").fallback(9090),
   }).read(process.env).value;
 
   if (Either.isLeft(result)) {

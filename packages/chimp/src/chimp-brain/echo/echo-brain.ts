@@ -1,5 +1,5 @@
 import type { Logger, Protocol } from "@mnke/circus-shared";
-import { ChimpBrain, type PublishFn } from "@/chimp-brain";
+import { ChimpBrain, type PublishFn } from "../chimp-brain";
 
 export class EchoBrain extends ChimpBrain {
   constructor(

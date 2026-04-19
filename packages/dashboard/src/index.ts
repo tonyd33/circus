@@ -4,16 +4,19 @@ import { Logger } from "@mnke/circus-shared";
 import { EnvReader as ER } from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
 import { serve } from "bun";
+import Redis from "ioredis";
+import { connect } from "nats";
 import index from "./index.html";
-import { createActivityRoute } from "./routes/activity";
-import { createChimpsRoutes } from "./routes/chimps";
+import { RedisStatusSource } from "./lib/status-source";
+import { ActivityRouter } from "./routes/activity";
+import { ChimpRouter } from "./routes/chimps";
 import { MessageRouter } from "./routes/messages";
 
 const logger = Logger.createLogger("dashboard");
 
 async function main() {
   const result = ER.record({
-    ledgerUrl: ER.str("LEDGER_URL").fallback("http://localhost:6489"),
+    redisUrl: ER.str("REDIS_URL").fallback("redis://localhost:6379"),
     natsUrl: ER.str("NATS_URL").fallback("nats://localhost:4222"),
   }).read(process.env).value;
 
@@ -24,15 +27,38 @@ async function main() {
 
   const config = result.value;
 
+  const redis = new Redis(config.redisUrl);
+  const statusSource = new RedisStatusSource(
+    redis,
+    logger.child({ component: "StatusSource" }),
+  );
+
+  const nc = await connect({
+    servers: config.natsUrl,
+    maxReconnectAttempts: -1,
+    reconnectTimeWait: 2000,
+  });
+  logger.info({ url: config.natsUrl }, "Connected to NATS");
+
+  const activityRouter = new ActivityRouter(
+    nc,
+    logger.child({ component: "ActivityRouter" }),
+  );
+  const chimpRouter = new ChimpRouter(
+    statusSource,
+    nc,
+    logger.child({ component: "ChimpRouter" }),
+  );
   const messageRouter = new MessageRouter(
-    config.natsUrl,
+    nc,
     logger.child({ component: "MessageRouter" }),
   );
-  await messageRouter.initialize();
 
   const shutdown = async (signal: string) => {
     logger.info(`Received ${signal}, shutting down...`);
-    await messageRouter.cleanup();
+    await nc.drain();
+    await nc.close();
+    await redis.quit();
     process.exit(0);
   };
 
@@ -49,22 +75,11 @@ async function main() {
     }),
   );
 
-  async function proxyToLedger(path: string): Promise<Response> {
-    const res = await fetch(`${config.ledgerUrl}${path}`);
-    return new Response(res.body, {
-      status: res.status,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
   const server = serve({
     routes: {
       "/*": index,
-      "/api/chimp/:chimpId/activity": createActivityRoute(
-        config.natsUrl,
-        logger.child({ component: "ActivityStream" }),
-      ),
-      ...createChimpsRoutes(proxyToLedger),
+      ...activityRouter.routes,
+      ...chimpRouter.routes,
       ...messageRouter.routes,
     },
 

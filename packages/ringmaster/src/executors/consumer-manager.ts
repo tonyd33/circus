@@ -21,7 +21,11 @@ export class ConsumerManager {
   /**
    * Ensure a consumer exists for a chimp on the shared input stream (idempotent)
    */
-  async ensureConsumer(chimpId: string, startSequence: number): Promise<void> {
+  async ensureConsumer(
+    profile: string,
+    chimpId: string,
+    startSequence: number,
+  ): Promise<void> {
     const inputStreamName = Standards.Chimp.Naming.inputStreamName();
     const consumerName = `chimp-${chimpId}`;
 
@@ -43,7 +47,7 @@ export class ConsumerManager {
       await this.jsm.consumers.add(inputStreamName, {
         durable_name: consumerName,
         ack_policy: AckPolicy.Explicit,
-        filter_subject: Standards.Chimp.Naming.inputSubject("default", chimpId),
+        filter_subject: Standards.Chimp.Naming.inputSubject(profile, chimpId),
         deliver_policy: DeliverPolicy.StartSequence,
         opt_start_seq: startSequence,
       });

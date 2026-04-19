@@ -7,8 +7,6 @@ import type { S3Client } from "@aws-sdk/client-s3";
 import { Protocol } from "@mnke/circus-shared";
 import { EnvReader as ER, Typing } from "@mnke/circus-shared/lib";
 import { Either as E } from "@mnke/circus-shared/lib/fp";
-import { ChimpBrain, type PublishFn } from "@/chimp-brain";
-import { processWithClaude } from "@/chimp-brain/claude/agent";
 import {
   restoreChimpStateFromS3,
   restoreClaudeStateFromS3,
@@ -17,6 +15,8 @@ import {
 } from "@/chimp-brain/claude/session-storage";
 import { createS3Client, s3ConfigReader } from "@/lib/s3";
 import { cloneRepo } from "@/lib/tooling";
+import { ChimpBrain, type PublishFn } from "../chimp-brain";
+import { processWithClaude } from "./agent";
 
 export class ClaudeChimp extends ChimpBrain {
   private messageCount = 0;

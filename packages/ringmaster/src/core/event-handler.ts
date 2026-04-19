@@ -19,6 +19,9 @@ export interface EventHandlerDeps {
   consumerManager: ConsumerManager;
   stateManager: StateManager;
   metaPublisher: MetaPublisher;
+  getPod: (
+    chimpId: string,
+  ) => import("@kubernetes/client-node").V1Pod | undefined;
   logger: Logger.Logger;
 }
 
@@ -33,7 +36,7 @@ export class EventHandler {
 
   async handle(chimpId: string, payload: EventPayload): Promise<void> {
     try {
-      const state = { now: Date.now() };
+      const state = { now: Date.now(), pod: this.deps.getPod(chimpId) };
       const decision = decide(state, payload);
 
       this.logger.info(
@@ -64,16 +67,24 @@ export class EventHandler {
         break;
 
       case "create_job":
-        this.logger.info({ chimpId }, "Executing: create_job");
-        await this.deps.jobManager.createJob(chimpId);
+        this.logger.info(
+          { chimpId, profile: action.profile },
+          "Executing: create_job",
+        );
+        await this.deps.jobManager.createJob(chimpId, action.profile);
         break;
 
       case "create_consumer":
         this.logger.info(
-          { chimpId, startSequence: action.startSequence },
+          {
+            chimpId,
+            profile: action.profile,
+            startSequence: action.startSequence,
+          },
           "Executing: create_consumer",
         );
         await this.deps.consumerManager.ensureConsumer(
+          action.profile,
           chimpId,
           action.startSequence,
         );
@@ -86,10 +97,19 @@ export class EventHandler {
 
       case "upsert_state":
         this.logger.info(
-          { chimpId, status: action.status },
+          { chimpId, profile: action.profile, status: action.status },
           "Executing: upsert_state",
         );
-        await this.deps.stateManager.upsert(chimpId, action.status);
+        await this.deps.stateManager.upsert(
+          chimpId,
+          action.profile,
+          action.status,
+        );
+        await this.deps.metaPublisher.publishStatus(
+          action.profile,
+          chimpId,
+          action.status,
+        );
         break;
 
       case "delete_state":
