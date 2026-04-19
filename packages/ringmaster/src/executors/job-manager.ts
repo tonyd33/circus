@@ -36,6 +36,10 @@ export class JobManager {
     this.logger = logger;
   }
 
+  async start(): Promise<void> {}
+
+  async stop(): Promise<void> {}
+
   /**
    * Create a Chimp job (idempotent)
    */

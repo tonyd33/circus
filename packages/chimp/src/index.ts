@@ -4,12 +4,7 @@ import { Logger, Standards } from "@mnke/circus-shared";
 import { EnvReader as ER } from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
 import { Chimp } from "./chimp";
-import {
-  ClaudeChimp,
-  EchoBrain,
-  OpencodeBrain,
-  type PublishFn,
-} from "./chimp-brain";
+import { DefaultBrainFactory } from "./chimp-brain";
 
 const logger = Logger.createLogger("chimp");
 
@@ -52,23 +47,7 @@ async function main() {
     "Starting Chimp",
   );
 
-  const brainFactory = (
-    chimpId: string,
-    model: string,
-    publish: PublishFn,
-    brainLogger: Logger.Logger,
-  ) => {
-    switch (config.brainType) {
-      case "claude":
-        return new ClaudeChimp(chimpId, model, publish, brainLogger);
-      case "opencode":
-        return new OpencodeBrain(chimpId, model, publish, brainLogger);
-      case "echo":
-        return new EchoBrain(chimpId, model, publish, brainLogger);
-      default:
-        throw new Error(`Unknown brain type: ${config.brainType}`);
-    }
-  };
+  const brainFactory = new DefaultBrainFactory(config.brainType);
 
   const runtime = new Chimp(
     {

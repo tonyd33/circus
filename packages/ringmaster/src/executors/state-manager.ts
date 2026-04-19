@@ -5,21 +5,27 @@
  */
 
 import { type Logger, Standards } from "@mnke/circus-shared";
+import Redis from "ioredis";
 
 type ChimpState = Standards.Chimp.ChimpState;
 type ChimpStatus = Standards.Chimp.ChimpStatus;
 const Naming = Standards.Chimp.Naming;
 
-import type Redis from "ioredis";
-
-export class RedisManager {
+export class StateManager {
+  private redis: Redis;
   private logger: Logger.Logger;
 
-  constructor(
-    private redis: Redis,
-    logger: Logger.Logger,
-  ) {
+  constructor(redisUrl: string, logger: Logger.Logger) {
+    this.redis = new Redis(redisUrl);
     this.logger = logger;
+  }
+
+  async start(): Promise<void> {
+    await this.redis.ping();
+  }
+
+  async stop(): Promise<void> {
+    await this.redis.quit();
   }
 
   async upsert(chimpId: string, status: ChimpStatus): Promise<void> {

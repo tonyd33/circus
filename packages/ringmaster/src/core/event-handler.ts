@@ -6,15 +6,19 @@
 
 import type { Logger } from "@mnke/circus-shared";
 import { Typing } from "@mnke/circus-shared/lib";
-import { type Action, decide, type EventPayload } from "../core/core.ts";
-import type { ConsumerManager } from "../managers/consumer-manager.ts";
-import type { JobManager } from "../managers/job-manager.ts";
-import type { RedisManager } from "../managers/redis-manager.ts";
+import type {
+  ConsumerManager,
+  JobManager,
+  MetaPublisher,
+  StateManager,
+} from "@/executors";
+import { type Action, decide, type EventPayload } from "./core";
 
 export interface EventHandlerDeps {
   jobManager: JobManager;
   consumerManager: ConsumerManager;
-  redisManager: RedisManager;
+  stateManager: StateManager;
+  metaPublisher: MetaPublisher;
   logger: Logger.Logger;
 }
 
@@ -85,12 +89,12 @@ export class EventHandler {
           { chimpId, status: action.status },
           "Executing: upsert_state",
         );
-        await this.deps.redisManager.upsert(chimpId, action.status);
+        await this.deps.stateManager.upsert(chimpId, action.status);
         break;
 
       case "delete_state":
         this.logger.info({ chimpId }, "Executing: delete_state");
-        await this.deps.redisManager.delete(chimpId);
+        await this.deps.stateManager.delete(chimpId);
         break;
 
       default:

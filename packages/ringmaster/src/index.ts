@@ -4,10 +4,10 @@ import * as Commander from "@commander-js/extra-typings";
 import { Logger, Standards } from "@mnke/circus-shared";
 import { EnvReader as ER } from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
-import { createProfileLoader } from "./config/profile-loader.ts";
-import type { RingmasterConfig } from "./core/types.ts";
-import { loadChimpJobConfig } from "./lib/chimp-job-config.ts";
-import { Ringmaster } from "./ringmaster.ts";
+import { createProfileLoader } from "@/config/profile-loader";
+import type { RingmasterConfig } from "@/core/types";
+import { loadChimpJobConfig } from "@/lib/chimp-job-config";
+import { Ringmaster } from "@/ringmaster";
 
 const logger = Logger.createLogger("ringmaster");
 

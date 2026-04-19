@@ -4,7 +4,7 @@ import { EnvReader as ER, Typing } from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
 import type { NatsConnection } from "nats";
 import { connect } from "nats";
-import type { ChimpBrain, PublishFn } from "@/chimp-brain";
+import type { BrainFactory, ChimpBrain, PublishFn } from "@/chimp-brain";
 import {
   type ChimpInput,
   HttpInput,
@@ -28,12 +28,7 @@ export interface ChimpConfig {
 export class Chimp {
   private config: ChimpConfig;
   private logger: Logger.Logger;
-  private brainFactory: (
-    chimpId: string,
-    model: string,
-    publish: PublishFn,
-    logger: Logger.Logger,
-  ) => ChimpBrain;
+  private brainFactory: BrainFactory;
   private nc: NatsConnection | null = null;
   private brain: ChimpBrain | null = null;
   private input: ChimpInput | null = null;
@@ -42,15 +37,7 @@ export class Chimp {
   private lastActivity = Date.now();
   private idleCheckTimer: Timer | null = null;
 
-  constructor(
-    config: ChimpConfig,
-    brainFactory: (
-      chimpId: string,
-      model: string,
-      publish: PublishFn,
-      logger: Logger.Logger,
-    ) => ChimpBrain,
-  ) {
+  constructor(config: ChimpConfig, brainFactory: BrainFactory) {
     this.config = config;
     this.logger = config.logger;
     this.brainFactory = brainFactory;
@@ -81,7 +68,7 @@ export class Chimp {
       this.lastActivity = Date.now();
       output.publish(message);
     };
-    this.brain = this.brainFactory(
+    this.brain = this.brainFactory.create(
       this.config.chimpId,
       this.config.model,
       publishFn,

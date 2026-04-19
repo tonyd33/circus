@@ -6,10 +6,7 @@
  */
 
 import { type Logger, Standards } from "@mnke/circus-shared";
-import {
-  isNatsAlreadyExists,
-  isNatsNotFound,
-} from "@mnke/circus-shared/errors";
+import { NatsLib } from "@mnke/circus-shared/lib";
 import { AckPolicy, DeliverPolicy, type JetStreamManager } from "nats";
 
 export class ConsumerManager {
@@ -36,7 +33,7 @@ export class ConsumerManager {
       );
       return;
     } catch (error) {
-      if (isNatsNotFound(error)) {
+      if (NatsLib.isNatsNotFound(error)) {
       } else {
         throw error;
       }
@@ -57,7 +54,7 @@ export class ConsumerManager {
       );
     } catch (error) {
       // Handle race condition
-      if (isNatsAlreadyExists(error)) {
+      if (NatsLib.isNatsAlreadyExists(error)) {
         this.logger.debug(
           { consumerName, chimpId },
           "Consumer already exists (race condition), continuing",
@@ -79,7 +76,7 @@ export class ConsumerManager {
       await this.jsm.consumers.delete(inputStreamName, consumerName);
       this.logger.info({ consumerName, chimpId }, "Deleted consumer");
     } catch (error) {
-      if (isNatsNotFound(error)) {
+      if (NatsLib.isNatsNotFound(error)) {
         this.logger.debug(
           { consumerName, chimpId },
           "Consumer doesn't exist, skipping deletion",

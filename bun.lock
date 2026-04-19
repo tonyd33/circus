@@ -80,7 +80,7 @@
         "react-router-dom": "^7.5.3",
         "remark-gfm": "^4.0.1",
         "tailwind-merge": "^3.3.1",
-        "zod": "^4.3.6",
+        "zod": "catalog:",
       },
       "devDependencies": {
         "@playwright/mcp": "^0.0.70",
@@ -137,7 +137,6 @@
         "@opencode-ai/sdk": "^1.4.3",
         "pino": "^10.3.1",
         "prom-client": "^15.1.3",
-        "zod": "^4.3.6",
       },
       "devDependencies": {
         "@types/bun": "latest",
@@ -145,7 +144,9 @@
       },
       "peerDependencies": {
         "@typescript/native-preview": "^7.0.0-dev.20260411.1",
+        "nats": "catalog:",
         "typescript": "^5",
+        "zod": "catalog:",
       },
     },
     "packages/usher": {

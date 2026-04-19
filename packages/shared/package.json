@@ -6,7 +6,6 @@
   "private": true,
   "exports": {
     ".": "./src/index.ts",
-    "./errors": "./src/errors.ts",
     "./metrics": "./src/metrics.ts",
     "./lib": "./src/lib/index.ts",
     "./lib/fp": "./src/lib/fp/index.ts",
@@ -22,12 +21,13 @@
   },
   "peerDependencies": {
     "typescript": "^5",
-    "@typescript/native-preview": "^7.0.0-dev.20260411.1"
+    "@typescript/native-preview": "^7.0.0-dev.20260411.1",
+    "zod": "catalog:",
+    "nats": "catalog:"
   },
   "dependencies": {
     "@opencode-ai/sdk": "^1.4.3",
     "pino": "^10.3.1",
-    "prom-client": "^15.1.3",
-    "zod": "^4.3.6"
+    "prom-client": "^15.1.3"
   }
 }

@@ -5,12 +5,7 @@
  */
 
 import { type Logger, Standards } from "@mnke/circus-shared";
-import {
-  isNatsAlreadyExists,
-  isNatsNotFound,
-} from "@mnke/circus-shared/errors";
-import type { ServiceMetrics } from "@mnke/circus-shared/metrics";
-import Redis from "ioredis";
+import { NatsLib } from "@mnke/circus-shared/lib";
 import {
   connect,
   type JetStreamManager,
@@ -18,28 +13,33 @@ import {
   RetentionPolicy,
   StorageType,
 } from "nats";
-import type { ProfileLoader } from "./config/profile-loader.ts";
-import { EventHandler } from "./core/event-handler.ts";
-import type { RingmasterConfig } from "./core/types.ts";
-import { MessageListener } from "./listeners/message-listener.ts";
-import { PodWatcher } from "./listeners/pod-watcher.ts";
-import { ConsumerManager } from "./managers/consumer-manager.ts";
-import { JobManager } from "./managers/job-manager.ts";
-import { RedisManager } from "./managers/redis-manager.ts";
+import type { ProfileLoader } from "@/config";
+import { EventHandler, type RingmasterConfig } from "@/core";
+import {
+  ConsumerManager,
+  JobManager,
+  MetaPublisher,
+  StateManager,
+} from "@/executors";
+import { MessageListener, PodWatcher } from "@/listeners";
 
 export class Ringmaster {
-  private jobManager: JobManager;
-  private consumerManager: ConsumerManager | null = null;
-  private redisManager: RedisManager | null = null;
-  private messageListener: MessageListener | null = null;
-  private podWatcher: PodWatcher | null = null;
-  private eventHandler: EventHandler | null = null;
-  private natsUrl: string;
-  private redisUrl: string;
-  private nc: NatsConnection | null = null;
-  private jsm: JetStreamManager | null = null;
   private config: RingmasterConfig;
   private logger: Logger.Logger;
+  private profileLoader: ProfileLoader;
+
+  private nc: NatsConnection | null = null;
+  private jsm: JetStreamManager | null = null;
+
+  private stateManager: StateManager | null = null;
+  private jobManager: JobManager | null = null;
+  private consumerManager: ConsumerManager | null = null;
+  private metaPublisher: MetaPublisher | null = null;
+
+  private eventHandler: EventHandler | null = null;
+
+  private messageListener: MessageListener | null = null;
+  private podWatcher: PodWatcher | null = null;
 
   constructor(
     config: RingmasterConfig,
@@ -48,46 +48,46 @@ export class Ringmaster {
   ) {
     this.config = config;
     this.logger = logger;
-    this.jobManager = new JobManager(
-      config,
-      profileLoader,
-      logger.child({ component: "JobManager" }),
-    );
-    this.natsUrl = config.natsUrl;
-    this.redisUrl = config.redisUrl;
+    this.profileLoader = profileLoader;
   }
 
   /**
    * Initialize the Ringmaster
    */
   async start(): Promise<void> {
-    await this.connectRedis();
+    this.nc = await connect({
+      servers: this.config.natsUrl,
+      maxReconnectAttempts: -1,
+      reconnectTimeWait: 2000,
+    });
 
-    await this.connectNats();
+    this.jsm = await this.nc.jetstreamManager();
+    this.logger.info("Connected to NATS JetStream");
+    await this.ensureSharedStreams(this.jsm);
 
-    if (!this.nc) {
-      throw new Error("Failed to establish NATS connection");
-    }
-
-    await this.ensureSharedStreams();
-
-    if (!this.jsm) {
-      throw new Error("JetStream manager not initialized");
-    }
-
+    this.stateManager = new StateManager(
+      this.config.redisUrl,
+      this.logger.child({ component: "StateManager" }),
+    );
     this.consumerManager = new ConsumerManager(
       this.jsm,
       this.logger.child({ component: "ConsumerManager" }),
     );
-
-    if (!this.redisManager) {
-      throw new Error("Redis manager not initialized");
-    }
+    this.metaPublisher = new MetaPublisher(
+      this.nc,
+      this.logger.child({ component: "MetaPublisher" }),
+    );
+    this.jobManager = new JobManager(
+      this.config,
+      this.profileLoader,
+      this.logger.child({ component: "JobManager" }),
+    );
 
     this.eventHandler = new EventHandler({
       jobManager: this.jobManager,
       consumerManager: this.consumerManager,
-      redisManager: this.redisManager,
+      stateManager: this.stateManager,
+      metaPublisher: this.metaPublisher,
       logger: this.logger.child({ component: "EventHandler" }),
     });
 
@@ -102,7 +102,12 @@ export class Ringmaster {
       this.logger.child({ component: "MessageListener" }),
     );
 
-    await Promise.all([this.messageListener.start(), this.podWatcher.start()]);
+    await Promise.all([
+      this.messageListener.start(),
+      this.podWatcher.start(),
+      this.stateManager.start(),
+      this.jobManager.start(),
+    ]);
     this.logger.info("Ringmaster started");
   }
 
@@ -110,12 +115,16 @@ export class Ringmaster {
    * Stop the Ringmaster
    */
   async stop(): Promise<void> {
-    if (this.podWatcher) {
-      await this.podWatcher.stop();
-    }
-    if (this.messageListener) {
-      await this.messageListener.stop();
-    }
+    await Promise.all([
+      this.podWatcher?.stop(),
+      this.messageListener?.stop(),
+      this.stateManager?.stop(),
+      this.jobManager?.stop(),
+    ]);
+    this.podWatcher = null;
+    this.messageListener = null;
+    this.stateManager = null;
+    this.jobManager = null;
 
     if (this.nc) {
       await this.nc.drain();
@@ -127,91 +136,25 @@ export class Ringmaster {
     this.logger.info("Ringmaster stopped");
   }
 
-  /**
-   * Connect to Redis
-   */
-  private async connectRedis(): Promise<void> {
-    this.redisManager = new RedisManager(
-      new Redis(this.redisUrl),
-      this.logger.child({ component: "RedisManager" }),
-    );
-    this.logger.info("Connected to Redis");
-  }
+  private async ensureSharedStreams(jsm: JetStreamManager): Promise<void> {
+    const streamDefaults = {
+      retention: RetentionPolicy.Limits,
+      max_age: 7 * 24 * 60 * 60 * 1_000_000_000, // 7 days in nanoseconds
+      max_msgs: 100_000,
+      storage: StorageType.File,
+    };
 
-  /**
-   * Connect to NATS and initialize JetStream manager
-   */
-  private async connectNats(): Promise<void> {
-    if (this.nc) {
-      return;
-    }
-
-    this.nc = await connect({
-      servers: this.natsUrl,
-      maxReconnectAttempts: -1,
-      reconnectTimeWait: 2000,
-    });
-
-    this.jsm = await this.nc.jetstreamManager();
-    this.logger.info("Connected to NATS JetStream");
-  }
-
-  /**
-   * Ensure a single stream exists (idempotent)
-   */
-  private async ensureStream(
-    streamName: string,
-    subjectPrefix: string,
-  ): Promise<void> {
-    if (!this.jsm) {
-      throw new Error("Not connected to NATS");
-    }
-
-    // Check if stream already exists
-    try {
-      await this.jsm.streams.info(streamName);
-      this.logger.debug({ streamName }, "Stream already exists");
-      return;
-    } catch (error) {
-      if (!isNatsNotFound(error)) {
-        throw error;
-      }
-    }
-
-    // Stream doesn't exist, try to create it
-    try {
-      await this.jsm.streams.add({
-        name: streamName,
-        subjects: [`${subjectPrefix}.>`],
-        retention: RetentionPolicy.Limits,
-        max_age: 7 * 24 * 60 * 60 * 1_000_000_000, // 7 days in nanoseconds
-        max_msgs: 100_000,
-        storage: StorageType.File,
-      });
-      this.logger.info({ streamName }, "Created stream");
-    } catch (createError) {
-      if (isNatsAlreadyExists(createError)) {
-        this.logger.debug(
-          { streamName },
-          "Stream already exists (race condition)",
-        );
-        return;
-      }
-      throw createError;
-    }
-  }
-
-  /**
-   * Ensure the two shared streams exist (idempotent)
-   */
-  private async ensureSharedStreams(): Promise<void> {
-    await this.ensureStream(
-      Standards.Chimp.Naming.inputStreamName(),
-      Standards.Chimp.Prefix.INPUTS,
-    );
-    await this.ensureStream(
-      Standards.Chimp.Naming.outputStreamName(),
-      Standards.Chimp.Prefix.OUTPUTS,
-    );
+    await Promise.all([
+      NatsLib.ensureStream(jsm, {
+        ...streamDefaults,
+        name: Standards.Chimp.Naming.inputStreamName(),
+        subjects: [`${Standards.Chimp.Prefix.INPUTS}.>`],
+      }),
+      NatsLib.ensureStream(jsm, {
+        ...streamDefaults,
+        name: Standards.Chimp.Naming.outputStreamName(),
+        subjects: [`${Standards.Chimp.Prefix.OUTPUTS}.>`],
+      }),
+    ]);
   }
 }

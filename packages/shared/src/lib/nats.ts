@@ -1,8 +1,4 @@
-/**
- * Shared error types for Circus
- *
- * Provides type-safe error handling across all packages
- */
+import type { JetStreamManager, StreamConfig } from "nats";
 
 /**
  * NATS error (from nats.js library)
@@ -19,25 +15,6 @@ export function isNatsError(error: unknown): error is NatsError {
   return (
     error instanceof Error &&
     ("code" in error || error.message?.includes("nats"))
-  );
-}
-
-/**
- * Redis error (from ioredis)
- */
-export interface RedisError extends Error {
-  command?: string;
-  code?: string;
-  message: string;
-}
-
-/**
- * Check if an error is a Redis error
- */
-export function isRedisError(error: unknown): error is RedisError {
-  return (
-    error instanceof Error &&
-    ("command" in error || error.message?.includes("Redis"))
   );
 }
 
@@ -64,12 +41,30 @@ export function isNatsAlreadyExists(error: unknown): boolean {
   );
 }
 
-/**
- * Format an error for logging
- */
-export function formatError(error: unknown): string {
-  if (error instanceof Error) {
-    return `${error.name}: ${error.message}`;
+export async function ensureStream(
+  jsm: JetStreamManager,
+  config: Partial<StreamConfig>,
+): Promise<void> {
+  const streamName = config.name;
+  if (!streamName) {
+    throw new Error("Stream config must include a name");
   }
-  return String(error);
+
+  try {
+    await jsm.streams.info(streamName);
+    return;
+  } catch (error) {
+    if (!isNatsNotFound(error)) {
+      throw error;
+    }
+  }
+
+  try {
+    await jsm.streams.add(config);
+  } catch (error) {
+    if (isNatsAlreadyExists(error)) {
+      return;
+    }
+    throw error;
+  }
 }
