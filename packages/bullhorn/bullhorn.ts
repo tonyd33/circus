@@ -11,8 +11,11 @@ import {
   type ServiceMetrics,
 } from "@mnke/circus-shared/metrics";
 import { connect, type NatsConnection } from "nats";
-import type { OutputHandler } from "./handlers.ts";
-import { ConsoleLoggerHandler } from "./handlers.ts";
+import {
+  ChimpRequestHandler,
+  ConsoleLoggerHandler,
+  type OutputHandler,
+} from "./handlers.ts";
 
 export interface BullhornConfig {
   /**
@@ -71,6 +74,8 @@ export class Bullhorn {
 
     this.logger.info({ url: this.natsUrl }, "Connected to NATS");
     this.metrics.incActiveConnections("nats");
+
+    this.handlers.push(new ChimpRequestHandler(this.nc, this.logger));
 
     for (const handler of this.handlers) {
       if (handler.initialize) {

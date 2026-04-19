@@ -108,7 +108,7 @@ export async function createActivityStream(
     })();
   }
 
-  const tasks: Promise<void>[] = [];
+  const _tasks: Promise<void>[] = [];
   try {
     const inputInfo = await jsm.consumers.add(
       Standards.Chimp.Naming.inputStreamName(),

@@ -3,10 +3,10 @@ import * as P from "../lib/parser/string";
 export const Env = {
   chimpId: "CHIMP_ID",
   natsUrl: "NATS_URL",
+  redisUrl: "REDIS_URL",
   brainType: "CHIMP_BRAIN_TYPE",
   model: "CHIMP_MODEL",
   profile: "CHIMP_PROFILE",
-  initConfig: "CHIMP_INIT_CONFIG",
   inputMode: "CHIMP_INPUT_MODE",
   outputMode: "CHIMP_OUTPUT_MODE",
   httpPort: "CHIMP_HTTP_PORT",
@@ -88,5 +88,11 @@ export const Naming = {
   },
   redisChimpPattern(): string {
     return "chimp:*:state";
+  },
+  redisProfileKey(name: string): string {
+    return `profile:${name}`;
+  },
+  redisProfilePattern(): string {
+    return "profile:*";
   },
 };

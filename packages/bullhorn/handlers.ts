@@ -5,8 +5,9 @@
  * (e.g., Slack, GitHub, Discord, console logging)
  */
 
-import type { Logger, Protocol } from "@mnke/circus-shared";
+import { type Logger, Protocol, Standards } from "@mnke/circus-shared";
 import { Typing } from "@mnke/circus-shared/lib";
+import type { NatsConnection } from "nats";
 
 /**
  * Interface for handling chimp output messages
@@ -100,17 +101,56 @@ export class ConsoleLoggerHandler implements OutputHandler {
         );
         break;
 
-      case "opencode-event":
-        this.logger.error(
+      case "thought":
+        this.logger.debug(
+          { chimpName, brain: message.brain },
+          `[${chimpName}] Thought (${message.brain})`,
+        );
+        break;
+
+      case "chimp-request":
+        this.logger.info(
           {
             chimpName,
+            profile: message.profile,
+            requestedChimpId: message.chimpId,
           },
-          `[${chimpName}] Event: ${message.event}`,
+          `[${chimpName}] Chimp request: ${message.chimpId} (${message.profile})`,
         );
         break;
 
       default:
         return Typing.unreachable(message);
     }
+  }
+}
+
+export class ChimpRequestHandler implements OutputHandler {
+  private nc: NatsConnection;
+  private logger: Logger.Logger;
+
+  constructor(nc: NatsConnection, logger: Logger.Logger) {
+    this.nc = nc;
+    this.logger = logger;
+  }
+
+  async handle(
+    _chimpName: string,
+    message: Protocol.ChimpOutputMessage,
+  ): Promise<void> {
+    if (message.type !== "chimp-request") return;
+
+    const subject = Standards.Chimp.Naming.inputSubject(
+      message.profile,
+      message.chimpId,
+    );
+    this.nc.publish(
+      subject,
+      JSON.stringify(Protocol.createAgentCommand(message.message)),
+    );
+    this.logger.info(
+      { targetChimpId: message.chimpId, targetProfile: message.profile },
+      "Forwarded chimp request",
+    );
   }
 }

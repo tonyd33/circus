@@ -50,6 +50,21 @@ bun --watch packages/ringmaster/src/index.ts
 
 Type casting bypass safety, make false confidence, cause runtime crashes. Types no match = code wrong. Fix proper.
 
+## Single Source of Truth for Types
+
+**NEVER hand-write types that duplicate schema-derived types from shared.**
+
+- If a type exists in `@mnke/circus-shared` (Protocol, Standards), import it — never redefine locally
+- Use `Protocol.ChimpCommand`, not a local union of command types
+- Use `Standards.Chimp.ChimpState`, not a local interface with the same fields
+- This ensures adding a new variant (new command, new status, new field) forces compile errors at every usage site
+- Local type aliases that re-export shared types are fine: `type ChimpState = Standards.Chimp.ChimpState`
+- Local types that *mirror* shared types are not: `interface ChimpState { chimpId: string; ... }`
+
+Duplicated types silently drift when the source changes, hiding real bugs. The compiler can only enforce consistency if there's one definition.
+
+**NEVER re-export external SDK types from shared.** Shared (`@mnke/circus-shared`) defines circus-owned types only. If a package needs types from `@opencode-ai/sdk`, `@anthropic-ai/claude-agent-sdk`, etc., it imports them directly. Shared should not depend on brain-specific SDKs.
+
 ## Bun Usage
 
 Use Bun not Node.js.
@@ -223,7 +238,7 @@ Ensure every resource created has a clear destruction path documented in the com
 
 - DELETE: Comments that restate what the code does (`// Connect to Redis`)
 - KEEP: Non-obvious rationale, race conditions, magic values
-- OK: File/class docstrings at top of file
+- RECOMMENDED: File/class docstrings at top of file
 
 ## Environment Configuration
 

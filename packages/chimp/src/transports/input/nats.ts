@@ -52,24 +52,16 @@ export class NatsInput extends ChimpInput {
             "Received message",
           );
 
-          try {
-            const payload = JSON.parse(msg.string());
-            const command = Protocol.parseChimpCommand(payload);
-            const result = await this.handler(command);
+          const payload = JSON.parse(msg.string());
+          const command = Protocol.parseChimpCommand(payload);
+          const result = await this.handler(command);
 
-            msg.ack();
-            this.logger.info(
-              { seq: msg.seq },
-              "Processed message successfully",
-            );
+          msg.ack();
+          this.logger.info({ seq: msg.seq }, "Processed message successfully");
 
-            if (result === "stop") {
-              await this.onStopRequested();
-              return;
-            }
-          } catch (error) {
-            this.logger.error({ err: error }, "Error processing message");
-            msg.ack();
+          if (result === "stop") {
+            await this.onStopRequested();
+            return;
           }
         }
       } catch (error) {

@@ -24,8 +24,6 @@ spec:
           image: "{{ .Values.ringmaster.image.repository }}:{{ .Values.ringmaster.image.tag }}"
           imagePullPolicy: {{ .Values.ringmaster.image.pullPolicy }}
           args:
-            - "--profile-file"
-            - "/etc/circus/ringmaster/profiles.json"
             - "--namespace"
             - "$(NAMESPACE)"
           env:
@@ -37,22 +35,6 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
-            - name: CHIMP_JOB_CONFIG_PATH
-              value: "/etc/circus/chimp-job-config.json"
-          volumeMounts:
-            - name: chimp-job-config
-              mountPath: /etc/circus
-              readOnly: true
-            - name: chimp-profiles
-              mountPath: /etc/circus/ringmaster
-              readOnly: true
           resources:
             {{- toYaml .Values.ringmaster.resources | nindent 12 }}
-      volumes:
-        - name: chimp-job-config
-          configMap:
-            name: {{ include "circus.fullname" . }}-chimp-job-config
-        - name: chimp-profiles
-          configMap:
-            name: {{ include "circus.fullname" . }}-chimp-profiles
 {{- end }}

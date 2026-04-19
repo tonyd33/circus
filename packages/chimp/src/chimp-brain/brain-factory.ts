@@ -12,6 +12,7 @@ export interface BrainFactory {
     model: string,
     publish: PublishFn,
     logger: Logger.Logger,
+    mcpUrl: string,
   ): ChimpBrain;
 }
 
@@ -23,14 +24,15 @@ export class DefaultBrainFactory implements BrainFactory {
     model: string,
     publish: PublishFn,
     logger: Logger.Logger,
+    mcpUrl: string,
   ): ChimpBrain {
     switch (this.brainType) {
       case "claude":
-        return new ClaudeChimp(chimpId, model, publish, logger);
+        return new ClaudeChimp(chimpId, model, publish, logger, mcpUrl);
       case "opencode":
-        return new OpencodeBrain(chimpId, model, publish, logger);
+        return new OpencodeBrain(chimpId, model, publish, logger, mcpUrl);
       case "echo":
-        return new EchoBrain(chimpId, model, publish, logger);
+        return new EchoBrain(chimpId, model, publish, logger, mcpUrl);
     }
   }
 }

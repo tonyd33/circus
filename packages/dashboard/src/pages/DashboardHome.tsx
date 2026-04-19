@@ -140,6 +140,9 @@ export function DashboardHome() {
                   <span className="font-mono text-sm truncate flex-1">
                     {chimp.chimpId}
                   </span>
+                  <Badge variant="outline" className="text-xs">
+                    {chimp.profile}
+                  </Badge>
                   <Badge variant="secondary" className="text-xs">
                     {chimp.status}
                   </Badge>

@@ -11,6 +11,7 @@ import { RedisStatusSource } from "./lib/status-source";
 import { ActivityRouter } from "./routes/activity";
 import { ChimpRouter } from "./routes/chimps";
 import { MessageRouter } from "./routes/messages";
+import { ProfileRouter } from "./routes/profiles";
 
 const logger = Logger.createLogger("dashboard");
 
@@ -28,10 +29,7 @@ async function main() {
   const config = result.value;
 
   const redis = new Redis(config.redisUrl);
-  const statusSource = new RedisStatusSource(
-    redis,
-    logger.child({ component: "StatusSource" }),
-  );
+  const statusSource = new RedisStatusSource(redis);
 
   const nc = await connect({
     servers: config.natsUrl,
@@ -48,6 +46,10 @@ async function main() {
     statusSource,
     nc,
     logger.child({ component: "ChimpRouter" }),
+  );
+  const profileRouter = new ProfileRouter(
+    redis,
+    logger.child({ component: "ProfileRouter" }),
   );
   const messageRouter = new MessageRouter(
     nc,
@@ -80,6 +82,7 @@ async function main() {
       "/*": index,
       ...activityRouter.routes,
       ...chimpRouter.routes,
+      ...profileRouter.routes,
       ...messageRouter.routes,
     },
 

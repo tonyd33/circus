@@ -1,21 +1,15 @@
-/**
- * Ringmaster - Job Manager
- *
- * Manages Kubernetes job lifecycle for Chimps
- */
-
 import * as k8s from "@kubernetes/client-node";
 import { type Logger, Standards } from "@mnke/circus-shared";
 import type { ProfileLoader } from "@/config";
 import type { RingmasterConfig } from "@/core";
-import { type ChimpJobConfig, K8sLib } from "@/lib";
+import { K8sLib } from "@/lib";
 
 export class JobManager {
   private k8sBatchApi: k8s.BatchV1Api;
   private namespace: string;
   private natsUrl: string;
+  private redisUrl: string;
   private profileLoader: ProfileLoader;
-  private chimpJobConfig: ChimpJobConfig.ChimpJobConfig;
   private logger: Logger.Logger;
 
   constructor(
@@ -29,8 +23,8 @@ export class JobManager {
     this.k8sBatchApi = kc.makeApiClient(k8s.BatchV1Api);
     this.namespace = config.namespace;
     this.natsUrl = config.natsUrl;
+    this.redisUrl = config.redisUrl;
     this.profileLoader = profileLoader;
-    this.chimpJobConfig = config.chimpJobConfig;
     this.logger = logger;
   }
 
@@ -38,16 +32,9 @@ export class JobManager {
 
   async stop(): Promise<void> {}
 
-  /**
-   * Create a Chimp job (idempotent)
-   */
   async createJob(chimpId: string, profile: string): Promise<void> {
     const jobName = Standards.Chimp.Naming.podName(chimpId);
-
-    const profileData = this.profileLoader.getProfile(profile);
-    const brainType = profileData.brain;
-    const model = profileData.model;
-    const image = profileData.image;
+    const profileData = await this.profileLoader.getProfile(profile);
 
     const job: k8s.V1Job = {
       apiVersion: "batch/v1",
@@ -76,8 +63,8 @@ export class JobManager {
             containers: [
               {
                 name: "chimp",
-                image,
-                imagePullPolicy: this.chimpJobConfig.imagePullPolicy ?? "Never",
+                image: profileData.image,
+                imagePullPolicy: profileData.imagePullPolicy ?? "Never",
                 env: [
                   {
                     name: Standards.Chimp.Env.chimpId,
@@ -89,30 +76,34 @@ export class JobManager {
                   },
                   {
                     name: Standards.Chimp.Env.brainType,
-                    value: brainType,
+                    value: profileData.brain,
                   },
                   {
                     name: Standards.Chimp.Env.model,
-                    value: model,
+                    value: profileData.model,
                   },
                   {
                     name: Standards.Chimp.Env.profile,
                     value: profile,
                   },
-                  ...this.chimpJobConfig.extraEnv,
+                  {
+                    name: Standards.Chimp.Env.redisUrl,
+                    value: this.redisUrl,
+                  },
+                  ...profileData.extraEnv,
                 ],
-                ...(this.chimpJobConfig.volumeMounts.length > 0 && {
-                  volumeMounts: this.chimpJobConfig.volumeMounts,
+                ...(profileData.volumeMounts.length > 0 && {
+                  volumeMounts: profileData.volumeMounts,
                 }),
               },
             ],
-            ...(this.chimpJobConfig.volumes.length > 0 && {
-              volumes: this.chimpJobConfig.volumes,
+            ...(profileData.volumes.length > 0 && {
+              volumes: profileData.volumes,
             }),
-            restartPolicy: "Never", // Chimps are ephemeral - don't restart on exit
+            restartPolicy: "Never",
           },
         },
-        backoffLimit: 0, // Don't retry failed jobs
+        backoffLimit: 0,
         ttlSecondsAfterFinished: 0,
       },
     };
@@ -124,7 +115,6 @@ export class JobManager {
       });
       this.logger.info({ jobName, chimpId }, "Created job");
     } catch (error) {
-      // Handle race condition - another ringmaster may have created it
       if (K8sLib.isK8sConflict(error)) {
         this.logger.debug(
           { jobName },

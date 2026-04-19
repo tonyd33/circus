@@ -93,26 +93,3 @@ dashboard:
     limits:
       memory: "512Mi"
       cpu: "500m"
-
-# Chimp configuration
-chimp:
-  # Profiles define brain, model, and image per named preset
-  profiles:
-    default:
-      brain: echo
-      model: haiku-4-5
-      image: "chimp:latest"
-  # Job config shared across all chimp pods
-  imagePullPolicy: IfNotPresent
-  extraEnv: []
-  # extraEnv:
-  #   - name: ANTHROPIC_API_KEY
-  #     valueFrom:
-  #       secretKeyRef:
-  #         name: anthropic-api-key
-  #         key: ANTHROPIC_API_KEY
-  volumeMounts: []
-  volumes: []
-  initConfig:
-    enabled: false
-    commands: []

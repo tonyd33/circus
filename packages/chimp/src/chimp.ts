@@ -1,10 +1,10 @@
-import { readFile } from "node:fs/promises";
 import { type Logger, Protocol, Standards } from "@mnke/circus-shared";
-import { EnvReader as ER, Typing } from "@mnke/circus-shared/lib";
-import { Either } from "@mnke/circus-shared/lib/fp";
+import { Typing } from "@mnke/circus-shared/lib";
+import Redis from "ioredis";
 import type { NatsConnection } from "nats";
 import { connect } from "nats";
 import type { BrainFactory, ChimpBrain, PublishFn } from "@/chimp-brain";
+import { CircusMcp } from "@/mcp/circus-mcp";
 import {
   type ChimpInput,
   type ChimpOutput,
@@ -20,6 +20,7 @@ export interface ChimpConfig {
   profile: string;
   model: string;
   natsUrl: string;
+  redisUrl: string;
   inputMode: "nats" | "http";
   outputMode: "nats" | "stdout";
   httpPort: number;
@@ -35,6 +36,7 @@ export class Chimp {
   private brain: ChimpBrain | null = null;
   private input: ChimpInput | null = null;
   private output: ChimpOutput | null = null;
+  private mcp: CircusMcp | null = null;
   private isShuttingDown = false;
   private lastActivity = Date.now();
   private idleCheckTimer: Timer | null = null;
@@ -70,18 +72,26 @@ export class Chimp {
       this.lastActivity = Date.now();
       output.publish(message);
     };
+
+    this.mcp = new CircusMcp(
+      publishFn,
+      this.logger.child({ component: "MCP" }),
+    );
+    const mcpUrl = await this.mcp.start();
+
     this.brain = this.brainFactory.create(
       this.config.chimpId,
       this.config.model,
       publishFn,
       this.logger.child({ component: "Brain" }),
+      mcpUrl,
     );
     const brain = this.brain;
 
     await brain.onStartup();
     this.logger.info("Chimp startup complete");
 
-    await this.executeInitConfig(brain);
+    await this.executeInitCommands(brain);
     this.logger.info("Init config executed");
 
     const onActivity = () => {
@@ -142,31 +152,34 @@ export class Chimp {
     }
   }
 
-  private async executeInitConfig(brain: ChimpBrain): Promise<void> {
-    const configPath = ER.str(Standards.Chimp.Env.initConfig).read(
-      process.env,
-    ).value;
+  private async executeInitCommands(brain: ChimpBrain): Promise<void> {
+    const redis = new Redis(this.config.redisUrl);
+    try {
+      const key = Standards.Chimp.Naming.redisProfileKey(this.config.profile);
+      const data = await redis.get(key);
+      if (!data) return;
 
-    if (Either.isLeft(configPath) || !configPath.value) return;
+      const profile = Protocol.ChimpProfileSchema.parse(JSON.parse(data));
+      if (profile.initCommands.length === 0) return;
 
-    const raw = await readFile(configPath.value, "utf-8");
-    const config = Protocol.parseInitConfig(JSON.parse(raw));
+      this.logger.info(
+        { commands: profile.initCommands.length },
+        "Executing init commands",
+      );
 
-    this.logger.info(
-      { commands: config.commands.length },
-      "Executing init config",
-    );
-
-    for (const cmd of config.commands) {
-      this.logger.info({ command: cmd.command }, "Init command");
-      const result = await brain.handleMessage(cmd);
-      if (result === "stop") {
-        this.logger.info("Init command requested stop");
-        break;
+      for (const cmd of profile.initCommands) {
+        this.logger.info({ command: cmd.command }, "Init command");
+        const result = await brain.handleMessage(cmd);
+        if (result === "stop") {
+          this.logger.info("Init command requested stop");
+          break;
+        }
       }
-    }
 
-    this.logger.info("Init config complete");
+      this.logger.info("Init commands complete");
+    } finally {
+      await redis.quit();
+    }
   }
 
   private startIdleCheck(): void {
@@ -199,6 +212,10 @@ export class Chimp {
 
     if (this.brain) {
       await this.brain.onShutdown();
+    }
+
+    if (this.mcp) {
+      await this.mcp.stop();
     }
 
     // Chimp owns NATS connection — drain and close last

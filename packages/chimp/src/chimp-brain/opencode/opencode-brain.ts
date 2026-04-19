@@ -10,7 +10,7 @@ import { Either as E } from "@mnke/circus-shared/lib/fp";
 import * as Opencode from "@opencode-ai/sdk";
 import { createS3Client, s3ConfigReader } from "@/lib/s3";
 import { cloneRepo } from "@/lib/tooling";
-import { ChimpBrain, type PublishFn } from "../chimp-brain";
+import { ChimpBrain } from "../chimp-brain";
 import {
   restoreOpencodeChimpStateFromS3,
   restoreOpencodeStateFromS3,
@@ -54,7 +54,7 @@ export class OpencodeBrain extends ChimpBrain {
         for await (const event of events.stream) {
           if (this.eventAbortController?.signal.aborted) break;
           if (IGNORED_EVENTS.has(event.type)) continue;
-          this.publish(Protocol.createOpencodeEventMessage(event));
+          this.publish(Protocol.createThought("opencode", event));
         }
       } catch (err) {
         if ((err as Error).name === "AbortError") {
@@ -264,6 +264,14 @@ export class OpencodeBrain extends ChimpBrain {
         this.log("info", `Working directory set to: ${absolutePath}`);
         break;
       }
+
+      case "set-system-prompt":
+        this.setSystemPrompt(command.args.prompt);
+        break;
+
+      case "set-allowed-tools":
+        this.setAllowedTools(command.args.tools);
+        break;
 
       default:
         Typing.unreachable(command);

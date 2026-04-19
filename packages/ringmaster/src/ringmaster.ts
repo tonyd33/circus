@@ -13,7 +13,7 @@ import {
   RetentionPolicy,
   StorageType,
 } from "nats";
-import type { ProfileLoader } from "@/config";
+import { ProfileLoader } from "@/config";
 import { EventHandler, type RingmasterConfig } from "@/core";
 import {
   ConsumerManager,
@@ -27,7 +27,7 @@ import { PodCache } from "@/state/pod-cache";
 export class Ringmaster {
   private config: RingmasterConfig;
   private logger: Logger.Logger;
-  private profileLoader: ProfileLoader;
+  private profileLoader: ProfileLoader | null = null;
 
   private nc: NatsConnection | null = null;
   private jsm: JetStreamManager | null = null;
@@ -44,14 +44,9 @@ export class Ringmaster {
   private messageListener: MessageListener | null = null;
   private podWatcher: PodWatcher | null = null;
 
-  constructor(
-    config: RingmasterConfig,
-    profileLoader: ProfileLoader,
-    logger: Logger.Logger,
-  ) {
+  constructor(config: RingmasterConfig, logger: Logger.Logger) {
     this.config = config;
     this.logger = logger;
-    this.profileLoader = profileLoader;
   }
 
   /**
@@ -80,6 +75,12 @@ export class Ringmaster {
       this.nc,
       this.logger.child({ component: "MetaPublisher" }),
     );
+    this.profileLoader = new ProfileLoader(
+      this.config.redisUrl,
+      this.logger.child({ component: "ProfileLoader" }),
+    );
+    await this.profileLoader.seedDefaults();
+
     this.jobManager = new JobManager(
       this.config,
       this.profileLoader,
@@ -96,7 +97,7 @@ export class Ringmaster {
       consumerManager: this.consumerManager,
       stateManager: this.stateManager,
       metaPublisher: this.metaPublisher,
-      getPod: (chimpId) => this.podCache!.getPod(chimpId),
+      getPod: (chimpId) => this.podCache?.getPod(chimpId),
       logger: this.logger.child({ component: "EventHandler" }),
     });
 
@@ -131,11 +132,13 @@ export class Ringmaster {
       this.messageListener?.stop(),
       this.stateManager?.stop(),
       this.jobManager?.stop(),
+      this.profileLoader?.stop(),
     ]);
     this.podWatcher = null;
     this.messageListener = null;
     this.stateManager = null;
     this.jobManager = null;
+    this.profileLoader = null;
 
     if (this.nc) {
       await this.nc.drain();

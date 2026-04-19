@@ -313,12 +313,16 @@ export function ChimpActivity() {
           </div>
         );
       }
-      case "opencode-event": {
+      case "thought": {
+        const brain = getString(data, "brain");
         const event = data.event as Record<string, unknown> | undefined;
         const eventType = event?.type as string | undefined;
         return (
           <div className="space-y-2">
             <div className="flex items-center gap-2">
+              <Badge variant="secondary" className="text-xs">
+                {brain}
+              </Badge>
               <Badge variant="outline" className="text-xs font-mono">
                 {eventType || "unknown"}
               </Badge>
@@ -412,18 +416,18 @@ export function ChimpActivity() {
                   </p>
                   <div className="space-y-1.5">
                     {groupedTypes.input.map((mt) => (
-                      <button
+                      <label
                         key={mt}
-                        type="button"
+                        htmlFor={`filter-${mt}`}
                         className="flex items-center gap-2 cursor-pointer"
-                        onClick={() => toggleType(mt)}
                       >
                         <Checkbox
+                          id={`filter-${mt}`}
                           checked={selectedTypes.has(mt)}
                           onCheckedChange={() => toggleType(mt)}
                         />
                         <span className="text-sm font-mono">{mt}</span>
-                      </button>
+                      </label>
                     ))}
                   </div>
                 </div>
@@ -433,18 +437,18 @@ export function ChimpActivity() {
                   <p className="text-xs font-medium text-ring mb-1.5">Output</p>
                   <div className="space-y-1.5">
                     {groupedTypes.output.map((mt) => (
-                      <button
+                      <label
                         key={mt}
-                        type="button"
+                        htmlFor={`filter-${mt}`}
                         className="flex items-center gap-2 cursor-pointer"
-                        onClick={() => toggleType(mt)}
                       >
                         <Checkbox
+                          id={`filter-${mt}`}
                           checked={selectedTypes.has(mt)}
                           onCheckedChange={() => toggleType(mt)}
                         />
                         <span className="text-sm font-mono">{mt}</span>
-                      </button>
+                      </label>
                     ))}
                   </div>
                 </div>

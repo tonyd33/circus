@@ -5,18 +5,13 @@
  */
 
 import type { Standards } from "@mnke/circus-shared";
-import type { ChimpJobConfig } from "../lib/chimp-job-config.ts";
 
 type ChimpStatus = Standards.Chimp.ChimpStatus;
 
-/**
- * Configuration for Ringmaster
- */
 export interface RingmasterConfig {
   natsUrl: string;
   redisUrl: string;
   namespace: string;
-  chimpJobConfig: ChimpJobConfig;
 }
 
 /**

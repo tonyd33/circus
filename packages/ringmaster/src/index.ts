@@ -1,12 +1,10 @@
 #!/usr/bin/env bun
 
 import * as Commander from "@commander-js/extra-typings";
-import { Logger, Standards } from "@mnke/circus-shared";
+import { Logger } from "@mnke/circus-shared";
 import { EnvReader as ER } from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
-import { createProfileLoader } from "@/config/profile-loader";
 import type { RingmasterConfig } from "@/core/types";
-import { loadChimpJobConfig } from "@/lib/chimp-job-config";
 import { Ringmaster } from "@/ringmaster";
 
 const logger = Logger.createLogger("ringmaster");
@@ -15,18 +13,14 @@ async function main() {
   const program = new Commander.Command()
     .name("ringmaster")
     .description("Chimp lifecycle orchestrator")
-    .option("-f, --profile-file <path>", "Path to profiles JSON file")
     .option("--namespace <ns>", "Kubernetes namespace", "default")
     .parse(process.argv);
 
   const opts = program.opts();
 
-  const profileFile = opts.profileFile;
-
   const result = ER.record({
     natsUrl: ER.str("NATS_URL").fallback("nats://localhost:4222"),
     redisUrl: ER.str("REDIS_URL").fallback("redis://localhost:6379"),
-    chimpJobConfigPath: ER.str("CHIMP_JOB_CONFIG_PATH").fallback(""),
   }).read(process.env).value;
 
   if (Either.isLeft(result)) {
@@ -35,27 +29,17 @@ async function main() {
   }
 
   const envConfig = result.value;
-  const chimpJobConfig = await loadChimpJobConfig(
-    envConfig.chimpJobConfigPath || undefined,
-  );
-
-  const profileLoader = await createProfileLoader(
-    profileFile ?? "/etc/circus/ringmaster/profiles.json",
-    logger.child({ component: "ProfileLoader" }),
-  );
 
   const config: RingmasterConfig = {
     natsUrl: envConfig.natsUrl,
     redisUrl: envConfig.redisUrl,
     namespace: opts.namespace,
-    chimpJobConfig,
   };
 
-  logger.info({ config, profileFile }, "Ringmaster starting");
+  logger.info({ config }, "Ringmaster starting");
 
   const ringmaster = new Ringmaster(
     config,
-    profileLoader,
     logger.child({ component: "Ringmaster" }),
   );
 

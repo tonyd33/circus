@@ -15,19 +15,24 @@ export type PublishFn = (message: Protocol.ChimpOutputMessage) => void;
 export abstract class ChimpBrain {
   protected chimpId: string;
   protected model: string;
+  protected systemPrompt: string | undefined;
+  protected allowedTools: string[] = [];
   protected publish: PublishFn;
   protected logger: Logger.Logger;
+  protected mcpUrl: string;
 
   constructor(
     chimpId: string,
     model: string,
     publish: PublishFn,
     logger: Logger.Logger,
+    mcpUrl: string,
   ) {
     this.chimpId = chimpId;
     this.model = model;
     this.publish = publish;
     this.logger = logger;
+    this.mcpUrl = mcpUrl;
   }
 
   /**
@@ -50,6 +55,16 @@ export abstract class ChimpBrain {
    * Handle an incoming message
    * @returns "continue" to keep processing messages, "stop" to shutdown
    */
+  protected setSystemPrompt(prompt: string): void {
+    this.systemPrompt = prompt;
+    this.log("info", "System prompt set");
+  }
+
+  protected setAllowedTools(tools: string[]): void {
+    this.allowedTools = tools;
+    this.log("info", "Allowed tools set", { tools });
+  }
+
   abstract handleMessage(
     message: Protocol.ChimpCommand,
   ): Promise<"continue" | "stop">;

@@ -81,7 +81,7 @@ export interface Decision {
  * Decide what to do when a pod event occurs
  */
 export function decideOnPodEvent(
-  state: CoreState,
+  _state: CoreState,
   profile: string,
   eventType: string,
   pod: k8s.V1Pod,

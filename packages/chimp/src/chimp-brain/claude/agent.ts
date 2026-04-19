@@ -15,8 +15,10 @@ interface ClaudeAgentState {
   messageCount: number;
   sessionId?: string;
   model: string;
+  systemPrompt?: string;
   allowedTools: string[];
   workingDir: string;
+  mcpUrl: string;
 }
 
 /**
@@ -72,11 +74,18 @@ export async function processWithClaude(
 
   const options: ClaudeSDK.Options = {
     model: state.model,
+    systemPrompt: state.systemPrompt,
     allowedTools: state.allowedTools,
     continue: sessionId == null,
     resume: sessionId,
     cwd: state.workingDir,
     hooks,
+    mcpServers: {
+      circus: {
+        type: "http",
+        url: state.mcpUrl,
+      },
+    },
   };
 
   const queryStream = ClaudeSDK.query({
@@ -85,6 +94,8 @@ export async function processWithClaude(
   });
 
   for await (const message of queryStream) {
+    publish(Protocol.createThought("claude", message));
+
     if (message.type === "result") {
       sessionId = message.session_id;
     }

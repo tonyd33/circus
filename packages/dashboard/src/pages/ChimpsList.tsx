@@ -4,6 +4,7 @@
 
 import { CircleDot, Loader2 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
@@ -69,7 +70,12 @@ export function ChimpsList() {
                     />
                     <CardTitle className="text-lg">{chimp.chimpId}</CardTitle>
                   </div>
-                  <CardDescription>{chimp.status}</CardDescription>
+                  <CardDescription className="flex items-center gap-2">
+                    {chimp.status}
+                    <Badge variant="outline" className="text-xs">
+                      {chimp.profile}
+                    </Badge>
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <p className="text-sm text-muted-foreground">

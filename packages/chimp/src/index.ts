@@ -11,10 +11,13 @@ const logger = Logger.createLogger("chimp");
 async function main() {
   const result = ER.record({
     chimpId: ER.str(Standards.Chimp.Env.chimpId),
-    profile: ER.str(Standards.Chimp.Env.profile).fallback("default"),
-    model: ER.str(Standards.Chimp.Env.model).fallback("big-pickle"),
+    profile: ER.str(Standards.Chimp.Env.profile),
+    model: ER.str(Standards.Chimp.Env.model),
     natsUrl: ER.str(Standards.Chimp.Env.natsUrl).fallback(
       "nats://localhost:4222",
+    ),
+    redisUrl: ER.str(Standards.Chimp.Env.redisUrl).fallback(
+      "redis://localhost:6379",
     ),
     brainType: ER.enm(Standards.Chimp.Env.brainType, [
       "claude",
@@ -55,6 +58,7 @@ async function main() {
       profile: config.profile,
       model: config.model,
       natsUrl: config.natsUrl,
+      redisUrl: config.redisUrl,
       inputMode: config.inputMode,
       outputMode: config.outputMode,
       httpPort: config.httpPort,

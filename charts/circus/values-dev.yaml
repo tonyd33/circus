@@ -9,7 +9,7 @@ usher:
     repository: usher
 
 bullhorn:
-  enabled: false
+  enabled: true
   image:
     repository: bullhorn
 
@@ -17,25 +17,3 @@ dashboard:
   enabled: true
   image:
     repository: dashboard
-
-chimp:
-  profiles:
-    default:
-      brain: opencode
-      model: big-pickle
-      image: "chimp:latest"
-  extraEnv:
-    - name: ANTHROPIC_API_KEY
-      valueFrom:
-        secretKeyRef:
-          name: anthropic-api-key
-          key: ANTHROPIC_API_KEY
-  initConfig:
-    enabled: true
-    commands:
-      - command: clone-repo
-        args:
-          url: "https://github.com/tonyd33/circus.git"
-      - command: set-working-dir
-        args:
-          path: "circus"

@@ -330,7 +330,7 @@ describe(Parser.Do, () => {
   test("bindL() creates parser from environment", () => {
     const p = Parser.Do()
       .bind("sep", Parser.str(","))
-      .bindL("rest", (env) => Parser.many(Parser.oneOf("abc")))
+      .bindL("rest", (_env) => Parser.many(Parser.oneOf("abc")))
       .return((env) => env.rest.join(env.sep));
     const result = p.parse(",abc");
     expect(result.isRight()).toBe(true);
