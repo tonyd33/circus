@@ -46,7 +46,7 @@ jobs:
 
       - name: Build and push all images
         run: |
-          TARGETS=(chimp ringmaster usher bullhorn ledger dashboard)
+          TARGETS=(chimp ringmaster usher bullhorn dashboard)
           PUSH="${{ github.event_name != 'pull_request' }}"
 
           for target in "${TARGETS[@]}"; do
