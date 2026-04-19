@@ -8,10 +8,11 @@ components:
   - ../../components/redis
   - ../../components/nats
   - ../../components/minio
-  - ../../components/grafana
-  - ../../components/loki
-  - ../../components/mimir
-  - ../../components/tempo
+  # - ../../components/loki
+  # - ../../components/grafana
+  # - ../../components/tempo
+  # - ../../components/mimir
+  - ../../components/cloudflared
 
 helmCharts:
   - name: opentelemetry-collector

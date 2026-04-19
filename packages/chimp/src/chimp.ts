@@ -197,6 +197,11 @@ export class Chimp {
           "Idle timeout reached, shutting down",
         );
         this.shutdown("idle_timeout");
+      } else {
+        this.logger.info(
+          { idleMs, timeoutMs: this.config.idleTimeoutMs },
+          "Not idle",
+        );
       }
     }, checkIntervalMs);
   }

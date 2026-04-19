@@ -61,6 +61,7 @@ export class Usher {
       const adapter = factory(adapterLogger);
       result[route.path] = {
         POST: async (req: Request) => {
+          this.logger.info({ path: route.path }, "Handling request");
           if (req.method !== "POST") {
             return new Response("Method Not Allowed", { status: 405 });
           }

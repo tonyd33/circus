@@ -14,7 +14,7 @@ export const s3ConfigReader = ER.record({
   region: ER.str("S3_REGION").fallback("us-east-1"),
   accessKeyId: ER.str("S3_ACCESS_KEY_ID").fallback("minioadmin"),
   secretAccessKey: ER.str("S3_SECRET_ACCESS_KEY").fallback("minioadmin"),
-  bucket: ER.str("S3_BUCKET").fallback("claude-sessions"),
+  bucket: ER.str("S3_BUCKET").fallback("circus"),
 });
 
 export function createS3Client(config: S3Config): S3Client {

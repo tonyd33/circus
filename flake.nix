@@ -41,6 +41,8 @@
               kubernetes-helm
               redis
               kustomize
+              opentofu
+              go-task
             ];
           };
         }

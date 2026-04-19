@@ -29,6 +29,9 @@ spec:
               value: {{ .Values.externalServices.nats.url | quote }}
             - name: NODE_ENV
               value: "production"
+            {{- with .Values.dashboard.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           ports:
             - containerPort: 3000
               protocol: TCP

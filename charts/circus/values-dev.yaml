@@ -7,6 +7,21 @@ usher:
   enabled: true
   image:
     repository: usher
+  routes:
+    - adapter: debug
+      path: /api/webhooks/debug
+    - adapter: github
+      path: /api/webhooks/github
+  extraEnv:
+    - name: GITHUB_BOT_NAME
+      value: tonyd33
+    - name: GITHUB_PROFILE
+      value: default
+    - name: GITHUB_WEBHOOK_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: circus-secrets
+          key: GITHUB_WEBHOOK_SECRET
 
 bullhorn:
   enabled: true

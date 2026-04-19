@@ -80,8 +80,9 @@ export const Naming = {
   ): { profile: string; chimpId: string } | null {
     return parseSubject(Prefix.OUTPUTS, subject);
   },
-  podName(chimpId: string): string {
-    return `chimp-${chimpId.toLowerCase()}`;
+  podName(profile: string, chimpId: string): string {
+    const hash = Bun.hash(`${profile}/${chimpId}`).toString(36);
+    return `chimp-${hash}`;
   },
   redisChimpKey(chimpId: string): string {
     return `chimp:${chimpId}:state`;

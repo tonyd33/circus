@@ -29,6 +29,7 @@ ringmaster:
     name: ringmaster
   rbac:
     create: true
+  extraEnv: []
   resources:
     requests:
       memory: "128Mi"
@@ -55,9 +56,10 @@ usher:
     limits:
       memory: "512Mi"
       cpu: "500m"
+  extraEnv: []
   routes:
     - adapter: debug
-      path: /debug
+      path: /api/webhooks/debug
 
 # Bullhorn configuration
 bullhorn:
@@ -74,6 +76,7 @@ bullhorn:
     limits:
       memory: "256Mi"
       cpu: "200m"
+  extraEnv: []
 
 # Dashboard configuration
 dashboard:
@@ -86,6 +89,7 @@ dashboard:
   service:
     type: ClusterIP
     port: 3000
+  extraEnv: []
   resources:
     requests:
       memory: "128Mi"

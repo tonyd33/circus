@@ -23,7 +23,7 @@ interface IssueCommentPayload {
 export class GitHubAdapter implements Adapter {
   private botName: string;
   private profile: string;
-  private webhookSecret: string | undefined;
+  private webhookSecret: string | null;
   private logger: Logger.Logger;
 
   constructor(logger: Logger.Logger) {
@@ -32,6 +32,7 @@ export class GitHubAdapter implements Adapter {
     const result = ER.record({
       botName: ER.str("GITHUB_BOT_NAME"),
       profile: ER.str("GITHUB_PROFILE").fallback("default"),
+      webhookSecret: ER.str("GITHUB_WEBHOOK_SECRET").fallbackW(null),
     }).read(process.env).value;
 
     if (Either.isLeft(result)) {
@@ -40,13 +41,7 @@ export class GitHubAdapter implements Adapter {
 
     this.botName = result.value.botName;
     this.profile = result.value.profile;
-
-    const secretResult = ER.str("GITHUB_WEBHOOK_SECRET").read(
-      process.env,
-    ).value;
-    this.webhookSecret = Either.isRight(secretResult)
-      ? secretResult.value
-      : undefined;
+    this.webhookSecret = result.value.webhookSecret;
   }
 
   async handleEvent(

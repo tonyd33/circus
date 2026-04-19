@@ -33,7 +33,7 @@ export class JobManager {
   async stop(): Promise<void> {}
 
   async createJob(chimpId: string, profile: string): Promise<void> {
-    const jobName = Standards.Chimp.Naming.podName(chimpId);
+    const jobName = Standards.Chimp.Naming.podName(profile, chimpId);
     const profileData = await this.profileLoader.getProfile(profile);
 
     const job: k8s.V1Job = {
