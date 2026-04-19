@@ -2,12 +2,11 @@
  * Claude Agent SDK integration and message processing
  */
 import * as ClaudeSDK from "@anthropic-ai/claude-agent-sdk";
-import type { LogLevel } from "@mnke/circus-shared/logger";
-import { createAgentMessageResponse } from "@mnke/circus-shared/protocol";
-import type { PublishFn } from "@/chimp-brain";
+import { type Logger, Protocol } from "@mnke/circus-shared";
+import type { PublishFn } from "@/chimp-brain/chimp-brain";
 
 type LogFn = (
-  level: LogLevel,
+  level: Logger.LogLevel,
   message: string,
   data?: Record<string, unknown>,
 ) => void;
@@ -16,8 +15,10 @@ interface ClaudeAgentState {
   messageCount: number;
   sessionId?: string;
   model: string;
+  systemPrompt?: string;
   allowedTools: string[];
   workingDir: string;
+  mcpUrl: string;
 }
 
 /**
@@ -73,11 +74,18 @@ export async function processWithClaude(
 
   const options: ClaudeSDK.Options = {
     model: state.model,
+    systemPrompt: state.systemPrompt,
     allowedTools: state.allowedTools,
     continue: sessionId == null,
     resume: sessionId,
     cwd: state.workingDir,
     hooks,
+    mcpServers: {
+      circus: {
+        type: "http",
+        url: state.mcpUrl,
+      },
+    },
   };
 
   const queryStream = ClaudeSDK.query({
@@ -86,6 +94,8 @@ export async function processWithClaude(
   });
 
   for await (const message of queryStream) {
+    publish(Protocol.createThought("claude", message));
+
     if (message.type === "result") {
       sessionId = message.session_id;
     }
@@ -95,7 +105,7 @@ export async function processWithClaude(
         if (block.type === "text") {
           responseText += block.text;
           if (sessionId != null) {
-            publish(createAgentMessageResponse(block.text, sessionId));
+            publish(Protocol.createAgentMessageResponse(block.text, sessionId));
           }
         }
       }

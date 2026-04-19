@@ -1,52 +1,54 @@
-import { readFile } from "node:fs/promises";
-import { Standards } from "@mnke/circus-shared";
-import { EnvReader as ER, Typing } from "@mnke/circus-shared/lib";
-import { Either } from "@mnke/circus-shared/lib/fp";
-import { createLogger } from "@mnke/circus-shared/logger";
-import { parseInitConfig } from "@mnke/circus-shared/protocol";
+import { type Logger, Protocol, Standards } from "@mnke/circus-shared";
+import { Typing } from "@mnke/circus-shared/lib";
+import Redis from "ioredis";
 import type { NatsConnection } from "nats";
 import { connect } from "nats";
-import type { ChimpBrain, PublishFn } from "@/chimp-brain";
+import type { BrainFactory, ChimpBrain, PublishFn } from "@/chimp-brain";
+import { CircusMcp } from "@/mcp/circus-mcp";
 import {
   type ChimpInput,
+  type ChimpOutput,
   HttpInput,
   type MessageHandler,
   NatsInput,
-} from "@/chimp-input";
-import { type ChimpOutput, NatsOutput, StdoutOutput } from "@/chimp-output";
-
-const logger = createLogger("Chimp");
+  NatsOutput,
+  StdoutOutput,
+} from "@/transports";
 
 export interface ChimpConfig {
   chimpId: string;
+  profile: string;
+  model: string;
   natsUrl: string;
+  redisUrl: string;
   inputMode: "nats" | "http";
   outputMode: "nats" | "stdout";
   httpPort: number;
   idleTimeoutMs: number;
+  logger: Logger.Logger;
 }
 
 export class Chimp {
   private config: ChimpConfig;
-  private brainFactory: (chimpId: string, publish: PublishFn) => ChimpBrain;
+  private logger: Logger.Logger;
+  private brainFactory: BrainFactory;
   private nc: NatsConnection | null = null;
   private brain: ChimpBrain | null = null;
   private input: ChimpInput | null = null;
   private output: ChimpOutput | null = null;
+  private mcp: CircusMcp | null = null;
   private isShuttingDown = false;
   private lastActivity = Date.now();
   private idleCheckTimer: Timer | null = null;
 
-  constructor(
-    config: ChimpConfig,
-    brainFactory: (chimpId: string, publish: PublishFn) => ChimpBrain,
-  ) {
+  constructor(config: ChimpConfig, brainFactory: BrainFactory) {
     this.config = config;
+    this.logger = config.logger;
     this.brainFactory = brainFactory;
   }
 
   async start(): Promise<void> {
-    logger.info(
+    this.logger.info(
       { chimpId: this.config.chimpId, inputMode: this.config.inputMode },
       "Starting Chimp",
     );
@@ -54,48 +56,59 @@ export class Chimp {
     process.on("SIGINT", () => this.shutdown("explicit_stop"));
     process.on("SIGTERM", () => this.shutdown("explicit_stop"));
 
-    // 1. Connect NATS if needed by either input or output
     if (this.config.outputMode === "nats" || this.config.inputMode === "nats") {
       this.nc = await connect({
         servers: this.config.natsUrl,
         maxReconnectAttempts: -1,
         reconnectTimeWait: 2000,
       });
-      logger.info("Connected to NATS");
+      this.logger.info("Connected to NATS");
     }
 
-    // 2. Create output
     this.output = this.createOutput();
     const output = this.output;
 
-    // 3. Create brain with publish wrapper
     const publishFn: PublishFn = (message) => {
       this.lastActivity = Date.now();
       output.publish(message);
     };
-    this.brain = this.brainFactory(this.config.chimpId, publishFn);
+
+    this.mcp = new CircusMcp(
+      publishFn,
+      this.logger.child({ component: "MCP" }),
+    );
+    const mcpUrl = await this.mcp.start();
+
+    this.brain = this.brainFactory.create(
+      this.config.chimpId,
+      this.config.model,
+      publishFn,
+      this.logger.child({ component: "Brain" }),
+      mcpUrl,
+    );
     const brain = this.brain;
 
     await brain.onStartup();
-    logger.info("Chimp startup complete");
+    this.logger.info("Chimp startup complete");
 
-    // 4. Execute init config
-    await this.executeInitConfig(brain);
-    logger.info("Init config executed");
+    await this.executeInitCommands(brain);
+    this.logger.info("Init config executed");
 
-    // 5. Create input
     const onActivity = () => {
       this.lastActivity = Date.now();
     };
     const onStopRequested = () => this.shutdown("explicit_stop");
-    const handler: MessageHandler = (command) => brain.handleMessage(command);
+    const handler: MessageHandler = (command) => {
+      if (command.command === "send-agent-message" && command.args.context) {
+        this.mcp?.setEventContext(command.args.context);
+      }
+      return brain.handleMessage(command);
+    };
 
     this.input = this.createInput(handler, onActivity, onStopRequested);
 
-    // 6. Start idle check BEFORE input (input may block in old designs)
     this.startIdleCheck();
 
-    // 7. Start input (non-blocking — fires async loop)
     await this.input.start();
   }
 
@@ -103,7 +116,11 @@ export class Chimp {
     switch (this.config.outputMode) {
       case "nats":
         if (!this.nc) throw new Error("NATS connection not established");
-        return new NatsOutput(this.nc, this.config.chimpId);
+        return new NatsOutput(
+          this.nc,
+          this.config.profile,
+          this.config.chimpId,
+        );
       case "stdout":
         return new StdoutOutput();
       default:
@@ -125,6 +142,7 @@ export class Chimp {
           handler,
           onActivity,
           onStopRequested,
+          this.logger.child({ component: "NatsInput" }),
         );
       case "http":
         return new HttpInput(
@@ -132,34 +150,41 @@ export class Chimp {
           handler,
           onActivity,
           onStopRequested,
+          this.logger.child({ component: "HttpInput" }),
         );
       default:
         return Typing.unreachable(this.config.inputMode);
     }
   }
 
-  private async executeInitConfig(brain: ChimpBrain): Promise<void> {
-    const configPath = ER.str(Standards.Chimp.Env.initConfig).read(
-      process.env,
-    ).value;
+  private async executeInitCommands(brain: ChimpBrain): Promise<void> {
+    const redis = new Redis(this.config.redisUrl);
+    try {
+      const key = Standards.Chimp.Naming.redisProfileKey(this.config.profile);
+      const data = await redis.get(key);
+      if (!data) return;
 
-    if (Either.isLeft(configPath) || !configPath.value) return;
+      const profile = Protocol.ChimpProfileSchema.parse(JSON.parse(data));
+      if (profile.initCommands.length === 0) return;
 
-    const raw = await readFile(configPath.value, "utf-8");
-    const config = parseInitConfig(JSON.parse(raw));
+      this.logger.info(
+        { commands: profile.initCommands.length },
+        "Executing init commands",
+      );
 
-    logger.info({ commands: config.commands.length }, "Executing init config");
-
-    for (const cmd of config.commands) {
-      logger.info({ command: cmd.command }, "Init command");
-      const result = await brain.handleMessage(cmd);
-      if (result === "stop") {
-        logger.info("Init command requested stop");
-        break;
+      for (const cmd of profile.initCommands) {
+        this.logger.info({ command: cmd.command }, "Init command");
+        const result = await brain.handleMessage(cmd);
+        if (result === "stop") {
+          this.logger.info("Init command requested stop");
+          break;
+        }
       }
-    }
 
-    logger.info("Init config complete");
+      this.logger.info("Init commands complete");
+    } finally {
+      await redis.quit();
+    }
   }
 
   private startIdleCheck(): void {
@@ -167,11 +192,16 @@ export class Chimp {
     this.idleCheckTimer = setInterval(() => {
       const idleMs = Date.now() - this.lastActivity;
       if (idleMs >= this.config.idleTimeoutMs) {
-        logger.info(
+        this.logger.info(
           { idleMs, timeoutMs: this.config.idleTimeoutMs },
           "Idle timeout reached, shutting down",
         );
         this.shutdown("idle_timeout");
+      } else {
+        this.logger.info(
+          { idleMs, timeoutMs: this.config.idleTimeoutMs },
+          "Not idle",
+        );
       }
     }, checkIntervalMs);
   }
@@ -180,20 +210,22 @@ export class Chimp {
     if (this.isShuttingDown) return;
     this.isShuttingDown = true;
 
-    logger.info({ reason }, "Shutting down");
+    this.logger.info({ reason }, "Shutting down");
 
     if (this.idleCheckTimer) {
       clearInterval(this.idleCheckTimer);
     }
 
-    // Stop input first (stop accepting messages)
     if (this.input) {
       await this.input.stop();
     }
 
-    // Then shutdown brain (finish in-flight work)
     if (this.brain) {
       await this.brain.onShutdown();
+    }
+
+    if (this.mcp) {
+      await this.mcp.stop();
     }
 
     // Chimp owns NATS connection — drain and close last
@@ -202,7 +234,7 @@ export class Chimp {
       await this.nc.close();
     }
 
-    logger.info("Shutdown complete");
+    this.logger.info("Shutdown complete");
     process.exit(0);
   }
 }

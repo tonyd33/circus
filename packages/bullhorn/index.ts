@@ -5,34 +5,49 @@
  * (Slack, GitHub, Discord, console logging, etc.)
  */
 
-import { createLogger } from "@mnke/circus-shared/logger";
+import { Logger } from "@mnke/circus-shared";
+import { EnvReader as ER } from "@mnke/circus-shared/lib";
+import { Either } from "@mnke/circus-shared/lib/fp";
 import { Bullhorn } from "./bullhorn.ts";
 
-const logger = createLogger("bullhorn");
+const logger = Logger.createLogger("bullhorn");
 
 async function main() {
-  // Create bullhorn instance
-  const bullhorn = new Bullhorn({ logger });
+  const result = ER.record({
+    natsUrl: ER.str("NATS_URL").fallback("nats://localhost:4222"),
+    metricsPort: ER.int("METRICS_PORT").fallback(9090),
+  }).read(process.env).value;
 
-  // Handle graceful shutdown
-  const shutdown = async (signal: string) => {
-    logger.info(`Received ${signal}, shutting down...`);
-    await bullhorn.cleanup();
+  if (Either.isLeft(result)) {
+    logger.error(ER.formatReadError(result.value));
+    process.exit(1);
+  }
+
+  const config = result.value;
+
+  const bullhorn = new Bullhorn({
+    logger: logger.child({ component: "Bullhorn" }),
+    natsUrl: config.natsUrl,
+  });
+
+  const shutdown = (signal: string) => async () => {
+    logger.info({ signal }, "Received shutdown signal");
+    await bullhorn.stop();
     process.exit(0);
   };
 
-  process.on("SIGINT", () => shutdown("SIGINT"));
-  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", shutdown("SIGINT"));
+  process.on("SIGTERM", shutdown("SIGTERM"));
 
-  // Start bullhorn (this will run indefinitely)
   logger.info("Starting Bullhorn...");
   await bullhorn.initialize();
 
-  // Start metrics server
-  const metricsPort = parseInt(process.env.METRICS_PORT || "9090", 10);
-  await bullhorn.startMetricsServer(metricsPort);
+  await bullhorn.startMetricsServer(config.metricsPort);
 
   await bullhorn.start();
 }
 
-main();
+main().catch((error) => {
+  logger.error({ err: error }, "Fatal error");
+  process.exit(1);
+});

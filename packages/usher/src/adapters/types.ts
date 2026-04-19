@@ -1,13 +1,19 @@
-import type { ChimpCommand } from "@mnke/circus-shared/protocol";
+import type { Protocol } from "@mnke/circus-shared";
 
 export interface AdapterResult {
+  profile: string;
   chimpId: string;
-  command: ChimpCommand;
+  command: Protocol.ChimpCommand;
+}
+
+export interface AdapterResponse {
+  result: AdapterResult | null;
+  response: Response;
 }
 
 export interface Adapter {
   handleEvent(
     body: unknown,
     headers: Record<string, string>,
-  ): Promise<AdapterResult>;
+  ): Promise<AdapterResponse>;
 }

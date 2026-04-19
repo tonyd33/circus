@@ -23,6 +23,9 @@ spec:
         - name: ringmaster
           image: "{{ .Values.ringmaster.image.repository }}:{{ .Values.ringmaster.image.tag }}"
           imagePullPolicy: {{ .Values.ringmaster.image.pullPolicy }}
+          args:
+            - "--namespace"
+            - "$(NAMESPACE)"
           env:
             - name: REDIS_URL
               value: {{ .Values.externalServices.redis.url | quote }}
@@ -32,25 +35,9 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
-            - name: CHIMP_IMAGE
-              value: {{ .Values.chimp.image | quote }}
-            - name: CHIMP_BRAIN_TYPE
-              value: {{ .Values.chimp.brainType | quote }}
-            - name: ANTHROPIC_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.ringmaster.anthropicApiKey.existingSecret }}
-                  key: {{ .Values.ringmaster.anthropicApiKey.key }}
-            - name: CHIMP_JOB_CONFIG_PATH
-              value: "/etc/circus/chimp-job-config.json"
-          volumeMounts:
-            - name: chimp-job-config
-              mountPath: /etc/circus
-              readOnly: true
+            {{- with .Values.ringmaster.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           resources:
             {{- toYaml .Values.ringmaster.resources | nindent 12 }}
-      volumes:
-        - name: chimp-job-config
-          configMap:
-            name: {{ include "circus.fullname" . }}-chimp-job-config
 {{- end }}

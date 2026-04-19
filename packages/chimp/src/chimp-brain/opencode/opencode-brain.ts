@@ -4,23 +4,25 @@
 
 import * as path from "node:path";
 import type { S3Client } from "@aws-sdk/client-s3";
+import { Protocol } from "@mnke/circus-shared";
 import { EnvReader as ER, Typing } from "@mnke/circus-shared/lib";
 import { Either as E } from "@mnke/circus-shared/lib/fp";
-import {
-  type ChimpCommand,
-  createAgentMessageResponse,
-  createOpencodeEventMessage,
-} from "@mnke/circus-shared/protocol";
 import * as Opencode from "@opencode-ai/sdk";
-import { ChimpBrain, type PublishFn } from "@/chimp-brain";
+import { createS3Client, s3ConfigReader } from "@/lib/s3";
+import { cloneRepo } from "@/lib/tooling";
+import { ChimpBrain } from "../chimp-brain";
 import {
   restoreOpencodeChimpStateFromS3,
   restoreOpencodeStateFromS3,
   saveOpencodeChimpStateToS3,
   saveOpencodeStateToS3,
-} from "@/chimp-brain/opencode/session-storage";
-import { createS3Client, s3ConfigReader } from "@/lib/s3";
-import { cloneRepo } from "@/lib/tooling";
+} from "./session-storage";
+
+// Undocumented/noisy events that shouldn't trigger publish (and thus reset idle timer)
+const IGNORED_EVENTS: Set<string> = new Set([
+  "session.idle",
+  "server.heartbeat",
+]);
 
 export class OpencodeBrain extends ChimpBrain {
   private opencode: Awaited<ReturnType<typeof Opencode.createOpencode>> | null =
@@ -51,7 +53,8 @@ export class OpencodeBrain extends ChimpBrain {
       try {
         for await (const event of events.stream) {
           if (this.eventAbortController?.signal.aborted) break;
-          this.publish(createOpencodeEventMessage(event));
+          if (IGNORED_EVENTS.has(event.type)) continue;
+          this.publish(Protocol.createThought("opencode", event));
         }
       } catch (err) {
         if ((err as Error).name === "AbortError") {
@@ -193,7 +196,9 @@ export class OpencodeBrain extends ChimpBrain {
     }
   }
 
-  async handleMessage(command: ChimpCommand): Promise<"continue" | "stop"> {
+  async handleMessage(
+    command: Protocol.ChimpCommand,
+  ): Promise<"continue" | "stop"> {
     this.log("info", "Handling command", { command: command.command });
 
     if (this.client == null || this.sessionId == null) {
@@ -212,7 +217,7 @@ export class OpencodeBrain extends ChimpBrain {
             parts: [{ type: "text", text: userPrompt }],
             model: {
               providerID: "opencode",
-              modelID: "big-pickle",
+              modelID: this.model,
             },
           },
           throwOnError: true,
@@ -221,7 +226,9 @@ export class OpencodeBrain extends ChimpBrain {
           .flatMap((part) => (part.type === "text" ? [part.text] : []))
           .join("\n");
 
-        this.publish(createAgentMessageResponse(texts, this.sessionId));
+        this.publish(
+          Protocol.createAgentMessageResponse(texts, this.sessionId),
+        );
         break;
       }
 
@@ -257,6 +264,14 @@ export class OpencodeBrain extends ChimpBrain {
         this.log("info", `Working directory set to: ${absolutePath}`);
         break;
       }
+
+      case "set-system-prompt":
+        this.setSystemPrompt(command.args.prompt);
+        break;
+
+      case "set-allowed-tools":
+        this.setAllowedTools(command.args.tools);
+        break;
 
       default:
         Typing.unreachable(command);

@@ -12,17 +12,6 @@ import * as path from "node:path";
 import type { S3Client } from "@aws-sdk/client-s3";
 import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 
-/**
- * Tar a directory and upload it to S3 as a gzip tarball.
- *
- * @param s3Client  - Initialized S3 client
- * @param bucket    - Target S3 bucket
- * @param s3Key     - Key to store the tarball under (e.g. "chimp-id/claude.tar.gz")
- * @param baseDir   - The `-C` argument passed to tar (parent of the directory to archive)
- * @param dirName   - The directory name (relative to baseDir) to include in the archive
- * @param tempPrefix - Prefix for the temp directory name (for debugging)
- * @returns The s3:// URL of the uploaded tarball
- */
 export async function uploadDirToS3(
   s3Client: S3Client,
   bucket: string,
@@ -55,15 +44,6 @@ export async function uploadDirToS3(
   }
 }
 
-/**
- * Download a gzip tarball from S3 and extract it.
- *
- * @param s3Client   - Initialized S3 client
- * @param bucket     - Source S3 bucket
- * @param s3Key      - Key of the tarball to download
- * @param extractTo  - The `-C` argument passed to tar (destination directory)
- * @param tempPrefix - Prefix for the temp directory name (for debugging)
- */
 export async function downloadDirFromS3(
   s3Client: S3Client,
   bucket: string,

@@ -1,24 +1,23 @@
 #!/usr/bin/env bun
 
+import { Logger } from "@mnke/circus-shared";
 import { EnvReader as ER } from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
-import { createLogger } from "@mnke/circus-shared/logger";
 import { serve } from "bun";
+import Redis from "ioredis";
+import { connect } from "nats";
 import index from "./index.html";
-import { createActivityRoute } from "./routes/activity";
-import { createChimpsRoutes } from "./routes/chimps";
+import { RedisStatusSource } from "./lib/status-source";
+import { ActivityRouter } from "./routes/activity";
+import { ChimpRouter } from "./routes/chimps";
 import { MessageRouter } from "./routes/messages";
+import { ProfileRouter } from "./routes/profiles";
 
-const logger = createLogger("Dashboard");
+const logger = Logger.createLogger("dashboard");
 
-interface Config {
-  ledgerUrl: string;
-  natsUrl: string;
-}
-
-function getConfig(): Config {
+async function main() {
   const result = ER.record({
-    ledgerUrl: ER.str("LEDGER_URL").fallback("http://localhost:6489"),
+    redisUrl: ER.str("REDIS_URL").fallback("redis://localhost:6379"),
     natsUrl: ER.str("NATS_URL").fallback("nats://localhost:4222"),
   }).read(process.env).value;
 
@@ -27,53 +26,76 @@ function getConfig(): Config {
     process.exit(1);
   }
 
-  return result.value;
-}
+  const config = result.value;
 
-const config = getConfig();
+  const redis = new Redis(config.redisUrl);
+  const statusSource = new RedisStatusSource(redis);
 
-const messageRouter = new MessageRouter(config.natsUrl);
-await messageRouter.initialize();
-
-const shutdown = async (signal: string) => {
-  logger.info(`Received ${signal}, shutting down...`);
-  await messageRouter.cleanup();
-  process.exit(0);
-};
-
-process.on("SIGINT", () =>
-  shutdown("SIGINT").catch((e) => {
-    logger.error({ err: e }, "Shutdown error");
-    process.exit(1);
-  }),
-);
-process.on("SIGTERM", () =>
-  shutdown("SIGTERM").catch((e) => {
-    logger.error({ err: e }, "Shutdown error");
-    process.exit(1);
-  }),
-);
-
-async function proxyToLedger(path: string): Promise<Response> {
-  const res = await fetch(`${config.ledgerUrl}${path}`);
-  return new Response(res.body, {
-    status: res.status,
-    headers: { "Content-Type": "application/json" },
+  const nc = await connect({
+    servers: config.natsUrl,
+    maxReconnectAttempts: -1,
+    reconnectTimeWait: 2000,
   });
+  logger.info({ url: config.natsUrl }, "Connected to NATS");
+
+  const activityRouter = new ActivityRouter(
+    nc,
+    logger.child({ component: "ActivityRouter" }),
+  );
+  const chimpRouter = new ChimpRouter(
+    statusSource,
+    nc,
+    logger.child({ component: "ChimpRouter" }),
+  );
+  const profileRouter = new ProfileRouter(
+    redis,
+    logger.child({ component: "ProfileRouter" }),
+  );
+  const messageRouter = new MessageRouter(
+    nc,
+    logger.child({ component: "MessageRouter" }),
+  );
+
+  const shutdown = async (signal: string) => {
+    logger.info(`Received ${signal}, shutting down...`);
+    await nc.drain();
+    await nc.close();
+    await redis.quit();
+    process.exit(0);
+  };
+
+  process.on("SIGINT", () =>
+    shutdown("SIGINT").catch((e) => {
+      logger.error({ err: e }, "Shutdown error");
+      process.exit(1);
+    }),
+  );
+  process.on("SIGTERM", () =>
+    shutdown("SIGTERM").catch((e) => {
+      logger.error({ err: e }, "Shutdown error");
+      process.exit(1);
+    }),
+  );
+
+  const server = serve({
+    routes: {
+      "/*": index,
+      ...activityRouter.routes,
+      ...chimpRouter.routes,
+      ...profileRouter.routes,
+      ...messageRouter.routes,
+    },
+
+    development: process.env.NODE_ENV !== "production" && {
+      hmr: true,
+      console: true,
+    },
+  });
+
+  logger.info({ url: server.url.toString() }, "Dashboard server started");
 }
 
-const server = serve({
-  routes: {
-    "/*": index,
-    "/api/chimp/:chimpId/activity": createActivityRoute(config.natsUrl),
-    ...createChimpsRoutes(proxyToLedger),
-    ...messageRouter.routes,
-  },
-
-  development: process.env.NODE_ENV !== "production" && {
-    hmr: true,
-    console: true,
-  },
+main().catch((error) => {
+  logger.error({ err: error }, "Fatal error");
+  process.exit(1);
 });
-
-logger.info({ url: server.url.toString() }, "Dashboard server started");

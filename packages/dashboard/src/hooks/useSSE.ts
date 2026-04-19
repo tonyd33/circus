@@ -53,7 +53,7 @@ export function useSSE<T>({
           setMessages((prev) => {
             if (getKeyRef.current) {
               const key = getKeyRef.current(data);
-              if (prev.some((m) => getKeyRef.current!(m) === key)) return prev;
+              if (prev.some((m) => getKeyRef.current?.(m) === key)) return prev;
             }
             const next = [data, ...prev];
             if (sortByRef.current) next.sort(sortByRef.current);

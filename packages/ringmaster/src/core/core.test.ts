@@ -11,99 +11,108 @@ import {
   type EventPayload,
 } from "./core.ts";
 
+const P = "default";
+
 describe("decideOnPodEvent", () => {
-  const now = Date.now();
-  const baseState: CoreState = { now };
+  const baseState: CoreState = { now: Date.now(), pod: undefined };
 
   test("DELETED event: deletes consumer", () => {
     const pod: any = { status: { phase: "Succeeded" } };
-    const decision = decideOnPodEvent(baseState, "DELETED", pod);
+    const decision = decideOnPodEvent(baseState, P, "DELETED", pod);
 
     expect(decision.actions).toEqual([
       { type: "delete_consumer" },
-      { type: "upsert_state", status: "stopped" },
+      { type: "upsert_state", profile: P, status: "stopped" },
     ]);
     expect(decision.reason).toContain("Pod deleted");
   });
 
   test("ADDED event: upserts state", () => {
     const pod: any = { status: { phase: "Running" } };
-    const decision = decideOnPodEvent(baseState, "ADDED", pod);
+    const decision = decideOnPodEvent(baseState, P, "ADDED", pod);
 
     expect(decision.actions).toEqual([
-      { type: "upsert_state", status: "running" },
+      { type: "upsert_state", profile: P, status: "running" },
     ]);
-    expect(decision.reason).toContain("ADDED");
-    expect(decision.reason).toContain("running");
   });
 
   test("MODIFIED event: upserts state", () => {
     const pod: any = { status: { phase: "Running" } };
-    const decision = decideOnPodEvent(baseState, "MODIFIED", pod);
+    const decision = decideOnPodEvent(baseState, P, "MODIFIED", pod);
 
     expect(decision.actions).toEqual([
-      { type: "upsert_state", status: "running" },
+      { type: "upsert_state", profile: P, status: "running" },
     ]);
-    expect(decision.reason).toContain("MODIFIED");
-    expect(decision.reason).toContain("running");
   });
 
-  test("Unknown event type: upserts state", () => {
-    const pod: any = { status: { phase: "Running" } };
-    const decision = decideOnPodEvent(baseState, "UNKNOWN", pod);
+  test("Pending phase maps to pending status", () => {
+    const pod: any = { status: { phase: "Pending" } };
+    const decision = decideOnPodEvent(baseState, P, "ADDED", pod);
 
     expect(decision.actions).toEqual([
-      { type: "upsert_state", status: "running" },
+      { type: "upsert_state", profile: P, status: "pending" },
     ]);
-    expect(decision.reason).toContain("UNKNOWN");
-    expect(decision.reason).toContain("running");
+  });
+
+  test("Failed phase maps to failed status", () => {
+    const pod: any = { status: { phase: "Failed" } };
+    const decision = decideOnPodEvent(baseState, P, "MODIFIED", pod);
+
+    expect(decision.actions).toEqual([
+      { type: "upsert_state", profile: P, status: "failed" },
+    ]);
   });
 });
 
 describe("decideOnMessageReceived", () => {
-  const now = Date.now();
-  const baseState: CoreState = { now };
-
-  test("creates consumer and job with start sequence", () => {
-    const messageSequence = 42;
-    const decision = decideOnMessageReceived(baseState, messageSequence);
+  test("no pod: sets scheduled, creates consumer and job", () => {
+    const state: CoreState = { now: Date.now(), pod: undefined };
+    const decision = decideOnMessageReceived(state, "fast", 42);
 
     expect(decision.actions).toEqual([
-      { type: "create_consumer", startSequence: 42 },
-      { type: "create_job" },
+      { type: "upsert_state", profile: "fast", status: "scheduled" },
+      { type: "create_consumer", profile: "fast", startSequence: 42 },
+      { type: "create_job", profile: "fast" },
     ]);
-    expect(decision.reason).toContain("Message received");
-    expect(decision.reason).toContain("ensuring consumer and job exist");
+    expect(decision.reason).toContain("scheduling");
   });
 
-  test("handles different message sequences", () => {
-    const messageSequence = 100;
-    const decision = decideOnMessageReceived(baseState, messageSequence);
+  test("pod exists: creates consumer and job, no state upsert", () => {
+    const pod: any = { status: { phase: "Running" } };
+    const state: CoreState = { now: Date.now(), pod };
+    const decision = decideOnMessageReceived(state, P, 42);
 
-    expect(decision.actions[0]).toEqual({
+    expect(decision.actions).toEqual([
+      { type: "create_consumer", profile: P, startSequence: 42 },
+      { type: "create_job", profile: P },
+    ]);
+    expect(decision.reason).toContain("pod exists");
+  });
+
+  test("profile flows through to all actions", () => {
+    const state: CoreState = { now: Date.now(), pod: undefined };
+    const decision = decideOnMessageReceived(state, "powerful", 10);
+
+    const createJob = decision.actions.find((a) => a.type === "create_job");
+    expect(createJob).toEqual({ type: "create_job", profile: "powerful" });
+    const createConsumer = decision.actions.find(
+      (a) => a.type === "create_consumer",
+    );
+    expect(createConsumer).toEqual({
       type: "create_consumer",
-      startSequence: 100,
+      profile: "powerful",
+      startSequence: 10,
     });
-  });
-
-  test("always creates both consumer and job", () => {
-    const decision = decideOnMessageReceived(baseState, 1);
-
-    expect(decision.actions).toHaveLength(2);
-    const [first, second] = decision.actions;
-    expect(first?.type).toBe("create_consumer");
-    expect(second?.type).toBe("create_job");
   });
 });
 
 describe("decide (main router)", () => {
-  const now = Date.now();
-  const state: CoreState = { now };
-
   test("routes pod_event to decideOnPodEvent", () => {
     const pod: any = { status: { phase: "Running" } };
+    const state: CoreState = { now: Date.now(), pod: undefined };
     const payload: EventPayload = {
       type: "pod_event",
+      profile: P,
       eventType: "DELETED",
       pod,
     };
@@ -112,128 +121,24 @@ describe("decide (main router)", () => {
 
     expect(decision.actions).toEqual([
       { type: "delete_consumer" },
-      { type: "upsert_state", status: "stopped" },
+      { type: "upsert_state", profile: P, status: "stopped" },
     ]);
-    expect(decision.reason).toContain("Pod deleted");
   });
 
-  test("routes message_received to decideOnMessageReceived", () => {
+  test("routes message_received with profile", () => {
+    const state: CoreState = { now: Date.now(), pod: undefined };
     const payload: EventPayload = {
       type: "message_received",
+      profile: P,
       messageSequence: 50,
     };
 
     const decision = decide(state, payload);
 
     expect(decision.actions).toEqual([
-      { type: "create_consumer", startSequence: 50 },
-      { type: "create_job" },
+      { type: "upsert_state", profile: P, status: "scheduled" },
+      { type: "create_consumer", profile: P, startSequence: 50 },
+      { type: "create_job", profile: P },
     ]);
-    expect(decision.reason).toContain("Message received");
-  });
-
-  test("passes through message sequence correctly", () => {
-    const payload: EventPayload = {
-      type: "message_received",
-      messageSequence: 999,
-    };
-
-    const decision = decide(state, payload);
-
-    expect(decision.actions[0]).toEqual({
-      type: "create_consumer",
-      startSequence: 999,
-    });
-  });
-
-  test("passes through pod event type correctly", () => {
-    const pod: any = { status: { phase: "Pending" } };
-    const payload: EventPayload = {
-      type: "pod_event",
-      eventType: "ADDED",
-      pod,
-    };
-
-    const decision = decide(state, payload);
-
-    expect(decision.actions).toEqual([
-      { type: "upsert_state", status: "pending" },
-    ]);
-    expect(decision.reason).toContain("ADDED");
-  });
-});
-
-describe("Simplified event-driven architecture", () => {
-  const now = Date.now();
-  const state: CoreState = { now };
-
-  test("Message received always triggers creation (idempotent)", () => {
-    const payload: EventPayload = {
-      type: "message_received",
-      messageSequence: 10,
-    };
-
-    const decision = decide(state, payload);
-
-    // No health checks, session checks, etc - just create
-    expect(decision.actions).toEqual([
-      { type: "create_consumer", startSequence: 10 },
-      { type: "create_job" },
-    ]);
-  });
-
-  test("Pod deletion always triggers consumer deletion", () => {
-    const pod: any = { status: { phase: "Succeeded" } };
-    const payload: EventPayload = {
-      type: "pod_event",
-      eventType: "DELETED",
-      pod,
-    };
-
-    const decision = decide(state, payload);
-
-    // No session checks, no recreation logic - just delete consumer
-    expect(decision.actions).toEqual([
-      { type: "delete_consumer" },
-      { type: "upsert_state", status: "stopped" },
-    ]);
-  });
-
-  test("Non-deletion pod events are ignored", () => {
-    const pod: any = { status: { phase: "Running" } };
-
-    // Test all non-deletion events
-    for (const eventType of ["ADDED", "MODIFIED"]) {
-      const payload: EventPayload = {
-        type: "pod_event",
-        eventType,
-        pod,
-      };
-
-      const decision = decide(state, payload);
-
-      expect(decision.actions).toEqual([
-        { type: "upsert_state", status: "running" },
-      ]);
-    }
-  });
-
-  test("State is minimal - only timestamp", () => {
-    const minimalState: CoreState = { now: Date.now() };
-
-    // Should work with just a timestamp
-    const decision1 = decide(minimalState, {
-      type: "message_received",
-      messageSequence: 1,
-    });
-    expect(decision1.actions).toHaveLength(2);
-
-    const pod: any = {};
-    const decision2 = decide(minimalState, {
-      type: "pod_event",
-      eventType: "DELETED",
-      pod,
-    });
-    expect(decision2.actions).toHaveLength(2);
   });
 });

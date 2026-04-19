@@ -15,12 +15,6 @@ export interface ClaudeChimpState {
   allowedTools: string[];
 }
 
-/**
- * Get the session file path for a given working directory and session ID
- * Format: ~/.claude/projects/<encoded-cwd>/<session-id>.jsonl
- * where <encoded-cwd> is the absolute working directory with every
- * non-alphanumeric character replaced by -
- */
 export function getSessionFilePath(
   workingDir: string,
   sessionId: string,

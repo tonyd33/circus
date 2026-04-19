@@ -16,10 +16,13 @@
     "@anthropic-ai/claude-agent-sdk": "^0.2.92",
     "@aws-sdk/client-s3": "^3.1024.0",
     "@commander-js/extra-typings": "catalog:",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@mnke/circus-shared": "workspace:*",
     "@opencode-ai/sdk": "^1.4.3",
     "commander": "catalog:",
-    "nats": "catalog:"
+    "ioredis": "catalog:",
+    "nats": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/bun": "latest"

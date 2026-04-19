@@ -49,9 +49,9 @@ export class Either<E, A> {
     }
   }
 
-  fromRight(a: A): Either<E, A> {
+  fromRight<B>(b: B): Either<E, A | B> {
     if (this._value.type === "left") {
-      return new Either<E, A>({ type: "right", value: a });
+      return new Either<E, B>({ type: "right", value: b });
     } else {
       return new Either<E, A>(this._value);
     }
@@ -61,7 +61,7 @@ export class Either<E, A> {
     return this._value.value;
   }
 
-  unwrapOr(defaultValue: A): A {
+  unwrapOr<B>(defaultValue: B): A | B {
     if (this._value.type === "left") {
       return defaultValue;
     } else {

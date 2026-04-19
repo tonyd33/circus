@@ -5,25 +5,29 @@
  */
 
 import * as k8s from "@kubernetes/client-node";
-import { createLogger } from "@mnke/circus-shared/logger";
-import type { RingmasterEventHandler } from "../core/event-handler.ts";
-import { namespaceLabel } from "../lib/k8s.ts";
-
-const logger = createLogger("PodWatcher");
+import type { Logger } from "@mnke/circus-shared";
+import type { EventHandler } from "../core/event-handler.ts";
+import { Labels } from "../lib/k8s.ts";
 
 export class PodWatcher {
   private kc: k8s.KubeConfig;
   private watch: k8s.Watch;
   private namespace: string;
   private abortController: AbortController | null = null;
-  private eventHandler: RingmasterEventHandler;
+  private eventHandler: EventHandler;
+  private logger: Logger.Logger;
 
-  constructor(namespace: string, eventHandler: RingmasterEventHandler) {
+  constructor(
+    namespace: string,
+    eventHandler: EventHandler,
+    logger: Logger.Logger,
+  ) {
     this.kc = new k8s.KubeConfig();
     this.kc.loadFromDefault();
     this.watch = new k8s.Watch(this.kc);
     this.namespace = namespace;
     this.eventHandler = eventHandler;
+    this.logger = logger;
   }
 
   /**
@@ -34,10 +38,10 @@ export class PodWatcher {
 
     const path = `/api/v1/namespaces/${this.namespace}/pods`;
     const queryParams = {
-      labelSelector: `${namespaceLabel("managed-by")}=ringmaster`,
+      labelSelector: `${Labels.MANAGED_BY}=ringmaster`,
     };
 
-    logger.info({ namespace: this.namespace }, "Starting to watch pods");
+    this.logger.info({ namespace: this.namespace }, "Starting to watch pods");
 
     // Start the watch
     const watchRequest = async () => {
@@ -50,10 +54,10 @@ export class PodWatcher {
           },
           (error: any) => {
             if (error) {
-              logger.error({ err: error }, "Watch error");
+              this.logger.error({ err: error }, "Watch error");
               // Reconnect after a delay
               if (!this.abortController?.signal.aborted) {
-                logger.info("Reconnecting in 5s...");
+                this.logger.info("Reconnecting in 5s...");
                 setTimeout(() => {
                   if (!this.abortController?.signal.aborted) {
                     watchRequest();
@@ -64,10 +68,10 @@ export class PodWatcher {
           },
         );
       } catch (error: any) {
-        logger.error({ err: error }, "Failed to start watch");
+        this.logger.error({ err: error }, "Failed to start watch");
         // Retry after delay
         if (!this.abortController?.signal.aborted) {
-          logger.info("Retrying in 5s...");
+          this.logger.info("Retrying in 5s...");
           setTimeout(() => {
             if (!this.abortController?.signal.aborted) {
               watchRequest();
@@ -85,27 +89,28 @@ export class PodWatcher {
    * Handle a pod event
    */
   private async handlePodEvent(type: string, pod: k8s.V1Pod): Promise<void> {
-    const chimpLabel = pod.metadata?.labels?.[namespaceLabel("chimp-id")];
+    const chimpId = pod.metadata?.labels?.[Labels.CHIMP_ID];
+    const profile = pod.metadata?.labels?.[Labels.CHIMP_PROFILE];
 
-    if (!chimpLabel) {
-      logger.warn(
+    if (!chimpId || !profile) {
+      this.logger.warn(
         { podName: pod.metadata?.name },
-        "Pod missing chimp-id label, skipping",
+        "Pod missing chimp-id or chimp-profile label, skipping",
       );
       return;
     }
 
-    const chimpId = chimpLabel;
-    logger.info({ eventType: type, chimpId }, "Pod event");
+    this.logger.info({ eventType: type, chimpId, profile }, "Pod event");
 
     try {
-      await this.eventHandler(chimpId, {
+      await this.eventHandler.handle(chimpId, {
         type: "pod_event",
+        profile,
         eventType: type,
         pod,
       });
     } catch (error) {
-      logger.error(
+      this.logger.error(
         { eventType: type, chimpId, err: error },
         "Error handling pod event",
       );
@@ -121,6 +126,6 @@ export class PodWatcher {
       this.abortController = null;
     }
 
-    logger.info("Stopped");
+    this.logger.info("Stopped");
   }
 }

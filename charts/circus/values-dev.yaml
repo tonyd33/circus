@@ -2,43 +2,33 @@ ringmaster:
   enabled: true
   image:
     repository: ringmaster
-  chimp:
-    image: "chimp:latest"
 
 usher:
   enabled: true
   image:
     repository: usher
+  routes:
+    - adapter: debug
+      path: /api/webhooks/debug
+    - adapter: github
+      path: /api/webhooks/github
+  extraEnv:
+    - name: GITHUB_BOT_NAME
+      value: tonyd33
+    - name: GITHUB_PROFILE
+      value: default
+    - name: GITHUB_WEBHOOK_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: circus-secrets
+          key: GITHUB_WEBHOOK_SECRET
 
 bullhorn:
-  enabled: false
-  image:
-    repository: bullhorn
-
-ledger:
   enabled: true
   image:
-    repository: ledger
+    repository: bullhorn
 
 dashboard:
   enabled: true
   image:
     repository: dashboard
-
-chimp:
-  brainType: opencode
-  extraEnv:
-    - name: ANTHROPIC_API_KEY
-      valueFrom:
-        secretKeyRef:
-          name: anthropic-api-key
-          key: ANTHROPIC_API_KEY
-  initConfig:
-    enabled: true
-    commands:
-      - command: clone-repo
-        args:
-          url: "https://github.com/tonyd33/circus.git"
-      - command: set-working-dir
-        args:
-          path: "circus"

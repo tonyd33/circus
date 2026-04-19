@@ -5,7 +5,6 @@
  * Provides Zod schemas for validation and TypeScript types for type safety.
  */
 
-import type { Event } from "@opencode-ai/sdk";
 import { z } from "zod";
 
 /**
@@ -17,13 +16,28 @@ export const PROTOCOL_VERSION = "0.1.0";
 // INCOMING: Commands sent TO the chimp
 // ============================================================================
 
-/**
- * Individual command schemas (discriminated union members)
- */
+export const EventContextSchema = z.discriminatedUnion("source", [
+  z.object({
+    source: z.literal("discord"),
+    interactionToken: z.string(),
+    applicationId: z.string(),
+  }),
+  z.object({
+    source: z.literal("github"),
+    repo: z.string(),
+    issueNumber: z.number(),
+    commentId: z.number(),
+  }),
+  z.object({ source: z.literal("dashboard") }),
+  z.object({ source: z.literal("unknown") }),
+]);
+export type EventContext = z.infer<typeof EventContextSchema>;
+
 const SendAgentMessageCommandSchema = z.object({
   command: z.literal("send-agent-message"),
   args: z.object({
     prompt: z.string(),
+    context: EventContextSchema.optional(),
   }),
 });
 
@@ -47,12 +61,113 @@ const SetWorkingDirCommandSchema = z.object({
   }),
 });
 
+const SetSystemPromptCommandSchema = z.object({
+  command: z.literal("set-system-prompt"),
+  args: z.object({
+    prompt: z.string(),
+  }),
+});
+
+const SetAllowedToolsCommandSchema = z.object({
+  command: z.literal("set-allowed-tools"),
+  args: z.object({
+    tools: z.array(z.string()),
+  }),
+});
+
 const ChimpCommandSchema = z.discriminatedUnion("command", [
   SendAgentMessageCommandSchema,
   StopCommandSchema,
   CloneRepoCommandSchema,
   SetWorkingDirCommandSchema,
+  SetSystemPromptCommandSchema,
+  SetAllowedToolsCommandSchema,
 ]);
+
+// ============================================================================
+// CHIMP PROFILE TYPES
+// ============================================================================
+
+export const BrainTypeEnum = z.enum(["claude", "opencode", "echo"]);
+export type ChimpBrainType = z.infer<typeof BrainTypeEnum>;
+
+/**
+ * K8s resource schemas for chimp job configuration
+ */
+export const EnvVarSourceSchema = z.object({
+  secretKeyRef: z
+    .object({
+      name: z.string(),
+      key: z.string(),
+      optional: z.boolean().optional(),
+    })
+    .optional(),
+  configMapKeyRef: z
+    .object({
+      name: z.string(),
+      key: z.string(),
+      optional: z.boolean().optional(),
+    })
+    .optional(),
+  fieldRef: z.object({ fieldPath: z.string() }).optional(),
+});
+
+export const EnvVarSchema = z.object({
+  name: z.string(),
+  value: z.string().optional(),
+  valueFrom: EnvVarSourceSchema.optional(),
+});
+
+export const VolumeMountSchema = z.object({
+  name: z.string(),
+  mountPath: z.string(),
+  subPath: z.string().optional(),
+  readOnly: z.boolean().optional(),
+});
+
+export const VolumeSchema = z.object({
+  name: z.string(),
+  secret: z
+    .object({
+      secretName: z.string(),
+      optional: z.boolean().optional(),
+    })
+    .optional(),
+  configMap: z
+    .object({
+      name: z.string(),
+      optional: z.boolean().optional(),
+    })
+    .optional(),
+  emptyDir: z
+    .object({
+      medium: z.string().optional(),
+      sizeLimit: z.string().optional(),
+    })
+    .optional(),
+  persistentVolumeClaim: z
+    .object({
+      claimName: z.string(),
+      readOnly: z.boolean().optional(),
+    })
+    .optional(),
+});
+
+/**
+ * Chimp profile configuration
+ */
+export const ChimpProfileSchema = z.object({
+  brain: BrainTypeEnum,
+  model: z.string(),
+  image: z.string(),
+  description: z.string().optional(),
+  extraEnv: z.array(EnvVarSchema).default([]),
+  volumeMounts: z.array(VolumeMountSchema).default([]),
+  volumes: z.array(VolumeSchema).default([]),
+  imagePullPolicy: z.string().optional(),
+  initCommands: z.array(ChimpCommandSchema).default([]),
+});
+export type ChimpProfile = z.infer<typeof ChimpProfileSchema>;
 
 // ============================================================================
 // OUTGOING: Messages sent FROM the chimp
@@ -93,9 +208,24 @@ export const ErrorResponseSchema = z.object({
   details: z.record(z.string(), z.unknown()).optional(),
 });
 
-export const OpencodeEventMessageSchema = z.object({
-  type: z.literal("opencode-event"),
+export const ThoughtSchema = z.object({
+  type: z.literal("thought"),
+  brain: BrainTypeEnum,
   event: z.unknown(),
+});
+
+export const ChimpRequestSchema = z.object({
+  type: z.literal("chimp-request"),
+  profile: z.string(),
+  chimpId: z.string(),
+  message: z.string(),
+});
+
+export const DiscordResponseSchema = z.object({
+  type: z.literal("discord-response"),
+  interactionToken: z.string(),
+  applicationId: z.string(),
+  content: z.string(),
 });
 
 export const ChimpOutputMessageSchema = z.discriminatedUnion("type", [
@@ -104,7 +234,9 @@ export const ChimpOutputMessageSchema = z.discriminatedUnion("type", [
   ProgressMessageSchema,
   LogMessageSchema,
   ErrorResponseSchema,
-  OpencodeEventMessageSchema,
+  ThoughtSchema,
+  ChimpRequestSchema,
+  DiscordResponseSchema,
 ]);
 
 /**
@@ -117,6 +249,37 @@ export const InitConfigSchema = z.object({
   version: z.string(),
   commands: z.array(ChimpCommandSchema),
 });
+
+// ============================================================================
+// META EVENTS
+// ============================================================================
+
+const MetaEventBase = z.object({
+  profile: z.string(),
+  chimpId: z.string(),
+  timestamp: z.string(),
+});
+
+export const StatusMetaEventSchema = MetaEventBase.extend({
+  type: z.literal("status"),
+  status: z.enum([
+    "scheduled",
+    "pending",
+    "running",
+    "stopped",
+    "failed",
+    "unknown",
+  ]),
+});
+
+export const BullhornDispatchedMetaEventSchema = MetaEventBase.extend({
+  type: z.literal("bullhorn-dispatched"),
+});
+
+export const MetaEventSchema = z.discriminatedUnion("type", [
+  StatusMetaEventSchema,
+  BullhornDispatchedMetaEventSchema,
+]);
 
 // ============================================================================
 // TypeScript types
@@ -136,20 +299,17 @@ export type LogMessage = z.infer<typeof LogMessageSchema>;
 // Error type
 export type ErrorResponse = z.infer<typeof ErrorResponseSchema>;
 
-// OpenCode event wrapper
-export type OpencodeEventMessage = {
-  type: "opencode-event";
-  event: Event;
-};
-
-// Re-export OpenCode types for convenience
-export type { Event, Part } from "@opencode-ai/sdk";
+// Thought type
+export type Thought = z.infer<typeof ThoughtSchema>;
 
 // Union of all output message types
 export type ChimpOutputMessage = z.infer<typeof ChimpOutputMessageSchema>;
 
 // Config type
 export type InitConfig = z.infer<typeof InitConfigSchema>;
+
+// Meta event types
+export type MetaEvent = z.infer<typeof MetaEventSchema>;
 
 // ============================================================================
 // Validation functions
@@ -210,10 +370,13 @@ export function safeParseInitConfig(config: unknown) {
 /**
  * Create a send-agent-message command
  */
-export function createAgentCommand(prompt: string): ChimpCommand {
+export function createAgentCommand(
+  prompt: string,
+  context?: EventContext,
+): ChimpCommand {
   return {
     command: "send-agent-message",
-    args: { prompt },
+    args: { prompt, ...(context && { context }) },
   };
 }
 
@@ -330,11 +493,12 @@ export function createLogMessage(
 }
 
 /**
- * Create an OpenCode event message
+ * Create a thought message (brain-specific event)
  */
-export function createOpencodeEventMessage(event: Event): OpencodeEventMessage {
+export function createThought(brain: ChimpBrainType, event: unknown): Thought {
   return {
-    type: "opencode-event",
+    type: "thought",
+    brain,
     event,
   };
 }

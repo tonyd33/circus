@@ -29,6 +29,7 @@ ringmaster:
     name: ringmaster
   rbac:
     create: true
+  extraEnv: []
   resources:
     requests:
       memory: "128Mi"
@@ -36,10 +37,6 @@ ringmaster:
     limits:
       memory: "512Mi"
       cpu: "500m"
-  # Anthropic API key - should be provided via secret
-  anthropicApiKey:
-    existingSecret: "anthropic-api-key"
-    key: "ANTHROPIC_API_KEY"
 
 # Usher configuration
 usher:
@@ -59,9 +56,10 @@ usher:
     limits:
       memory: "512Mi"
       cpu: "500m"
+  extraEnv: []
   routes:
     - adapter: debug
-      path: /debug
+      path: /api/webhooks/debug
 
 # Bullhorn configuration
 bullhorn:
@@ -78,25 +76,7 @@ bullhorn:
     limits:
       memory: "256Mi"
       cpu: "200m"
-
-# Ledger configuration
-ledger:
-  enabled: true
-  image:
-    repository: ledger
-    tag: latest
-    pullPolicy: IfNotPresent
-  replicaCount: 1
-  service:
-    type: ClusterIP
-    port: 6489
-  resources:
-    requests:
-      memory: "128Mi"
-      cpu: "100m"
-    limits:
-      memory: "256Mi"
-      cpu: "200m"
+  extraEnv: []
 
 # Dashboard configuration
 dashboard:
@@ -109,6 +89,7 @@ dashboard:
   service:
     type: ClusterIP
     port: 3000
+  extraEnv: []
   resources:
     requests:
       memory: "128Mi"
@@ -116,21 +97,3 @@ dashboard:
     limits:
       memory: "512Mi"
       cpu: "500m"
-
-# Chimp configuration
-chimp:
-  image: "chimp:latest"
-  brainType: echo
-  imagePullPolicy: IfNotPresent
-  extraEnv: []
-  # extraEnv:
-  #   - name: ANTHROPIC_API_KEY
-  #     valueFrom:
-  #       secretKeyRef:
-  #         name: anthropic-api-key
-  #         key: ANTHROPIC_API_KEY
-  volumeMounts: []
-  volumes: []
-  initConfig:
-    enabled: false
-    commands: []

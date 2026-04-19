@@ -1,15 +1,15 @@
 #!/usr/bin/env bun
 
 import * as Commander from "@commander-js/extra-typings";
+import { Logger } from "@mnke/circus-shared";
 import { EnvReader as ER } from "@mnke/circus-shared/lib";
 import { Either as E } from "@mnke/circus-shared/lib/fp";
-import { createLogger } from "@mnke/circus-shared/logger";
 import { ADAPTER_REGISTRY } from "@/adapters/index.ts";
 import { parseKeyValueObjectForKeys } from "@/lib/parsers.ts";
 import type { RouteConfig } from "@/types.ts";
 import { Usher } from "@/usher.ts";
 
-const logger = createLogger("Usher");
+const logger = Logger.createLogger("usher");
 
 const parseRouteConfig = (v: string) =>
   parseKeyValueObjectForKeys(["adapter", "path"]).parse(v);
@@ -50,7 +50,12 @@ async function main() {
     process.exit(1);
   }
 
-  const usher = new Usher(routes, envResult.value.natsUrl, ADAPTER_REGISTRY);
+  const usher = new Usher(
+    routes,
+    envResult.value.natsUrl,
+    ADAPTER_REGISTRY,
+    logger.child({ component: "Usher" }),
+  );
 
   process.on("SIGINT", () => usher.shutdown());
   process.on("SIGTERM", () => usher.shutdown());

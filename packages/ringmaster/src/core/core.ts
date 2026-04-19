@@ -6,14 +6,14 @@
  */
 
 import type * as k8s from "@kubernetes/client-node";
-import type { ChimpStatus } from "@mnke/circus-shared/standards/chimp";
+import type { Standards } from "@mnke/circus-shared";
 
 /**
  * Core state - minimal stub for decision making
  */
 export interface CoreState {
-  /** Timestamp when this snapshot was taken */
   now: number;
+  pod: k8s.V1Pod | undefined;
 }
 
 /**
@@ -22,11 +22,13 @@ export interface CoreState {
 export type EventPayload =
   | {
       type: "pod_event";
+      profile: string;
       eventType: string;
       pod: k8s.V1Pod;
     }
   | {
       type: "message_received";
+      profile: string;
       messageSequence: number;
     };
 
@@ -34,17 +36,23 @@ export type EventPayload =
  * Actions that the effectful layer should perform
  */
 export type Action =
-  | { type: "create_job" }
-  | { type: "create_consumer"; startSequence: number }
+  | { type: "create_job"; profile: string }
+  | { type: "create_consumer"; profile: string; startSequence: number }
   | { type: "delete_consumer" }
-  | { type: "upsert_state"; status: ChimpStatus }
+  | {
+      type: "upsert_state";
+      profile: string;
+      status: Standards.Chimp.ChimpStatus;
+    }
   | { type: "delete_state" }
   | { type: "noop" };
 
 /**
- * Map K8s pod phase to ChimpStatus
+ * Map K8s pod phase to Standards.Chimp.ChimpStatus
  */
-function podPhaseToStatus(phase: string | undefined): ChimpStatus {
+function podPhaseToStatus(
+  phase: string | undefined,
+): Standards.Chimp.ChimpStatus {
   switch (phase) {
     case "Pending":
       return "pending";
@@ -73,7 +81,8 @@ export interface Decision {
  * Decide what to do when a pod event occurs
  */
 export function decideOnPodEvent(
-  state: CoreState,
+  _state: CoreState,
+  profile: string,
   eventType: string,
   pod: k8s.V1Pod,
 ): Decision {
@@ -84,15 +93,14 @@ export function decideOnPodEvent(
     return {
       actions: [
         { type: "delete_consumer" },
-        { type: "upsert_state", status: "stopped" },
+        { type: "upsert_state", profile, status: "stopped" },
       ],
       reason: "Pod deleted - deleting consumer and state",
     };
   }
 
-  // ADDED or MODIFIED: update state
   return {
-    actions: [{ type: "upsert_state", status }],
+    actions: [{ type: "upsert_state", profile, status }],
     reason: `Pod ${eventType} with phase ${phase} - updating state to ${status}`,
   };
 }
@@ -102,15 +110,26 @@ export function decideOnPodEvent(
  */
 export function decideOnMessageReceived(
   state: CoreState,
+  profile: string,
   messageSequence: number,
 ): Decision {
-  // Idempotently ensure consumer and job exist
+  if (!state.pod) {
+    return {
+      actions: [
+        { type: "upsert_state", profile, status: "scheduled" },
+        { type: "create_consumer", profile, startSequence: messageSequence },
+        { type: "create_job", profile },
+      ],
+      reason: "Message received, no pod exists - scheduling",
+    };
+  }
+
   return {
     actions: [
-      { type: "create_consumer", startSequence: messageSequence },
-      { type: "create_job" },
+      { type: "create_consumer", profile, startSequence: messageSequence },
+      { type: "create_job", profile },
     ],
-    reason: "Message received - ensuring consumer and job exist",
+    reason: "Message received, pod exists - ensuring consumer and job",
   };
 }
 
@@ -120,9 +139,18 @@ export function decideOnMessageReceived(
 export function decide(state: CoreState, payload: EventPayload): Decision {
   switch (payload.type) {
     case "pod_event":
-      return decideOnPodEvent(state, payload.eventType, payload.pod);
+      return decideOnPodEvent(
+        state,
+        payload.profile,
+        payload.eventType,
+        payload.pod,
+      );
 
     case "message_received":
-      return decideOnMessageReceived(state, payload.messageSequence);
+      return decideOnMessageReceived(
+        state,
+        payload.profile,
+        payload.messageSequence,
+      );
   }
 }

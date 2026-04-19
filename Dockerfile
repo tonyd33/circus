@@ -14,7 +14,6 @@ COPY --chown=root:root packages/ringmaster/package.json ./packages/ringmaster/
 COPY --chown=root:root packages/chimp/package.json ./packages/chimp/
 COPY --chown=root:root packages/bullhorn/package.json ./packages/bullhorn/
 COPY --chown=root:root packages/dashboard/package.json ./packages/dashboard/
-COPY --chown=root:root packages/ledger/package.json ./packages/ledger/
 COPY --chown=root:root packages/shared/package.json ./packages/shared/
 
 # Install dependencies (this layer will be cached unless package.json files change)
@@ -30,7 +29,7 @@ FROM base AS chimp
 WORKDIR /app
 
 RUN apt update && apt install -y git curl
-ADD --unpack https://github.com/anomalyco/opencode/releases/download/v1.4.0/opencode-linux-x64.tar.gz /usr/local/bin/
+ADD --unpack https://github.com/anomalyco/opencode/releases/download/v1.4.3/opencode-linux-x64.tar.gz /usr/local/bin/
 
 COPY --from=build /usr/src/app/node_modules ./node_modules
 COPY --from=build /usr/src/app/packages ./packages
@@ -80,13 +79,3 @@ COPY --from=build /usr/src/app/package.json ./
 
 WORKDIR /app/packages/dashboard/
 ENTRYPOINT ["bun", "start"]
-
-FROM base AS ledger
-WORKDIR /app
-
-COPY --from=build /usr/src/app/node_modules ./node_modules
-COPY --from=build /usr/src/app/packages ./packages
-COPY --from=build /usr/src/app/package.json ./
-
-WORKDIR /app/packages/ledger
-ENTRYPOINT ["bun", "run", "src/index.ts"]

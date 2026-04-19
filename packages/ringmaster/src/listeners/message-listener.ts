@@ -5,29 +5,32 @@
  * Borrows NATS connection from Ringmaster - does not own the connection lifecycle
  */
 
-import { Standards } from "@mnke/circus-shared";
-import { createLogger } from "@mnke/circus-shared/logger";
+import { type Logger, Standards } from "@mnke/circus-shared";
 import {
   AckPolicy,
   type Consumer,
   DeliverPolicy,
   type NatsConnection,
 } from "nats";
-import type { RingmasterEventHandler } from "../core/event-handler.ts";
+import type { EventHandler } from "../core/event-handler.ts";
 
 const MESSAGE_LISTENER_CONSUMER_NAME = "chimp-message-listener";
-
-const logger = createLogger("MessageListener");
 
 export class MessageListener {
   private nc: NatsConnection;
   private consumer: Consumer | null = null;
-  private eventHandler: RingmasterEventHandler;
+  private eventHandler: EventHandler;
   private stopConsumer: (() => void) | null = null;
+  private logger: Logger.Logger;
 
-  constructor(nc: NatsConnection, eventHandler: RingmasterEventHandler) {
+  constructor(
+    nc: NatsConnection,
+    eventHandler: EventHandler,
+    logger: Logger.Logger,
+  ) {
     this.nc = nc;
     this.eventHandler = eventHandler;
+    this.logger = logger;
   }
 
   /**
@@ -38,8 +41,6 @@ export class MessageListener {
     const jsm = await this.nc.jetstreamManager();
     const streamName = Standards.Chimp.Naming.inputStreamName();
 
-    // Create ephemeral consumer for detecting new messages on all chimp inputs
-    // Delivers new messages only (DeliverPolicy.New)
     const consumer = await jsm.consumers.add(streamName, {
       durable_name: MESSAGE_LISTENER_CONSUMER_NAME,
       ack_policy: AckPolicy.Explicit,
@@ -47,50 +48,42 @@ export class MessageListener {
       deliver_policy: DeliverPolicy.LastPerSubject,
     });
 
-    // Get the consumer we just created (ephemeral, so no durable name needed)
     this.consumer = js.consumers.getPullConsumerFor(consumer);
 
-    logger.info("Created ephemeral consumer for chimps.inputs.*");
+    this.logger.info("Created consumer for chimp.inputs.*");
 
-    // Process incoming messages
     const messages = await this.consumer.consume();
     this.stopConsumer = () => messages.stop();
 
     (async () => {
       for await (const msg of messages) {
         try {
-          // Extract chimpId from subject (chimps.inputs.{chimpId})
-          const parts = msg.subject.split(".");
-          if (
-            parts.length === 3 &&
-            parts[0] === "chimps" &&
-            parts[1] === "inputs"
-          ) {
-            const chimpId = parts[2];
-            if (!chimpId) {
-              logger.error({ subject: msg.subject }, "Invalid subject format");
-              msg.ack();
-              continue;
-            }
-
-            // Extract message sequence number from JetStream metadata
-            const messageSequence = msg.seq;
-            logger.info(
-              { chimpId, messageSequence },
-              "Detected message for chimp",
+          const parsed = Standards.Chimp.Naming.parseInputSubject(msg.subject);
+          if (!parsed) {
+            this.logger.error(
+              { subject: msg.subject },
+              "Invalid subject format",
             );
-
-            // Trigger Chimp creation (if needed)
-            await this.eventHandler(chimpId, {
-              type: "message_received",
-              messageSequence,
-            });
-
-            // Acknowledge the message
             msg.ack();
+            continue;
           }
+
+          const { chimpId, profile } = parsed;
+          const messageSequence = msg.seq;
+          this.logger.info(
+            { chimpId, profile, messageSequence },
+            "Detected message for chimp",
+          );
+
+          await this.eventHandler.handle(chimpId, {
+            type: "message_received",
+            profile,
+            messageSequence,
+          });
+
+          msg.ack();
         } catch (error) {
-          logger.error({ err: error }, "Error processing message");
+          this.logger.error({ err: error }, "Error processing message");
           msg.ack();
         }
       }
@@ -108,6 +101,6 @@ export class MessageListener {
 
     this.consumer = null;
 
-    logger.info("Stopped");
+    this.logger.info("Stopped");
   }
 }

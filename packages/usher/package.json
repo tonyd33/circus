@@ -11,9 +11,11 @@
     "@typescript/native-preview": "^7.0.0-dev.20260411.1"
   },
   "dependencies": {
-    "@mnke/circus-shared": "workspace:*",
-    "commander": "catalog:",
     "@commander-js/extra-typings": "catalog:",
+    "@mnke/circus-shared": "workspace:*",
+    "@octokit/webhooks-methods": "^6.0.0",
+    "commander": "catalog:",
+    "discord-interactions": "^4.4.0",
     "ioredis": "catalog:",
     "nats": "catalog:"
   },

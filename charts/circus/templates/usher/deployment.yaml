@@ -29,6 +29,9 @@ spec:
               value: {{ .Values.externalServices.nats.url | quote }}
             - name: PORT
               value: {{ .Values.usher.service.port | quote }}
+            {{- with .Values.usher.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           ports:
             - containerPort: 7392
               protocol: TCP

@@ -1,18 +1,25 @@
+import * as P from "../lib/parser/string";
+
 export const Env = {
   chimpId: "CHIMP_ID",
   natsUrl: "NATS_URL",
+  redisUrl: "REDIS_URL",
   brainType: "CHIMP_BRAIN_TYPE",
-  initConfig: "CHIMP_INIT_CONFIG",
+  model: "CHIMP_MODEL",
+  profile: "CHIMP_PROFILE",
   inputMode: "CHIMP_INPUT_MODE",
   outputMode: "CHIMP_OUTPUT_MODE",
   httpPort: "CHIMP_HTTP_PORT",
 };
+
 export const Prefix = {
-  INPUTS: "chimps.inputs",
-  OUTPUTS: "chimps.outputs",
+  INPUTS: "chimp.inputs",
+  OUTPUTS: "chimp.outputs",
+  META: "chimp.meta",
 };
 
 export type ChimpStatus =
+  | "scheduled"
   | "pending"
   | "running"
   | "stopped"
@@ -21,43 +28,72 @@ export type ChimpStatus =
 
 export interface ChimpState {
   chimpId: string;
+  profile: string;
   status: ChimpStatus;
   createdAt: number;
   updatedAt: number;
 }
 
+const segment = P.flat(P.many1(P.noneOf(".")));
+
+function subjectParser(prefix: string) {
+  return P.Do()
+    .do(P.str(prefix))
+    .do(P.grapheme("."))
+    .bind("profile", segment)
+    .do(P.grapheme("."))
+    .bind("chimpId", segment)
+    .return((env) => env);
+}
+
+function parseSubject(
+  prefix: string,
+  subject: string,
+): { profile: string; chimpId: string } | null {
+  const result = subjectParser(prefix).parse(subject);
+  return result.unwrapOr(null);
+}
+
 export const Naming = {
   inputStreamName(): string {
-    return "chimps-inputs";
+    return "chimp-inputs";
   },
   outputStreamName(): string {
-    return "chimps-outputs";
+    return "chimp-outputs";
   },
-  inputSubject(chimpId: string): string {
-    return `chimps.inputs.${chimpId}`;
+  inputSubject(profile: string, chimpId: string): string {
+    return `${Prefix.INPUTS}.${profile}.${chimpId}`;
   },
-  outputSubject(chimpId: string): string {
-    return `chimps.outputs.${chimpId}`;
+  outputSubject(profile: string, chimpId: string): string {
+    return `${Prefix.OUTPUTS}.${profile}.${chimpId}`;
   },
-  parseInputSubject(subject: string): string | null {
-    const prefix = "chimps.inputs.";
-    if (!subject.startsWith(prefix)) return null;
-    const chimpId = subject.slice(prefix.length);
-    return chimpId || null;
+  metaSubject(profile: string, chimpId: string): string {
+    return `${Prefix.META}.${profile}.${chimpId}`;
   },
-  parseOutputSubject(subject: string): string | null {
-    const prefix = "chimps.outputs.";
-    if (!subject.startsWith(prefix)) return null;
-    const chimpId = subject.slice(prefix.length);
-    return chimpId || null;
+  parseInputSubject(
+    subject: string,
+  ): { profile: string; chimpId: string } | null {
+    return parseSubject(Prefix.INPUTS, subject);
   },
-  podName(chimpId: string): string {
-    return `chimp-${chimpId.toLowerCase()}`;
+  parseOutputSubject(
+    subject: string,
+  ): { profile: string; chimpId: string } | null {
+    return parseSubject(Prefix.OUTPUTS, subject);
+  },
+  podName(profile: string, chimpId: string): string {
+    const hash = Bun.hash(`${profile}/${chimpId}`).toString(36);
+    return `chimp-${hash}`;
   },
   redisChimpKey(chimpId: string): string {
     return `chimp:${chimpId}:state`;
   },
   redisChimpPattern(): string {
     return "chimp:*:state";
+  },
+  redisProfileKey(name: string): string {
+    return `profile:${name}`;
+  },
+  redisProfilePattern(): string {
+    return "profile:*";
   },
 };

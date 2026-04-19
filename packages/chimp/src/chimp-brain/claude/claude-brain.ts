@@ -4,14 +4,9 @@
 
 import * as path from "node:path";
 import type { S3Client } from "@aws-sdk/client-s3";
+import { Protocol } from "@mnke/circus-shared";
 import { EnvReader as ER, Typing } from "@mnke/circus-shared/lib";
 import { Either as E } from "@mnke/circus-shared/lib/fp";
-import {
-  type ChimpCommand,
-  createAgentMessageResponse,
-} from "@mnke/circus-shared/protocol";
-import { ChimpBrain, type PublishFn } from "@/chimp-brain";
-import { processWithClaude } from "@/chimp-brain/claude/agent";
 import {
   restoreChimpStateFromS3,
   restoreClaudeStateFromS3,
@@ -20,12 +15,12 @@ import {
 } from "@/chimp-brain/claude/session-storage";
 import { createS3Client, s3ConfigReader } from "@/lib/s3";
 import { cloneRepo } from "@/lib/tooling";
+import { ChimpBrain } from "../chimp-brain";
+import { processWithClaude } from "./agent";
 
 export class ClaudeChimp extends ChimpBrain {
   private messageCount = 0;
   private sessionId?: string;
-  private model = "claude-haiku-4-5";
-  private allowedTools: string[] = [];
   private workingDir = process.cwd();
   private s3Client: S3Client | null = null;
   private s3Bucket: string | null = null;
@@ -33,10 +28,15 @@ export class ClaudeChimp extends ChimpBrain {
   async onStartup(): Promise<void> {
     this.log("info", "ClaudeChimp starting up", { chimpId: this.chimpId });
 
-    const apiKeyResult = ER.str("ANTHROPIC_API_KEY").read(process.env).value;
+    const apiKeyResult = ER.record({
+      apiKey: ER.str("ANTHROPIC_API_KEY").fallbackW(null),
+      oauthToken: ER.str("CLAUDE_CODE_OAUTH_TOKEN").fallbackW(null),
+    }).read(process.env).value;
     if (E.isLeft(apiKeyResult)) {
       this.log("error", ER.formatReadError(apiKeyResult.value));
-      throw new Error("ANTHROPIC_API_KEY environment variable is required");
+      throw new Error(
+        "ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN environment variable is required",
+      );
     }
 
     // Read S3 config from env
@@ -56,7 +56,7 @@ export class ClaudeChimp extends ChimpBrain {
         this.chimpId,
       );
       this.log("info", "Claude state restored from S3");
-    } catch (error) {
+    } catch (_error) {
       this.log("warn", "No existing Claude state found, starting fresh");
     }
 
@@ -78,7 +78,7 @@ export class ClaudeChimp extends ChimpBrain {
           messageCount: this.messageCount,
         });
       }
-    } catch (error) {
+    } catch (_error) {
       this.log("warn", "Could not restore chimp state, using defaults");
     }
   }
@@ -105,7 +105,9 @@ export class ClaudeChimp extends ChimpBrain {
     }
   }
 
-  async handleMessage(command: ChimpCommand): Promise<"continue" | "stop"> {
+  async handleMessage(
+    command: Protocol.ChimpCommand,
+  ): Promise<"continue" | "stop"> {
     this.log("info", "Handling command", { command: command.command });
 
     switch (command.command) {
@@ -119,8 +121,10 @@ export class ClaudeChimp extends ChimpBrain {
             messageCount: this.messageCount,
             sessionId: this.sessionId,
             model: this.model,
+            systemPrompt: this.systemPrompt,
             allowedTools: this.allowedTools,
             workingDir: this.workingDir,
+            mcpUrl: this.mcpUrl,
           },
           this.publish,
           (level, message, data) => this.log(level, message, data),
@@ -132,7 +136,9 @@ export class ClaudeChimp extends ChimpBrain {
         this.sessionId = sessionId;
         this.messageCount++;
 
-        this.publish(createAgentMessageResponse(agentResponse, sessionId));
+        this.publish(
+          Protocol.createAgentMessageResponse(agentResponse, sessionId),
+        );
         break;
       }
 
@@ -167,6 +173,14 @@ export class ClaudeChimp extends ChimpBrain {
         this.log("info", `Working directory set to: ${absolutePath}`);
         break;
       }
+
+      case "set-system-prompt":
+        this.setSystemPrompt(command.args.prompt);
+        break;
+
+      case "set-allowed-tools":
+        this.setAllowedTools(command.args.tools);
+        break;
 
       default:
         Typing.unreachable(command);

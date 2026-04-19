@@ -1,10 +1,3 @@
-/**
- * Shared S3 client initialization
- *
- * Config read from env via EnvReader in caller's startup lifecycle,
- * then passed here to construct client.
- */
-
 import { S3Client } from "@aws-sdk/client-s3";
 import { EnvReader as ER } from "@mnke/circus-shared/lib";
 
@@ -21,7 +14,7 @@ export const s3ConfigReader = ER.record({
   region: ER.str("S3_REGION").fallback("us-east-1"),
   accessKeyId: ER.str("S3_ACCESS_KEY_ID").fallback("minioadmin"),
   secretAccessKey: ER.str("S3_SECRET_ACCESS_KEY").fallback("minioadmin"),
-  bucket: ER.str("S3_BUCKET").fallback("claude-sessions"),
+  bucket: ER.str("S3_BUCKET").fallback("circus"),
 });
 
 export function createS3Client(config: S3Config): S3Client {

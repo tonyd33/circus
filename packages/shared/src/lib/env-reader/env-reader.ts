@@ -24,6 +24,10 @@ export class EnvReader<A> {
     return new EnvReader(this.key, (env) => this.run(env).fromRight(a));
   }
 
+  fallbackW<B>(b: B): EnvReader<A | B> {
+    return new EnvReader(this.key, (env) => this.run(env).fromRight(b));
+  }
+
   predicate(f: (a: A) => boolean, why: string): EnvReader<A> {
     return new EnvReader(this.key, (env) =>
       this.run(env).flatMap((a: A) =>
@@ -58,6 +62,24 @@ export function int(key: string): EnvReader<number> {
     return Number.isNaN(num)
       ? E.left(validationError(key, "Not a number"))
       : E.right(num);
+  });
+}
+
+export function enm<const T extends readonly string[]>(
+  key: string,
+  values: T,
+): EnvReader<T[number]> {
+  return new EnvReader(key, (env: Env) => {
+    const value = env[key];
+    if (value == null) {
+      return E.left(notFoundError(key));
+    }
+    if (!values.includes(value)) {
+      return E.left(
+        validationError(key, `Must be one of: ${values.join(", ")}`),
+      );
+    }
+    return E.right(value as T[number]);
   });
 }
 

@@ -5,38 +5,41 @@
  * Implementations should handle messages and define startup/shutdown behavior.
  */
 
-import {
-  createLogger,
-  type Logger,
-  type LogLevel,
-} from "@mnke/circus-shared/logger";
-import type {
-  ChimpCommand,
-  ChimpOutputMessage,
-} from "@mnke/circus-shared/protocol";
-import { createLogMessage } from "@mnke/circus-shared/protocol";
+import { type Logger, Protocol } from "@mnke/circus-shared";
 
 /**
  * Publish function for sending output messages
  */
-export type PublishFn = (message: ChimpOutputMessage) => void;
+export type PublishFn = (message: Protocol.ChimpOutputMessage) => void;
 
 export abstract class ChimpBrain {
   protected chimpId: string;
+  protected model: string;
+  protected systemPrompt: string | undefined;
+  protected allowedTools: string[] = [];
   protected publish: PublishFn;
-  private logger: Logger;
+  protected logger: Logger.Logger;
+  protected mcpUrl: string;
 
-  constructor(chimpId: string, publish: PublishFn) {
+  constructor(
+    chimpId: string,
+    model: string,
+    publish: PublishFn,
+    logger: Logger.Logger,
+    mcpUrl: string,
+  ) {
     this.chimpId = chimpId;
+    this.model = model;
     this.publish = publish;
-    this.logger = createLogger("Chimp");
+    this.logger = logger;
+    this.mcpUrl = mcpUrl;
   }
 
   /**
    * Log locally (Pino) and publish to NATS.
    */
   protected log(
-    level: LogLevel,
+    level: Logger.LogLevel,
     message: string,
     data?: Record<string, unknown>,
   ): void {
@@ -45,14 +48,26 @@ export abstract class ChimpBrain {
     } else {
       this.logger[level](message);
     }
-    this.publish(createLogMessage(level, message, data));
+    this.publish(Protocol.createLogMessage(level, message, data));
   }
 
   /**
    * Handle an incoming message
    * @returns "continue" to keep processing messages, "stop" to shutdown
    */
-  abstract handleMessage(message: ChimpCommand): Promise<"continue" | "stop">;
+  protected setSystemPrompt(prompt: string): void {
+    this.systemPrompt = prompt;
+    this.log("info", "System prompt set");
+  }
+
+  protected setAllowedTools(tools: string[]): void {
+    this.allowedTools = tools;
+    this.log("info", "Allowed tools set", { tools });
+  }
+
+  abstract handleMessage(
+    message: Protocol.ChimpCommand,
+  ): Promise<"continue" | "stop">;
 
   /**
    * Called once when the chimp starts up, before processing any messages

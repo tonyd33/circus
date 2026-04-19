@@ -1,9 +1,11 @@
 import {
   AlertTriangle,
+  ArrowDown,
   ArrowLeft,
   Circle,
   CircleDot,
   FileBox,
+  Filter,
   FolderSync,
   GitBranch,
   Loader2,
@@ -19,13 +21,12 @@ import remarkGfm from "remark-gfm";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { useSSE } from "@/hooks/useSSE";
 
@@ -70,38 +71,50 @@ const sortByTimestamp = (a: ActivityMessage, b: ActivityMessage) =>
   new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
 
 export function ChimpActivity() {
-  const { chimpId } = useParams<{ chimpId: string }>();
+  const { profile, chimpId } = useParams<{
+    profile: string;
+    chimpId: string;
+  }>();
   const containerRef = useRef<HTMLDivElement>(null);
-  const [typeFilter, setTypeFilter] = useState("all");
-  const [messageTypeFilter, setMessageTypeFilter] = useState("all");
+  const [selectedTypes, setSelectedTypes] = useState<Set<string>>(new Set());
   const [prompt, setPrompt] = useState("");
   const [sending, setSending] = useState(false);
 
   const { messages, connected, error } = useSSE<ActivityMessage>({
-    url: chimpId ? `/api/chimp/${chimpId}/activity` : null,
+    url:
+      profile && chimpId ? `/api/chimp/${profile}/${chimpId}/activity` : null,
     sortBy: sortByTimestamp,
     getKey: (msg) => `${msg.id}-${msg.type}-${msg.timestamp}`,
   });
 
   const isAtBottomRef = useRef(true);
+  const [showScrollButton, setShowScrollButton] = useState(false);
 
-  const messageTypes = useMemo(
-    () => [...new Set(messages.map((m) => m.messageType))].sort(),
-    [messages],
-  );
+  const groupedTypes = useMemo(() => {
+    const input: string[] = [];
+    const output: string[] = [];
+    for (const msg of messages) {
+      const list = msg.type === "input" ? input : output;
+      if (!list.includes(msg.messageType)) list.push(msg.messageType);
+    }
+    return { input: input.sort(), output: output.sort() };
+  }, [messages]);
+
+  const toggleType = (type: string) => {
+    setSelectedTypes((prev) => {
+      const next = new Set(prev);
+      if (next.has(type)) next.delete(type);
+      else next.add(type);
+      return next;
+    });
+  };
 
   const filteredMessages = useMemo(
     () =>
-      messages.filter((msg) => {
-        if (typeFilter !== "all" && msg.type !== typeFilter) return false;
-        if (
-          messageTypeFilter !== "all" &&
-          msg.messageType !== messageTypeFilter
-        )
-          return false;
-        return true;
-      }),
-    [messages, typeFilter, messageTypeFilter],
+      selectedTypes.size === 0
+        ? messages
+        : messages.filter((msg) => selectedTypes.has(msg.messageType)),
+    [messages, selectedTypes],
   );
 
   useEffect(() => {
@@ -109,8 +122,10 @@ export function ChimpActivity() {
     if (!el) return;
     const threshold = 100;
     const check = () => {
-      isAtBottomRef.current =
+      const atBottom =
         el.scrollHeight - el.clientHeight - el.scrollTop < threshold;
+      isAtBottomRef.current = atBottom;
+      setShowScrollButton(!atBottom);
     };
     el.addEventListener("scroll", check, { passive: true });
     check();
@@ -127,10 +142,10 @@ export function ChimpActivity() {
   }, [filteredMessages.length]);
 
   async function sendMessage() {
-    if (!chimpId || !prompt.trim() || sending) return;
+    if (!profile || !chimpId || !prompt.trim() || sending) return;
     setSending(true);
     try {
-      const res = await fetch(`/api/chimp/${chimpId}/message`, {
+      const res = await fetch(`/api/chimp/${profile}/${chimpId}/message`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: prompt.trim() }),
@@ -141,10 +156,10 @@ export function ChimpActivity() {
     }
   }
 
-  if (!chimpId) {
+  if (!profile || !chimpId) {
     return (
       <div className="p-8 text-center text-muted-foreground">
-        No chimp ID provided
+        Missing profile or chimp ID
       </div>
     );
   }
@@ -298,12 +313,16 @@ export function ChimpActivity() {
           </div>
         );
       }
-      case "opencode-event": {
+      case "thought": {
+        const brain = getString(data, "brain");
         const event = data.event as Record<string, unknown> | undefined;
         const eventType = event?.type as string | undefined;
         return (
           <div className="space-y-2">
             <div className="flex items-center gap-2">
+              <Badge variant="secondary" className="text-xs">
+                {brain}
+              </Badge>
               <Badge variant="outline" className="text-xs font-mono">
                 {eventType || "unknown"}
               </Badge>
@@ -323,7 +342,7 @@ export function ChimpActivity() {
     }
   };
 
-  const isFiltering = typeFilter !== "all" || messageTypeFilter !== "all";
+  const isFiltering = selectedTypes.size > 0;
 
   return (
     <div className="max-h-screen bg-background">
@@ -365,33 +384,77 @@ export function ChimpActivity() {
         )}
 
         <div className="flex items-center gap-3 mb-4">
-          <Select value={typeFilter} onValueChange={setTypeFilter}>
-            <SelectTrigger size="sm" className="w-[130px]">
-              <SelectValue placeholder="Direction" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All types</SelectItem>
-              <SelectItem value="input">Input</SelectItem>
-              <SelectItem value="output">Output</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={messageTypeFilter}
-            onValueChange={setMessageTypeFilter}
-          >
-            <SelectTrigger size="sm" className="w-[200px]">
-              <SelectValue placeholder="Message type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All messages</SelectItem>
-              {messageTypes.map((mt) => (
-                <SelectItem key={mt} value={mt}>
-                  {mt}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-2">
+                <Filter className="h-3.5 w-3.5" />
+                Filter types
+                {isFiltering && (
+                  <Badge
+                    variant="secondary"
+                    className="ml-1 px-1.5 py-0 text-xs"
+                  >
+                    {selectedTypes.size}
+                  </Badge>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-56 p-3">
+              {isFiltering && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedTypes(new Set())}
+                  className="text-xs text-muted-foreground hover:text-foreground mb-2"
+                >
+                  Clear all
+                </button>
+              )}
+              {groupedTypes.input.length > 0 && (
+                <div className="mb-2">
+                  <p className="text-xs font-medium text-amber-500 mb-1.5">
+                    Input
+                  </p>
+                  <div className="space-y-1.5">
+                    {groupedTypes.input.map((mt) => (
+                      <label
+                        key={mt}
+                        htmlFor={`filter-${mt}`}
+                        className="flex items-center gap-2 cursor-pointer"
+                      >
+                        <Checkbox
+                          id={`filter-${mt}`}
+                          checked={selectedTypes.has(mt)}
+                          onCheckedChange={() => toggleType(mt)}
+                        />
+                        <span className="text-sm font-mono">{mt}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {groupedTypes.output.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-ring mb-1.5">Output</p>
+                  <div className="space-y-1.5">
+                    {groupedTypes.output.map((mt) => (
+                      <label
+                        key={mt}
+                        htmlFor={`filter-${mt}`}
+                        className="flex items-center gap-2 cursor-pointer"
+                      >
+                        <Checkbox
+                          id={`filter-${mt}`}
+                          checked={selectedTypes.has(mt)}
+                          onCheckedChange={() => toggleType(mt)}
+                        />
+                        <span className="text-sm font-mono">{mt}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </PopoverContent>
+          </Popover>
 
           {isFiltering && (
             <span className="text-xs text-muted-foreground">
@@ -400,61 +463,83 @@ export function ChimpActivity() {
           )}
         </div>
 
-        <div
-          ref={containerRef}
-          className="space-y-3 max-h-[calc(100vh-350px)] overflow-y-auto"
-        >
-          {filteredMessages.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Circle className="h-8 w-8 mx-auto mb-3 opacity-50" />
-              {messages.length === 0 ? (
-                <>
-                  <p>No activity yet</p>
-                  <p className="text-sm">
-                    Messages will appear here in real-time
-                  </p>
-                </>
-              ) : (
-                <p>No messages match filters</p>
-              )}
-            </div>
-          ) : (
-            filteredMessages.map((msg) => (
-              <Card
-                key={`${msg.id}-${msg.type}-${msg.timestamp}`}
-                className={`transition-all duration-200 hover:shadow-md ${
-                  msg.type === "input"
-                    ? "border-l-4 border-l-amber-500"
-                    : "border-l-4 border-l-ring"
-                }`}
-              >
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <Badge
-                        variant={msg.type === "input" ? "default" : "secondary"}
-                        className={
-                          msg.type === "input"
-                            ? "bg-amber-500/20 text-amber-500"
-                            : ""
-                        }
-                      >
-                        {msg.type}
-                      </Badge>
-                      <Badge variant="outline" className="font-mono text-xs">
-                        {msg.messageType}
-                      </Badge>
+        <div className="relative">
+          <div
+            ref={containerRef}
+            className="space-y-3 max-h-[calc(100vh-350px)] overflow-y-auto"
+          >
+            {filteredMessages.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <Circle className="h-8 w-8 mx-auto mb-3 opacity-50" />
+                {messages.length === 0 ? (
+                  <>
+                    <p>No activity yet</p>
+                    <p className="text-sm">
+                      Messages will appear here in real-time
+                    </p>
+                  </>
+                ) : (
+                  <p>No messages match filters</p>
+                )}
+              </div>
+            ) : (
+              filteredMessages.map((msg) => (
+                <Card
+                  key={`${msg.id}-${msg.type}-${msg.timestamp}`}
+                  className={`transition-all duration-200 hover:shadow-md ${
+                    msg.type === "input"
+                      ? "border-l-4 border-l-amber-500"
+                      : "border-l-4 border-l-ring"
+                  }`}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          variant={
+                            msg.type === "input" ? "default" : "secondary"
+                          }
+                          className={
+                            msg.type === "input"
+                              ? "bg-amber-500/20 text-amber-500"
+                              : ""
+                          }
+                        >
+                          {msg.type}
+                        </Badge>
+                        <Badge variant="outline" className="font-mono text-xs">
+                          {msg.messageType}
+                        </Badge>
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(msg.timestamp).toLocaleTimeString()}
+                      </span>
                     </div>
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(msg.timestamp).toLocaleTimeString()}
-                    </span>
-                  </div>
-                  <div className="text-foreground">
-                    {renderMessageContent(msg)}
-                  </div>
-                </CardContent>
-              </Card>
-            ))
+                    <div className="text-foreground">
+                      {renderMessageContent(msg)}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+
+          {showScrollButton && (
+            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 shadow-lg bg-card/90 backdrop-blur-sm"
+                onClick={() => {
+                  const el = containerRef.current;
+                  if (el)
+                    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+                }}
+              >
+                <ArrowDown className="h-3.5 w-3.5" />
+                Scroll to bottom
+              </Button>
+            </div>
           )}
         </div>
       </main>

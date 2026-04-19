@@ -159,8 +159,8 @@ export function option<A>(a: A, parser: Parser<A>): Parser<A> {
 
 export function optional<A>(parser: Parser<A>): Parser<void> {
   return parser
-    .map(() => undefined as void)
-    .alt(new Parser((s) => E.right([s, undefined as void])));
+    .map(() => undefined as undefined)
+    .alt(new Parser((s) => E.right([s, undefined as undefined])));
 }
 
 export function flat(parser: Parser<string[]>): Parser<string> {
