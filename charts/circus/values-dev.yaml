@@ -14,7 +14,7 @@ usher:
       path: /api/webhooks/github
   extraEnv:
     - name: GITHUB_BOT_NAME
-      value: tonyd33
+      value: circus-chimp
     - name: GITHUB_PROFILE
       value: default
     - name: GITHUB_APP_ID
