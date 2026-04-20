@@ -5,6 +5,7 @@ import { Either as E } from "@mnke/circus-shared/lib/fp";
 import {
   restoreChimpStateFromS3,
   restoreClaudeStateFromS3,
+  type StoredEventContext,
   saveChimpStateToS3,
   saveClaudeStateToS3,
 } from "@/chimp-brain/claude/session-storage";
@@ -17,6 +18,7 @@ export class ClaudeChimp extends ChimpBrain {
   private sessionId?: string;
   private s3Client: S3Client | null = null;
   private s3Bucket: string | null = null;
+  protected eventContexts: StoredEventContext[] = [];
 
   async onStartup(): Promise<void> {
     this.log("info", "ClaudeChimp starting up", { chimpId: this.chimpId });
@@ -64,10 +66,12 @@ export class ClaudeChimp extends ChimpBrain {
         this.messageCount = savedState.messageCount;
         this.model = savedState.model;
         this.allowedTools = savedState.allowedTools;
+        this.eventContexts = savedState.eventContexts;
         this.log("info", "Chimp state restored from S3", {
           sessionId: this.sessionId,
           workingDir: this.workingDir,
           messageCount: this.messageCount,
+          eventContextCount: this.eventContexts.length,
         });
       }
     } catch (_error) {
@@ -86,6 +90,7 @@ export class ClaudeChimp extends ChimpBrain {
           messageCount: this.messageCount,
           model: this.model,
           allowedTools: this.allowedTools,
+          eventContexts: this.eventContexts,
         });
         this.log("info", "Chimp state saved to S3");
 
