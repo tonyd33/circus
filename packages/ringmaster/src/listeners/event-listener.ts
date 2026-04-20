@@ -49,7 +49,8 @@ export class EventListener {
         try {
           const subject = msg.subject;
           const topic = Standards.Topic.eventSubjectToTopic(subject);
-          const profile = msg.headers?.get("profile") ?? "default";
+          const profile =
+            msg.headers?.get("profile") ?? Standards.Chimp.DEFAULT_PROFILE;
 
           await this.eventHandler.handleEvent({
             type: "event_received",

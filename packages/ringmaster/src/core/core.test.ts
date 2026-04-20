@@ -1,11 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  type CoreState,
-  decide,
-  decideOnEventReceived,
-  decideOnPodEvent,
-  type EventPayload,
-} from "./core.ts";
+import { type CoreState, decide, type EventPayload } from "./core.ts";
 
 const P = "default";
 
@@ -13,10 +7,16 @@ function state(overrides: Partial<CoreState> = {}): CoreState {
   return { now: Date.now(), pod: undefined, topicOwner: null, ...overrides };
 }
 
-describe("decideOnPodEvent", () => {
-  test("DELETED event: deletes consumers, cleans topics, updates state", () => {
+describe("pod_event", () => {
+  test("DELETED: deletes consumers, cleans topics, updates state", () => {
     const pod: any = { status: { phase: "Succeeded" } };
-    const decision = decideOnPodEvent(state(), "chimp-1", P, "DELETED", pod);
+    const decision = decide(state(), {
+      type: "pod_event",
+      chimpId: "chimp-1",
+      profile: P,
+      eventType: "DELETED",
+      pod,
+    });
 
     expect(decision.chimpId).toBe("chimp-1");
     expect(decision.actions).toEqual([
@@ -26,9 +26,15 @@ describe("decideOnPodEvent", () => {
     ]);
   });
 
-  test("ADDED event: upserts state", () => {
+  test("ADDED Running: upserts state", () => {
     const pod: any = { status: { phase: "Running" } };
-    const decision = decideOnPodEvent(state(), "chimp-1", P, "ADDED", pod);
+    const decision = decide(state(), {
+      type: "pod_event",
+      chimpId: "chimp-1",
+      profile: P,
+      eventType: "ADDED",
+      pod,
+    });
 
     expect(decision.actions).toEqual([
       { type: "upsert_state", profile: P, status: "running" },
@@ -37,7 +43,13 @@ describe("decideOnPodEvent", () => {
 
   test("Pending phase maps to pending status", () => {
     const pod: any = { status: { phase: "Pending" } };
-    const decision = decideOnPodEvent(state(), "chimp-1", P, "ADDED", pod);
+    const decision = decide(state(), {
+      type: "pod_event",
+      chimpId: "chimp-1",
+      profile: P,
+      eventType: "ADDED",
+      pod,
+    });
 
     expect(decision.actions).toEqual([
       { type: "upsert_state", profile: P, status: "pending" },
@@ -46,7 +58,13 @@ describe("decideOnPodEvent", () => {
 
   test("Failed phase maps to failed status", () => {
     const pod: any = { status: { phase: "Failed" } };
-    const decision = decideOnPodEvent(state(), "chimp-1", P, "MODIFIED", pod);
+    const decision = decide(state(), {
+      type: "pod_event",
+      chimpId: "chimp-1",
+      profile: P,
+      eventType: "MODIFIED",
+      pod,
+    });
 
     expect(decision.actions).toEqual([
       { type: "upsert_state", profile: P, status: "failed" },
@@ -54,7 +72,7 @@ describe("decideOnPodEvent", () => {
   });
 });
 
-describe("decideOnEventReceived", () => {
+describe("event_received", () => {
   const eventSubject = "events.github.tonyd33.circus.pr.42.comment";
   const topic = {
     platform: "github" as const,
@@ -64,29 +82,64 @@ describe("decideOnEventReceived", () => {
     number: 42,
   };
 
-  test("topic already claimed → noop", () => {
+  test("topic claimed + pod alive → noop", () => {
+    const pod: any = { status: { phase: "Running" } };
     const s = state({
+      pod,
       topicOwner: {
         chimpId: "existing-chimp",
         profile: P,
         subscribedAt: new Date().toISOString(),
       },
     });
-    const decision = decideOnEventReceived(s, P, eventSubject, topic, 42);
+    const decision = decide(s, {
+      type: "event_received",
+      profile: P,
+      eventSubject,
+      topic,
+      messageSequence: 42,
+    });
 
     expect(decision.chimpId).toBe("existing-chimp");
     expect(decision.actions).toEqual([{ type: "noop" }]);
     expect(decision.reason).toContain("already claimed");
   });
 
-  test("unclaimed, no pod → schedules chimp with topic registration", () => {
-    const decision = decideOnEventReceived(
-      state(),
-      "fast",
+  test("topic claimed + no pod → reclaim with same chimpId", () => {
+    const s = state({
+      topicOwner: {
+        chimpId: "stale-chimp",
+        profile: P,
+        subscribedAt: new Date().toISOString(),
+      },
+    });
+    const decision = decide(s, {
+      type: "event_received",
+      profile: P,
       eventSubject,
       topic,
-      42,
-    );
+      messageSequence: 42,
+    });
+
+    expect(decision.chimpId).toBe("stale-chimp");
+    expect(decision.actions.find((a) => a.type === "create_job")).toBeDefined();
+    expect(decision.actions.find((a) => a.type === "register_topic")).toEqual({
+      type: "register_topic",
+      topic,
+      profile: P,
+      force: true,
+    });
+    expect(decision.reason).toContain("no pod");
+  });
+
+  test("unclaimed, no pod → schedules chimp with topic registration", () => {
+    const decision = decide(state(), {
+      type: "event_received",
+      profile: "fast",
+      eventSubject,
+      topic,
+      messageSequence: 42,
+    });
 
     expect(decision.chimpId).toMatch(/^evt-/);
     expect(decision.actions[0]).toEqual({
@@ -98,6 +151,7 @@ describe("decideOnEventReceived", () => {
       type: "register_topic",
       topic,
       profile: "fast",
+      force: false,
     });
     expect(decision.actions.find((a) => a.type === "create_job")).toEqual({
       type: "create_job",
@@ -108,7 +162,13 @@ describe("decideOnEventReceived", () => {
   test("unclaimed, pod exists → no scheduled state", () => {
     const pod: any = { status: { phase: "Running" } };
     const s = state({ pod });
-    const decision = decideOnEventReceived(s, P, eventSubject, topic, 42);
+    const decision = decide(s, {
+      type: "event_received",
+      profile: P,
+      eventSubject,
+      topic,
+      messageSequence: 42,
+    });
 
     expect(
       decision.actions.find((a) => a.type === "upsert_state"),
@@ -118,14 +178,14 @@ describe("decideOnEventReceived", () => {
     ).toBeDefined();
   });
 
-  test("debug event (null topic) → no register_topic action", () => {
-    const decision = decideOnEventReceived(
-      state(),
-      P,
-      "events.debug.abc123",
-      null,
-      10,
-    );
+  test("debug event (null topic) → no register_topic", () => {
+    const decision = decide(state(), {
+      type: "event_received",
+      profile: P,
+      eventSubject: "events.debug.abc123",
+      topic: null,
+      messageSequence: 10,
+    });
 
     expect(decision.chimpId).toMatch(/^evt-/);
     expect(
@@ -135,46 +195,38 @@ describe("decideOnEventReceived", () => {
   });
 });
 
-describe("decide (main router)", () => {
-  test("routes pod_event", () => {
-    const pod: any = { status: { phase: "Running" } };
-    const payload: EventPayload = {
-      type: "pod_event",
-      profile: P,
-      eventType: "DELETED",
-      pod,
-    };
+describe("chimp_output", () => {
+  test("transmogrify: deletes job and creates new with target profile", () => {
+    const decision = decide(state(), {
+      type: "chimp_output",
+      chimpId: "chimp-1",
+      message: {
+        type: "transmogrify",
+        targetProfile: "powerful",
+        reason: "need more power",
+        summary: "working on X",
+      },
+    });
 
-    const decision = decide(state(), "chimp-1", payload);
-
+    expect(decision.chimpId).toBe("chimp-1");
     expect(decision.actions).toEqual([
-      { type: "delete_consumers" },
-      { type: "cleanup_topics" },
-      { type: "upsert_state", profile: P, status: "stopped" },
+      { type: "delete_job" },
+      { type: "create_job", profile: "powerful" },
     ]);
+    expect(decision.reason).toContain("Transmogrify");
   });
 
-  test("routes event_received", () => {
-    const payload: EventPayload = {
-      type: "event_received",
-      profile: P,
-      eventSubject: "events.github.tonyd33.circus.pr.42.comment",
-      topic: {
-        platform: "github",
-        owner: "tonyd33",
-        repo: "circus",
-        type: "pr",
-        number: 42,
+  test("other output types: noop", () => {
+    const decision = decide(state(), {
+      type: "chimp_output",
+      chimpId: "chimp-1",
+      message: {
+        type: "agent-message-response",
+        content: "hello",
+        sessionId: "s1",
       },
-      messageSequence: 50,
-    };
-
-    const decision = decide(state(), "", payload);
-
-    expect(decision.chimpId).toMatch(/^evt-/);
-    expect(decision.actions.find((a) => a.type === "create_job")).toEqual({
-      type: "create_job",
-      profile: P,
     });
+
+    expect(decision.actions).toEqual([{ type: "noop" }]);
   });
 });

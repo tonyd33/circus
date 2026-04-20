@@ -1,5 +1,5 @@
 import type { Protocol } from "@mnke/circus-shared";
-import { Loader2, Plus, Save, Trash2 } from "lucide-react";
+import { Download, Loader2, Plus, Save, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -85,6 +85,29 @@ export function ProfileEditor({
     } finally {
       setSaving(false);
     }
+  }
+
+  function handleExport() {
+    const data: ChimpProfile = {
+      brain,
+      model,
+      image,
+      ...(description && { description }),
+      ...(imagePullPolicy && { imagePullPolicy }),
+      extraEnv,
+      volumeMounts: JSON.parse(volumeMountsJson),
+      volumes: JSON.parse(volumesJson),
+      initCommands,
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${name}.profile.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   return (
@@ -260,6 +283,10 @@ export function ProfileEditor({
               <Save className="h-4 w-4" />
             )}
             Save
+          </Button>
+          <Button variant="outline" onClick={handleExport} className="gap-2">
+            <Download className="h-4 w-4" />
+            Export
           </Button>
           <Button
             variant="destructive"

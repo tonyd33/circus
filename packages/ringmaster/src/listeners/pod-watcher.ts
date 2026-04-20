@@ -103,8 +103,9 @@ export class PodWatcher {
     this.logger.info({ eventType: type, chimpId, profile }, "Pod event");
 
     try {
-      await this.eventHandler.handlePodEvent(chimpId, {
+      await this.eventHandler.handleEvent({
         type: "pod_event",
+        chimpId,
         profile,
         eventType: type,
         pod,

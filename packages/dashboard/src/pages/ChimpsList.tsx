@@ -58,10 +58,7 @@ export function ChimpsList() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {chimps.map((chimp) => (
-            <Link
-              key={chimp.chimpId}
-              to={`/chimps/${chimp.profile}/${chimp.chimpId}/activity`}
-            >
+            <Link key={chimp.chimpId} to={`/chimps/${chimp.chimpId}/activity`}>
               <Card className="hover:shadow-lg transition-shadow cursor-pointer">
                 <CardHeader className="pb-2">
                   <div className="flex items-center gap-2">

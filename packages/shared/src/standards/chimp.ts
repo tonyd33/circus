@@ -10,6 +10,8 @@ export const Env = {
   httpPort: "CHIMP_HTTP_PORT",
 };
 
+export const DEFAULT_PROFILE = "scout";
+
 export const Prefix = {
   EVENTS: "events",
   COMMANDS: "commands",
@@ -61,8 +63,8 @@ export const Naming = {
     return `chimp-${chimpId}-commands`;
   },
 
-  podName(profile: string, chimpId: string): string {
-    const hash = Bun.hash(`${profile}/${chimpId}`).toString(36);
+  podName(chimpId: string): string {
+    const hash = Bun.hash(chimpId).toString(36);
     return `chimp-${hash}`;
   },
 

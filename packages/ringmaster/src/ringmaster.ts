@@ -15,7 +15,7 @@ import {
   MetaPublisher,
   StateManager,
 } from "@/executors";
-import { EventListener, PodWatcher } from "@/listeners";
+import { EventListener, OutputListener, PodWatcher } from "@/listeners";
 import { PodCache } from "@/state/pod-cache";
 
 export class Ringmaster {
@@ -36,6 +36,7 @@ export class Ringmaster {
   private eventHandler: EventHandler | null = null;
 
   private eventListener: EventListener | null = null;
+  private outputListener: OutputListener | null = null;
   private podWatcher: PodWatcher | null = null;
 
   constructor(config: RingmasterConfig, logger: Logger.Logger) {
@@ -105,10 +106,16 @@ export class Ringmaster {
       this.eventHandler,
       this.logger.child({ component: "EventListener" }),
     );
+    this.outputListener = new OutputListener(
+      this.nc,
+      this.eventHandler,
+      this.logger.child({ component: "OutputListener" }),
+    );
 
     await Promise.all([
       this.podCache.start(),
       this.eventListener.start(),
+      this.outputListener.start(),
       this.podWatcher.start(),
       this.stateManager.start(),
       this.jobManager.start(),
@@ -121,12 +128,14 @@ export class Ringmaster {
       this.podCache?.stop(),
       this.podWatcher?.stop(),
       this.eventListener?.stop(),
+      this.outputListener?.stop(),
       this.stateManager?.stop(),
       this.jobManager?.stop(),
       this.profileLoader?.stop(),
     ]);
     this.podWatcher = null;
     this.eventListener = null;
+    this.outputListener = null;
     this.stateManager = null;
     this.jobManager = null;
     this.profileLoader = null;

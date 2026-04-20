@@ -28,7 +28,9 @@ export class GitHubAdapter implements Adapter {
 
     const result = ER.record({
       botName: ER.str("GITHUB_BOT_NAME"),
-      profile: ER.str("GITHUB_PROFILE").fallback("default"),
+      profile: ER.str("GITHUB_PROFILE").fallback(
+        Standards.Chimp.DEFAULT_PROFILE,
+      ),
       webhookSecret: ER.str("GITHUB_WEBHOOK_SECRET").fallbackW(null),
       appId: ER.str("GITHUB_APP_ID"),
       privateKey: ER.str("GITHUB_PRIVATE_KEY"),

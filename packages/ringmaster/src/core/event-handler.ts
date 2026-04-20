@@ -31,8 +31,8 @@ export class EventHandler {
 
   async handleEvent(payload: EventPayload): Promise<void> {
     try {
-      let chimpId: string;
       let topicOwner = null;
+      let chimpId: string;
 
       if (payload.type === "event_received") {
         if (payload.topic) {
@@ -42,8 +42,7 @@ export class EventHandler {
           ? topicOwner.chimpId
           : deriveChimpId(payload.topic, payload.eventSubject);
       } else {
-        // pod_event — chimpId comes from pod labels, passed by PodWatcher
-        chimpId = ""; // set by caller via handlePodEvent
+        chimpId = payload.chimpId;
       }
 
       const state = {
@@ -51,7 +50,7 @@ export class EventHandler {
         pod: this.deps.getPod(chimpId),
         topicOwner,
       };
-      const decision = decide(state, chimpId, payload);
+      const decision = decide(state, payload);
       chimpId = decision.chimpId;
 
       this.logger.info(
@@ -73,27 +72,6 @@ export class EventHandler {
         "Error handling event",
       );
       throw error;
-    }
-  }
-
-  async handlePodEvent(
-    chimpId: string,
-    payload: EventPayload & { type: "pod_event" },
-  ): Promise<void> {
-    const state = {
-      now: Date.now(),
-      pod: this.deps.getPod(chimpId),
-      topicOwner: null,
-    };
-    const decision = decide(state, chimpId, payload);
-
-    this.logger.info(
-      { chimpId, reason: decision.reason },
-      "Executing decision",
-    );
-
-    for (const action of decision.actions) {
-      await this.executeAction(action, chimpId);
     }
   }
 
@@ -144,6 +122,7 @@ export class EventHandler {
           action.topic,
           chimpId,
           action.profile,
+          { force: action.force ?? false },
         );
         break;
 
@@ -155,6 +134,11 @@ export class EventHandler {
       case "cleanup_topics":
         this.logger.info({ chimpId }, "Executing: cleanup_topics");
         await this.deps.topicRegistry.unsubscribeAll(chimpId);
+        break;
+
+      case "delete_job":
+        this.logger.info({ chimpId }, "Executing: delete_job");
+        await this.deps.jobManager.deleteJob(chimpId);
         break;
 
       case "upsert_state":

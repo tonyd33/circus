@@ -2,6 +2,7 @@ import { type Logger, Protocol, Standards } from "@mnke/circus-shared";
 import type { TopicRegistry } from "@mnke/circus-shared/lib";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import Redis from "ioredis";
 import type { NatsConnection } from "nats";
 import { z } from "zod";
 import type { StoredEventContext } from "@/chimp-brain/event-contexts";
@@ -12,6 +13,7 @@ export interface CircusMcpConfig {
   publish: PublishFn;
   chimpId: string;
   profile: string;
+  redisUrl: string;
   topicRegistry: TopicRegistry | null;
   nc: NatsConnection | null;
   logger: Logger.Logger;
@@ -23,10 +25,12 @@ export class CircusMcp {
   private eventContext: Protocol.EventContext | undefined;
   private eventContexts: StoredEventContext[] = [];
   private httpServer: ReturnType<typeof Bun.serve> | null = null;
+  private redis: Redis;
   private config: CircusMcpConfig;
 
   constructor(config: CircusMcpConfig) {
     this.config = config;
+    this.redis = new Redis(config.redisUrl);
 
     this.mcpServer = new McpServer({
       name: "circus",
@@ -235,6 +239,104 @@ export class CircusMcp {
         };
       },
     );
+
+    this.mcpServer.tool(
+      "transmogrify",
+      "Transform this chimp into a more powerful profile. Queues a handoff message for the new incarnation, then signals the platform to replace this pod. Use when the current profile is insufficient for the task.",
+      {
+        targetProfile: z.string().describe("Profile to transform into"),
+        reason: z.string().describe("Why the transformation is needed"),
+        summary: z
+          .string()
+          .describe("Summary of work done so far for the new incarnation"),
+      },
+      async (args) => {
+        const { nc, chimpId, profile, logger } = this.config;
+
+        if (!nc) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: "Transmogrify unavailable (no NATS)",
+              },
+            ],
+          };
+        }
+
+        logger.info(
+          { chimpId, targetProfile: args.targetProfile, reason: args.reason },
+          "Transmogrify initiated",
+        );
+
+        // Queue resume command for new incarnation (durable in commands stream)
+        const resumeCommand: Protocol.ChimpCommand = {
+          command: "resume-transmogrify",
+          args: {
+            fromProfile: profile,
+            reason: args.reason,
+            summary: args.summary,
+          },
+        };
+        const js = nc.jetstream();
+        await js.publish(
+          Standards.Chimp.Naming.commandSubject(chimpId),
+          JSON.stringify(resumeCommand),
+        );
+
+        // Publish transmogrify output (ringmaster picks this up)
+        publish({
+          type: "transmogrify",
+          targetProfile: args.targetProfile,
+          reason: args.reason,
+          summary: args.summary,
+        });
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Transmogrify initiated: ${profile} → ${args.targetProfile}. This pod will be replaced.`,
+            },
+          ],
+        };
+      },
+    );
+
+    this.mcpServer.tool(
+      "list_profiles",
+      "List available chimp profiles with descriptions, brain type, and model. Use to decide which profile to transmogrify into.",
+      {},
+      async () => {
+        const keys = await this.redis.keys(
+          Standards.Chimp.Naming.redisProfilePattern(),
+        );
+        const profiles: {
+          name: string;
+          description?: string;
+          brain: string;
+          model: string;
+        }[] = [];
+        for (const key of keys) {
+          const data = await this.redis.get(key);
+          if (!data) continue;
+          const parsed = Protocol.ChimpProfileSchema.safeParse(
+            JSON.parse(data),
+          );
+          if (!parsed.success) continue;
+          const name = key.replace("profile:", "");
+          profiles.push({
+            name,
+            description: parsed.data.description,
+            brain: parsed.data.brain,
+            model: parsed.data.model,
+          });
+        }
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(profiles) }],
+        };
+      },
+    );
   }
 
   async start(): Promise<string> {
@@ -266,6 +368,7 @@ export class CircusMcp {
   async stop(): Promise<void> {
     this.httpServer?.stop();
     await this.mcpServer.close();
+    await this.redis.quit();
     this.config.logger.info("MCP server stopped");
   }
 }

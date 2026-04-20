@@ -12,7 +12,7 @@ export class DebugAdapter implements Adapter {
 
     const payload = body as { prompt?: string; profile?: string };
     const prompt = payload.prompt ?? "debug message";
-    const profile = payload.profile ?? "default";
+    const profile = payload.profile ?? Standards.Chimp.DEFAULT_PROFILE;
     const id = crypto.randomUUID().slice(0, 8);
 
     return {

@@ -12,6 +12,7 @@ export class TopicRegistry {
     topic: Topic,
     chimpId: string,
     profile: string,
+    { force = false } = {},
   ): Promise<boolean> {
     const key = serializeTopic(topic);
     const value: TopicSubscription = {
@@ -19,6 +20,10 @@ export class TopicRegistry {
       profile,
       subscribedAt: new Date().toISOString(),
     };
+    if (force) {
+      await this.kv.put(key, JSON.stringify(value));
+      return true;
+    }
     try {
       await this.kv.create(key, JSON.stringify(value));
       return true;

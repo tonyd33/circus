@@ -1,4 +1,4 @@
-import type { Logger } from "@mnke/circus-shared";
+import { type Logger, Standards } from "@mnke/circus-shared";
 import { EnvReader as ER } from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
 import {
@@ -35,7 +35,9 @@ export class DiscordAdapter implements Adapter {
     const result = ER.record({
       publicKey: ER.str("DISCORD_PUBLIC_KEY"),
       applicationId: ER.str("DISCORD_APPLICATION_ID"),
-      profile: ER.str("DISCORD_PROFILE").fallback("default"),
+      profile: ER.str("DISCORD_PROFILE").fallback(
+        Standards.Chimp.DEFAULT_PROFILE,
+      ),
     }).read(process.env).value;
 
     if (Either.isLeft(result)) {

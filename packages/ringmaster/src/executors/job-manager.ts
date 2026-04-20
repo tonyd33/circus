@@ -33,7 +33,7 @@ export class JobManager {
   async stop(): Promise<void> {}
 
   async createJob(chimpId: string, profile: string): Promise<void> {
-    const jobName = Standards.Chimp.Naming.podName(profile, chimpId);
+    const jobName = Standards.Chimp.Naming.podName(chimpId);
     const profileData = await this.profileLoader.getProfile(profile);
 
     const job: k8s.V1Job = {
@@ -120,6 +120,25 @@ export class JobManager {
           { jobName },
           "Job already exists (race condition), continuing",
         );
+        return;
+      }
+      throw error;
+    }
+  }
+
+  async deleteJob(chimpId: string): Promise<void> {
+    const jobName = Standards.Chimp.Naming.podName(chimpId);
+
+    try {
+      await this.k8sBatchApi.deleteNamespacedJob({
+        namespace: this.namespace,
+        name: jobName,
+        body: { propagationPolicy: "Background" },
+      });
+      this.logger.info({ jobName, chimpId }, "Deleted job");
+    } catch (error) {
+      if (K8sLib.isK8sNotFound(error)) {
+        this.logger.debug({ jobName, chimpId }, "Job not found, skipping");
         return;
       }
       throw error;

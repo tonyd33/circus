@@ -131,7 +131,7 @@ export function DashboardHome() {
               {recentChimps.map((chimp) => (
                 <Link
                   key={chimp.chimpId}
-                  to={`/chimps/${chimp.profile}/${chimp.chimpId}/activity`}
+                  to={`/chimps/${chimp.chimpId}/activity`}
                   className="flex items-center gap-3 p-2 rounded-md hover:bg-muted transition-colors"
                 >
                   <span

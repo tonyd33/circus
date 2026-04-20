@@ -19,14 +19,14 @@ export class MessageRouter {
 
   get routes() {
     return {
-      "/api/chimp/:profile/:chimpId/message": {
+      "/api/chimp/:chimpId/message": {
         POST: async (
-          req: Bun.BunRequest<"/api/chimp/:profile/:chimpId/message">,
+          req: Bun.BunRequest<"/api/chimp/:chimpId/message">,
         ): Promise<Response> => {
-          const { profile, chimpId } = req.params;
+          const { chimpId } = req.params;
 
-          if (!profile || !chimpId) {
-            return new Response("Missing profile or chimpId", { status: 400 });
+          if (!chimpId) {
+            return new Response("Missing chimpId", { status: 400 });
           }
 
           const parsed = SendMessageBody.safeParse(

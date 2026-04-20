@@ -20,6 +20,7 @@ const COMMAND_TYPES: ChimpCommand["command"][] = [
   "set-allowed-tools",
   "send-agent-message",
   "setup-github-auth",
+  "resume-transmogrify",
   "stop",
 ];
 
@@ -39,6 +40,11 @@ export function newCommand(type: string): ChimpCommand {
       return { command: "send-agent-message", args: { prompt: "" } };
     case "setup-github-auth":
       return { command: "setup-github-auth" };
+    case "resume-transmogrify":
+      return {
+        command: "resume-transmogrify",
+        args: { fromProfile: "", reason: "", summary: "" },
+      };
     default:
       return { command: "stop" };
   }

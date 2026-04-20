@@ -165,6 +165,13 @@ export class Bullhorn {
         await this.handleGithubComment(msg);
         break;
 
+      case "transmogrify":
+        this.logger.info(
+          { chimpId, targetProfile: msg.targetProfile },
+          "Transmogrify requested",
+        );
+        break;
+
       default:
         Typing.unreachable(msg);
     }

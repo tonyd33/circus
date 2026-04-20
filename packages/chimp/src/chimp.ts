@@ -83,6 +83,7 @@ export class Chimp {
       publish: publishFn,
       chimpId: this.config.chimpId,
       profile: this.config.profile,
+      redisUrl: this.config.redisUrl,
       topicRegistry: this.topicRegistry,
       nc: this.nc,
       logger: this.logger.child({ component: "MCP" }),
