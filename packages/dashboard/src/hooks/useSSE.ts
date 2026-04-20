@@ -15,7 +15,7 @@ interface UseSSEResult<T> {
 
 export function useSSE<T>({
   url,
-  maxMessages = 500,
+  maxMessages = 10_000,
   sortBy,
   getKey,
 }: UseSSEOptions<T>): UseSSEResult<T> {

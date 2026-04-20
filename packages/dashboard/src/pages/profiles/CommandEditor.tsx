@@ -14,10 +14,12 @@ type ChimpCommand = Protocol.ChimpCommand;
 
 const COMMAND_TYPES: ChimpCommand["command"][] = [
   "clone-repo",
+  "gh-clone-repo",
   "set-working-dir",
   "set-system-prompt",
   "set-allowed-tools",
   "send-agent-message",
+  "setup-github-auth",
   "stop",
 ];
 
@@ -25,6 +27,8 @@ export function newCommand(type: string): ChimpCommand {
   switch (type) {
     case "clone-repo":
       return { command: "clone-repo", args: { url: "" } };
+    case "gh-clone-repo":
+      return { command: "gh-clone-repo", args: { repo: "" } };
     case "set-working-dir":
       return { command: "set-working-dir", args: { path: "" } };
     case "set-system-prompt":
@@ -33,6 +37,8 @@ export function newCommand(type: string): ChimpCommand {
       return { command: "set-allowed-tools", args: { tools: [] } };
     case "send-agent-message":
       return { command: "send-agent-message", args: { prompt: "" } };
+    case "setup-github-auth":
+      return { command: "setup-github-auth" };
     default:
       return { command: "stop" };
   }
@@ -101,6 +107,49 @@ export function CommandEditor({
                 onChange({
                   ...command,
                   args: { ...command.args, url: e.target.value },
+                })
+              }
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                placeholder="Branch (optional)"
+                value={command.args.branch ?? ""}
+                onChange={(e) =>
+                  onChange({
+                    ...command,
+                    args: {
+                      ...command.args,
+                      branch: e.target.value || undefined,
+                    },
+                  })
+                }
+              />
+              <Input
+                placeholder="Path (optional)"
+                value={command.args.path ?? ""}
+                onChange={(e) =>
+                  onChange({
+                    ...command,
+                    args: {
+                      ...command.args,
+                      path: e.target.value || undefined,
+                    },
+                  })
+                }
+              />
+            </div>
+          </div>
+        )}
+
+        {command.command === "gh-clone-repo" && (
+          <div className="space-y-1.5">
+            <Input
+              placeholder="owner/repo"
+              value={command.args.repo}
+              onChange={(e) =>
+                onChange({
+                  ...command,
+                  args: { ...command.args, repo: e.target.value },
                 })
               }
             />

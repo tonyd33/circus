@@ -27,6 +27,7 @@ export const EventContextSchema = z.discriminatedUnion("source", [
     repo: z.string(),
     issueNumber: z.number(),
     commentId: z.number(),
+    installationId: z.number(),
   }),
   z.object({ source: z.literal("dashboard") }),
   z.object({ source: z.literal("unknown") }),
@@ -75,13 +76,28 @@ const SetAllowedToolsCommandSchema = z.object({
   }),
 });
 
+const SetupGithubAuthCommandSchema = z.object({
+  command: z.literal("setup-github-auth"),
+});
+
+const GhCloneRepoCommandSchema = z.object({
+  command: z.literal("gh-clone-repo"),
+  args: z.object({
+    repo: z.string(),
+    path: z.string().optional(),
+    branch: z.string().optional(),
+  }),
+});
+
 const ChimpCommandSchema = z.discriminatedUnion("command", [
   SendAgentMessageCommandSchema,
   StopCommandSchema,
   CloneRepoCommandSchema,
+  GhCloneRepoCommandSchema,
   SetWorkingDirCommandSchema,
   SetSystemPromptCommandSchema,
   SetAllowedToolsCommandSchema,
+  SetupGithubAuthCommandSchema,
 ]);
 
 // ============================================================================
@@ -228,6 +244,14 @@ export const DiscordResponseSchema = z.object({
   content: z.string(),
 });
 
+export const GithubCommentSchema = z.object({
+  type: z.literal("github-comment"),
+  installationId: z.number(),
+  repo: z.string(),
+  issueNumber: z.number(),
+  content: z.string(),
+});
+
 export const ChimpOutputMessageSchema = z.discriminatedUnion("type", [
   AgentMessageResponseSchema,
   ArtifactMessageSchema,
@@ -237,6 +261,7 @@ export const ChimpOutputMessageSchema = z.discriminatedUnion("type", [
   ThoughtSchema,
   ChimpRequestSchema,
   DiscordResponseSchema,
+  GithubCommentSchema,
 ]);
 
 /**

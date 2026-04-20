@@ -4,11 +4,14 @@ import {
   createMetrics,
   type ServiceMetrics,
 } from "@mnke/circus-shared/metrics";
+import { App } from "@octokit/app";
 import { connect, type NatsConnection } from "nats";
 
 export interface BullhornConfig {
   logger: Logger.Logger;
   natsUrl: string;
+  githubAppId: string;
+  githubPrivateKey: string;
   metricsPort?: number;
 }
 
@@ -16,12 +19,17 @@ export class Bullhorn {
   private logger: Logger.Logger;
   private metrics: ServiceMetrics;
   private natsUrl: string;
+  private githubApp: App;
   private nc: NatsConnection | null = null;
 
   constructor(config: BullhornConfig) {
     this.logger = config.logger;
     this.metrics = createMetrics({ serviceName: "bullhorn" });
     this.natsUrl = config.natsUrl;
+    this.githubApp = new App({
+      appId: config.githubAppId,
+      privateKey: config.githubPrivateKey,
+    });
   }
 
   async initialize(): Promise<void> {
@@ -160,6 +168,10 @@ export class Bullhorn {
         await this.handleDiscordResponse(msg);
         break;
 
+      case "github-comment":
+        await this.handleGithubComment(msg);
+        break;
+
       default:
         Typing.unreachable(msg);
     }
@@ -188,6 +200,41 @@ export class Bullhorn {
       }
     } catch (err) {
       this.logger.error({ err }, "Discord API error");
+    }
+  }
+
+  private async handleGithubComment(
+    msg: Protocol.ChimpOutputMessage & { type: "github-comment" },
+  ): Promise<void> {
+    const parts = msg.repo.split("/");
+    const owner = parts[0] ?? "";
+    const repo = parts[1] ?? "";
+    try {
+      const octokit = await this.githubApp.getInstallationOctokit(
+        msg.installationId,
+      );
+      const res = await octokit.request(
+        "POST /repos/{owner}/{repo}/issues/{issue_number}/comments",
+        {
+          owner,
+          repo,
+          issue_number: msg.issueNumber,
+          body: msg.content,
+        },
+      );
+      this.logger.info(
+        {
+          repo: msg.repo,
+          issueNumber: msg.issueNumber,
+          commentId: res.data.id,
+        },
+        "Posted GitHub comment",
+      );
+    } catch (err) {
+      this.logger.error(
+        { err, repo: msg.repo, issueNumber: msg.issueNumber },
+        "Failed to post GitHub comment",
+      );
     }
   }
 

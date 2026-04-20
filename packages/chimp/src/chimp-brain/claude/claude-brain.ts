@@ -1,11 +1,6 @@
-/**
- * ClaudeChimp - A Chimp implementation powered by Claude Agent SDK
- */
-
-import * as path from "node:path";
 import type { S3Client } from "@aws-sdk/client-s3";
 import { Protocol } from "@mnke/circus-shared";
-import { EnvReader as ER, Typing } from "@mnke/circus-shared/lib";
+import { EnvReader as ER } from "@mnke/circus-shared/lib";
 import { Either as E } from "@mnke/circus-shared/lib/fp";
 import {
   restoreChimpStateFromS3,
@@ -14,14 +9,12 @@ import {
   saveClaudeStateToS3,
 } from "@/chimp-brain/claude/session-storage";
 import { createS3Client, s3ConfigReader } from "@/lib/s3";
-import { cloneRepo } from "@/lib/tooling";
-import { ChimpBrain } from "../chimp-brain";
+import { ChimpBrain, type CommandResult } from "../chimp-brain";
 import { processWithClaude } from "./agent";
 
 export class ClaudeChimp extends ChimpBrain {
   private messageCount = 0;
   private sessionId?: string;
-  private workingDir = process.cwd();
   private s3Client: S3Client | null = null;
   private s3Bucket: string | null = null;
 
@@ -39,7 +32,6 @@ export class ClaudeChimp extends ChimpBrain {
       );
     }
 
-    // Read S3 config from env
     const s3Result = s3ConfigReader.read(process.env).value;
     if (E.isLeft(s3Result)) {
       this.log("error", ER.formatReadError(s3Result.value));
@@ -105,86 +97,31 @@ export class ClaudeChimp extends ChimpBrain {
     }
   }
 
-  async handleMessage(
-    command: Protocol.ChimpCommand,
-  ): Promise<"continue" | "stop"> {
-    this.log("info", "Handling command", { command: command.command });
+  async handlePrompt(prompt: string): Promise<CommandResult> {
+    this.log("info", "User prompt", { userPrompt: prompt });
 
-    switch (command.command) {
-      case "send-agent-message": {
-        const userPrompt = command.args.prompt;
-        this.log("info", "User prompt", { userPrompt });
+    const { response: agentResponse, sessionId } = await processWithClaude(
+      prompt,
+      {
+        messageCount: this.messageCount,
+        sessionId: this.sessionId,
+        model: this.model,
+        systemPrompt: this.systemPrompt,
+        allowedTools: this.allowedTools,
+        workingDir: this.workingDir,
+        mcpUrl: this.mcpUrl,
+      },
+      this.publish,
+      (level, message, data) => this.log(level, message, data),
+    );
 
-        const { response: agentResponse, sessionId } = await processWithClaude(
-          userPrompt,
-          {
-            messageCount: this.messageCount,
-            sessionId: this.sessionId,
-            model: this.model,
-            systemPrompt: this.systemPrompt,
-            allowedTools: this.allowedTools,
-            workingDir: this.workingDir,
-            mcpUrl: this.mcpUrl,
-          },
-          this.publish,
-          (level, message, data) => this.log(level, message, data),
-        );
+    this.log("info", "Claude response received");
+    this.log("info", "Session ID", { sessionId });
 
-        this.log("info", "Claude response received");
-        this.log("info", "Session ID", { sessionId });
+    this.sessionId = sessionId;
+    this.messageCount++;
 
-        this.sessionId = sessionId;
-        this.messageCount++;
-
-        this.publish(
-          Protocol.createAgentMessageResponse(agentResponse, sessionId),
-        );
-        break;
-      }
-
-      case "stop":
-        this.log("info", "Stop command received");
-        return "stop";
-
-      case "clone-repo": {
-        const { url, branch, path: targetPath } = command.args;
-        this.log("info", `Cloning repository: ${url}`);
-        const { repoPath, branch: actualBranch } = await cloneRepo(
-          url,
-          targetPath,
-          branch,
-        );
-        this.log(
-          "info",
-          `Repository cloned successfully to ${repoPath} (branch: ${actualBranch})`,
-        );
-        break;
-      }
-
-      case "set-working-dir": {
-        const { path: inputPath } = command.args;
-
-        const absolutePath = path.isAbsolute(inputPath)
-          ? inputPath
-          : path.resolve(inputPath);
-
-        this.workingDir = absolutePath;
-
-        this.log("info", `Working directory set to: ${absolutePath}`);
-        break;
-      }
-
-      case "set-system-prompt":
-        this.setSystemPrompt(command.args.prompt);
-        break;
-
-      case "set-allowed-tools":
-        this.setAllowedTools(command.args.tools);
-        break;
-
-      default:
-        Typing.unreachable(command);
-    }
+    this.publish(Protocol.createAgentMessageResponse(agentResponse, sessionId));
 
     return "continue";
   }

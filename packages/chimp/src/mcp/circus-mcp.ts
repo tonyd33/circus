@@ -92,8 +92,15 @@ export class CircusMcp {
             applicationId: ctx.applicationId,
             content: args.content,
           });
+        } else if (ctx.source === "github") {
+          publish({
+            type: "github-comment",
+            installationId: ctx.installationId,
+            repo: ctx.repo,
+            issueNumber: ctx.issueNumber,
+            content: args.content,
+          });
         }
-        // github-comment: future
 
         return {
           content: [
