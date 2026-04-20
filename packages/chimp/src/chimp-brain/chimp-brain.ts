@@ -18,8 +18,6 @@ export abstract class ChimpBrain {
   protected logger: Logger.Logger;
   protected mcpUrl: string;
 
-  onEventContext?: (ctx: Protocol.EventContext) => void;
-
   /**
    * Fires whenever the brain's recorded event-context list changes
    * (restore on startup or a new context appended). The chimp layer
@@ -67,7 +65,6 @@ export abstract class ChimpBrain {
     switch (command.command) {
       case "send-agent-message":
         if (command.args.context) {
-          this.onEventContext?.(command.args.context);
           this.recordEventContext(command.args.context);
         }
         return this.handlePrompt(command.args.prompt);

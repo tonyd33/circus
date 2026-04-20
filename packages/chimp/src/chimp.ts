@@ -98,7 +98,6 @@ export class Chimp {
       mcpUrl,
     );
     const brain = this.brain;
-    brain.onEventContext = (ctx) => this.mcp?.setEventContext(ctx);
     brain.onEventContextsChanged = (list) => this.mcp?.setEventContexts(list);
 
     await brain.onStartup();
