@@ -32,7 +32,7 @@ import { useSSE } from "@/hooks/useSSE";
 
 interface ActivityMessage {
   id: string;
-  type: "input" | "output";
+  type: "command" | "output" | "event";
   messageType: string;
   timestamp: string;
   data: Record<string, unknown>;
@@ -71,18 +71,31 @@ const sortByTimestamp = (a: ActivityMessage, b: ActivityMessage) =>
   new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
 
 export function ChimpActivity() {
-  const { profile, chimpId } = useParams<{
-    profile: string;
-    chimpId: string;
-  }>();
+  const { chimpId } = useParams<{ chimpId: string }>();
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedTypes, setSelectedTypes] = useState<Set<string>>(new Set());
   const [prompt, setPrompt] = useState("");
   const [sending, setSending] = useState(false);
+  const [topics, setTopics] = useState<
+    {
+      platform: string;
+      owner: string;
+      repo: string;
+      type: string;
+      number: number;
+    }[]
+  >([]);
+
+  useEffect(() => {
+    if (!chimpId) return;
+    fetch(`/api/chimp/${chimpId}/topics`)
+      .then((r) => r.json())
+      .then((data) => setTopics(data.topics ?? []))
+      .catch(() => {});
+  }, [chimpId]);
 
   const { messages, connected, error } = useSSE<ActivityMessage>({
-    url:
-      profile && chimpId ? `/api/chimp/${profile}/${chimpId}/activity` : null,
+    url: chimpId ? `/api/chimp/${chimpId}/activity` : null,
     sortBy: sortByTimestamp,
     getKey: (msg) => `${msg.id}-${msg.type}-${msg.timestamp}`,
   });
@@ -91,13 +104,23 @@ export function ChimpActivity() {
   const [showScrollButton, setShowScrollButton] = useState(false);
 
   const groupedTypes = useMemo(() => {
-    const input: string[] = [];
+    const command: string[] = [];
     const output: string[] = [];
+    const event: string[] = [];
     for (const msg of messages) {
-      const list = msg.type === "input" ? input : output;
+      const list =
+        msg.type === "command"
+          ? command
+          : msg.type === "event"
+            ? event
+            : output;
       if (!list.includes(msg.messageType)) list.push(msg.messageType);
     }
-    return { input: input.sort(), output: output.sort() };
+    return {
+      command: command.sort(),
+      output: output.sort(),
+      event: event.sort(),
+    };
   }, [messages]);
 
   const toggleType = (type: string) => {
@@ -142,10 +165,10 @@ export function ChimpActivity() {
   }, [filteredMessages.length]);
 
   async function sendMessage() {
-    if (!profile || !chimpId || !prompt.trim() || sending) return;
+    if (!chimpId || !prompt.trim() || sending) return;
     setSending(true);
     try {
-      const res = await fetch(`/api/chimp/${profile}/${chimpId}/message`, {
+      const res = await fetch(`/api/chimp/${chimpId}/message`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: prompt.trim() }),
@@ -156,10 +179,10 @@ export function ChimpActivity() {
     }
   }
 
-  if (!profile || !chimpId) {
+  if (!chimpId) {
     return (
       <div className="p-8 text-center text-muted-foreground">
-        Missing profile or chimp ID
+        Missing chimp ID
       </div>
     );
   }
@@ -361,6 +384,19 @@ export function ChimpActivity() {
               <h1 className="text-xl font-bold text-ring">
                 <span className="text-amber-500">⚅</span> Chimp {chimpId}
               </h1>
+              {topics.length > 0 && (
+                <div className="flex items-center gap-1.5 ml-2">
+                  {topics.map((t) => (
+                    <Badge
+                      key={`${t.platform}.${t.owner}.${t.repo}.${t.type}.${t.number}`}
+                      variant="outline"
+                      className="text-xs font-mono text-emerald-500 border-emerald-500/30"
+                    >
+                      {t.owner}/{t.repo}#{t.number}
+                    </Badge>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2">
               {connected ? (
@@ -409,49 +445,49 @@ export function ChimpActivity() {
                   Clear all
                 </button>
               )}
-              {groupedTypes.input.length > 0 && (
-                <div className="mb-2">
-                  <p className="text-xs font-medium text-amber-500 mb-1.5">
-                    Input
-                  </p>
-                  <div className="space-y-1.5">
-                    {groupedTypes.input.map((mt) => (
-                      <label
-                        key={mt}
-                        htmlFor={`filter-${mt}`}
-                        className="flex items-center gap-2 cursor-pointer"
-                      >
-                        <Checkbox
-                          id={`filter-${mt}`}
-                          checked={selectedTypes.has(mt)}
-                          onCheckedChange={() => toggleType(mt)}
-                        />
-                        <span className="text-sm font-mono">{mt}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {groupedTypes.output.length > 0 && (
-                <div>
-                  <p className="text-xs font-medium text-ring mb-1.5">Output</p>
-                  <div className="space-y-1.5">
-                    {groupedTypes.output.map((mt) => (
-                      <label
-                        key={mt}
-                        htmlFor={`filter-${mt}`}
-                        className="flex items-center gap-2 cursor-pointer"
-                      >
-                        <Checkbox
-                          id={`filter-${mt}`}
-                          checked={selectedTypes.has(mt)}
-                          onCheckedChange={() => toggleType(mt)}
-                        />
-                        <span className="text-sm font-mono">{mt}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
+              {(
+                [
+                  {
+                    label: "Commands",
+                    color: "text-amber-500",
+                    items: groupedTypes.command,
+                  },
+                  {
+                    label: "Output",
+                    color: "text-ring",
+                    items: groupedTypes.output,
+                  },
+                  {
+                    label: "Events",
+                    color: "text-emerald-500",
+                    items: groupedTypes.event,
+                  },
+                ] as const
+              ).map(
+                ({ label, color, items }) =>
+                  items.length > 0 && (
+                    <div key={label} className="mb-2">
+                      <p className={`text-xs font-medium ${color} mb-1.5`}>
+                        {label}
+                      </p>
+                      <div className="space-y-1.5">
+                        {items.map((mt) => (
+                          <label
+                            key={mt}
+                            htmlFor={`filter-${mt}`}
+                            className="flex items-center gap-2 cursor-pointer"
+                          >
+                            <Checkbox
+                              id={`filter-${mt}`}
+                              checked={selectedTypes.has(mt)}
+                              onCheckedChange={() => toggleType(mt)}
+                            />
+                            <span className="text-sm font-mono">{mt}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ),
               )}
             </PopoverContent>
           </Popover>
@@ -486,10 +522,12 @@ export function ChimpActivity() {
               filteredMessages.map((msg) => (
                 <Card
                   key={`${msg.id}-${msg.type}-${msg.timestamp}`}
-                  className={`transition-all duration-200 hover:shadow-md ${
-                    msg.type === "input"
-                      ? "border-l-4 border-l-amber-500"
-                      : "border-l-4 border-l-ring"
+                  className={`transition-all duration-200 hover:shadow-md border-l-4 ${
+                    msg.type === "command"
+                      ? "border-l-amber-500"
+                      : msg.type === "event"
+                        ? "border-l-emerald-500"
+                        : "border-l-ring"
                   }`}
                 >
                   <CardContent className="p-4">
@@ -497,12 +535,14 @@ export function ChimpActivity() {
                       <div className="flex items-center gap-2">
                         <Badge
                           variant={
-                            msg.type === "input" ? "default" : "secondary"
+                            msg.type === "command" ? "default" : "secondary"
                           }
                           className={
-                            msg.type === "input"
+                            msg.type === "command"
                               ? "bg-amber-500/20 text-amber-500"
-                              : ""
+                              : msg.type === "event"
+                                ? "bg-emerald-500/20 text-emerald-500"
+                                : ""
                           }
                         >
                           {msg.type}

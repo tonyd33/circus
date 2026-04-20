@@ -50,8 +50,8 @@ export class Bullhorn {
       throw new Error("Bullhorn not initialized");
     }
 
-    const sub = this.nc.subscribe("chimp.outputs.>");
-    this.logger.info("Subscribed to chimp.outputs.>");
+    const sub = this.nc.subscribe(`${Standards.Chimp.Prefix.OUTPUTS}.>`);
+    this.logger.info("Subscribed to outputs.>");
 
     (async () => {
       for await (const msg of sub) {
@@ -60,18 +60,18 @@ export class Bullhorn {
           const subject = msg.subject;
           this.metrics.recordNatsReceived(subject);
 
-          const parsed = Standards.Chimp.Naming.parseOutputSubject(subject);
-          if (parsed == null) {
-            this.logger.warn({ subject }, "Invalid subject format");
+          // outputs.{chimpId}
+          const chimpId = subject.split(".").slice(1).join(".");
+          if (!chimpId) {
+            this.logger.warn({ subject }, "Invalid output subject");
             this.metrics.recordError("invalid_subject", "warning");
             continue;
           }
 
-          const { profile, chimpId } = parsed;
           const rawMessage = msg.json();
 
-          await this.handleMessage(profile, chimpId, rawMessage);
-          this.publishMetaEvent(profile, chimpId);
+          await this.handleMessage(chimpId, rawMessage);
+          this.publishMetaEvent(chimpId);
 
           const duration = (Date.now() - startTime) / 1000;
           this.metrics.recordNatsProcessed(subject, true, duration);
@@ -88,15 +88,11 @@ export class Bullhorn {
     await new Promise(() => {});
   }
 
-  private async handleMessage(
-    profile: string,
-    chimpId: string,
-    raw: unknown,
-  ): Promise<void> {
+  private async handleMessage(chimpId: string, raw: unknown): Promise<void> {
     const result = Protocol.safeParseChimpOutputMessage(raw);
     if (!result.success) {
       this.logger.error(
-        { profile, chimpId, error: result.error },
+        { chimpId, error: result.error },
         "Invalid output message",
       );
       return;
@@ -149,10 +145,7 @@ export class Bullhorn {
 
       case "chimp-request":
         if (this.nc) {
-          const subject = Standards.Chimp.Naming.inputSubject(
-            msg.profile,
-            msg.chimpId,
-          );
+          const subject = Standards.Chimp.Naming.commandSubject(msg.chimpId);
           this.nc.publish(
             subject,
             JSON.stringify(Protocol.createAgentCommand(msg.message)),
@@ -170,6 +163,13 @@ export class Bullhorn {
 
       case "github-comment":
         await this.handleGithubComment(msg);
+        break;
+
+      case "transmogrify":
+        this.logger.info(
+          { chimpId, targetProfile: msg.targetProfile },
+          "Transmogrify requested",
+        );
         break;
 
       default:
@@ -246,17 +246,17 @@ export class Bullhorn {
     }
   }
 
-  private publishMetaEvent(profile: string, chimpId: string): void {
+  private publishMetaEvent(chimpId: string): void {
     if (!this.nc) return;
 
     const metaEvent: Protocol.MetaEvent = {
       type: "bullhorn-dispatched",
-      profile,
+      profile: "",
       chimpId,
       timestamp: new Date().toISOString(),
     };
 
-    const subject = Standards.Chimp.Naming.metaSubject(profile, chimpId);
+    const subject = Standards.Chimp.Naming.metaSubject(chimpId);
     try {
       this.nc.publish(subject, JSON.stringify(metaEvent));
     } catch (error) {

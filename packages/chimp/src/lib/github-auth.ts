@@ -22,13 +22,12 @@ export async function setupGithubAuth(logger: Logger.Logger): Promise<void> {
 
   const ghAuthProc = Bun.spawn(["gh", "auth", "login", "--with-token"], {
     stdin: "pipe",
-    env: { ...process.env, GH_TOKEN: token },
   });
   ghAuthProc.stdin.write(token);
   ghAuthProc.stdin.end();
   await ghAuthProc.exited;
   logger.info("Configured gh CLI auth");
 
-  await Bun.$`git config --global url.${"https://x-access-token:" + token + "@github.com/"}.insteadOf https://github.com/`.quiet();
+  await Bun.$`git config --global url.${`https://x-access-token:${token}@github.com/`}.insteadOf https://github.com/`.quiet();
   logger.info("Configured git credential helper");
 }

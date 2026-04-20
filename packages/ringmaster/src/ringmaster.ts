@@ -1,11 +1,5 @@
-/**
- * Ringmaster
- *
- * Manages Chimp lifecycle through event-driven orchestration
- */
-
 import { type Logger, Standards } from "@mnke/circus-shared";
-import { NatsLib } from "@mnke/circus-shared/lib";
+import { NatsLib, TopicRegistry } from "@mnke/circus-shared/lib";
 import {
   connect,
   type JetStreamManager,
@@ -21,7 +15,7 @@ import {
   MetaPublisher,
   StateManager,
 } from "@/executors";
-import { MessageListener, PodWatcher } from "@/listeners";
+import { EventListener, OutputListener, PodWatcher } from "@/listeners";
 import { PodCache } from "@/state/pod-cache";
 
 export class Ringmaster {
@@ -41,7 +35,8 @@ export class Ringmaster {
 
   private eventHandler: EventHandler | null = null;
 
-  private messageListener: MessageListener | null = null;
+  private eventListener: EventListener | null = null;
+  private outputListener: OutputListener | null = null;
   private podWatcher: PodWatcher | null = null;
 
   constructor(config: RingmasterConfig, logger: Logger.Logger) {
@@ -49,9 +44,6 @@ export class Ringmaster {
     this.logger = logger;
   }
 
-  /**
-   * Initialize the Ringmaster
-   */
   async start(): Promise<void> {
     this.nc = await connect({
       servers: this.config.natsUrl,
@@ -61,7 +53,9 @@ export class Ringmaster {
 
     this.jsm = await this.nc.jetstreamManager();
     this.logger.info("Connected to NATS JetStream");
+
     await this.ensureSharedStreams(this.jsm);
+    const topicRegistry = await this.ensureTopicRegistry();
 
     this.stateManager = new StateManager(
       this.config.redisUrl,
@@ -97,6 +91,7 @@ export class Ringmaster {
       consumerManager: this.consumerManager,
       stateManager: this.stateManager,
       metaPublisher: this.metaPublisher,
+      topicRegistry,
       getPod: (chimpId) => this.podCache?.getPod(chimpId),
       logger: this.logger.child({ component: "EventHandler" }),
     });
@@ -106,15 +101,21 @@ export class Ringmaster {
       this.eventHandler,
       this.logger.child({ component: "PodWatcher" }),
     );
-    this.messageListener = new MessageListener(
+    this.eventListener = new EventListener(
       this.nc,
       this.eventHandler,
-      this.logger.child({ component: "MessageListener" }),
+      this.logger.child({ component: "EventListener" }),
+    );
+    this.outputListener = new OutputListener(
+      this.nc,
+      this.eventHandler,
+      this.logger.child({ component: "OutputListener" }),
     );
 
     await Promise.all([
       this.podCache.start(),
-      this.messageListener.start(),
+      this.eventListener.start(),
+      this.outputListener.start(),
       this.podWatcher.start(),
       this.stateManager.start(),
       this.jobManager.start(),
@@ -122,20 +123,19 @@ export class Ringmaster {
     this.logger.info("Ringmaster started");
   }
 
-  /**
-   * Stop the Ringmaster
-   */
   async stop(): Promise<void> {
     await Promise.all([
       this.podCache?.stop(),
       this.podWatcher?.stop(),
-      this.messageListener?.stop(),
+      this.eventListener?.stop(),
+      this.outputListener?.stop(),
       this.stateManager?.stop(),
       this.jobManager?.stop(),
       this.profileLoader?.stop(),
     ]);
     this.podWatcher = null;
-    this.messageListener = null;
+    this.eventListener = null;
+    this.outputListener = null;
     this.stateManager = null;
     this.jobManager = null;
     this.profileLoader = null;
@@ -153,7 +153,7 @@ export class Ringmaster {
   private async ensureSharedStreams(jsm: JetStreamManager): Promise<void> {
     const streamDefaults = {
       retention: RetentionPolicy.Limits,
-      max_age: 7 * 24 * 60 * 60 * 1_000_000_000, // 7 days in nanoseconds
+      max_age: 7 * 24 * 60 * 60 * 1_000_000_000,
       max_msgs: 100_000,
       storage: StorageType.File,
     };
@@ -161,14 +161,29 @@ export class Ringmaster {
     await Promise.all([
       NatsLib.ensureStream(jsm, {
         ...streamDefaults,
-        name: Standards.Chimp.Naming.inputStreamName(),
-        subjects: [`${Standards.Chimp.Prefix.INPUTS}.>`],
+        name: Standards.Chimp.Naming.eventsStreamName(),
+        subjects: [`${Standards.Chimp.Prefix.EVENTS}.>`],
       }),
       NatsLib.ensureStream(jsm, {
         ...streamDefaults,
-        name: Standards.Chimp.Naming.outputStreamName(),
+        name: Standards.Chimp.Naming.commandsStreamName(),
+        subjects: [`${Standards.Chimp.Prefix.COMMANDS}.>`],
+      }),
+      NatsLib.ensureStream(jsm, {
+        ...streamDefaults,
+        name: Standards.Chimp.Naming.outputsStreamName(),
         subjects: [`${Standards.Chimp.Prefix.OUTPUTS}.>`],
       }),
     ]);
+  }
+
+  private async ensureTopicRegistry(): Promise<TopicRegistry> {
+    if (!this.nc) throw new Error("NATS not connected");
+    const js = this.nc.jetstream();
+    const kv = await js.views.kv(Standards.Topic.TOPIC_OWNERS_BUCKET, {
+      history: 1,
+    });
+    this.logger.info("Topic registry KV bucket ensured");
+    return new TopicRegistry(kv);
   }
 }

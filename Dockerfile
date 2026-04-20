@@ -26,8 +26,6 @@ COPY --chown=root:root packages ./packages
 RUN bun run build
 
 FROM base AS chimp
-WORKDIR /app
-
 RUN apt update && \
     apt install -y git curl gpg && \
     curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg && \
@@ -35,14 +33,15 @@ RUN apt update && \
     apt install -y gh && \
     rm -rf /var/lib/apt/lists/*
 ADD --unpack https://github.com/anomalyco/opencode/releases/download/v1.4.3/opencode-linux-x64.tar.gz /usr/local/bin/
-
-COPY --from=build /usr/src/app/node_modules ./node_modules
-COPY --from=build /usr/src/app/packages ./packages
-COPY --from=build /usr/src/app/package.json ./
+RUN bunx npm install -g @anthropic-ai/claude-code
 
 RUN useradd -ms /bin/bash agent
 USER agent
 WORKDIR /home/agent/
+
+COPY --from=build --chown=root:root /usr/src/app/node_modules /app/node_modules
+COPY --from=build --chown=root:root /usr/src/app/packages /app/packages
+COPY --from=build --chown=root:root /usr/src/app/package.json /app/
 
 ENTRYPOINT ["bun", "run", "/app/packages/chimp/src/index.ts"]
 

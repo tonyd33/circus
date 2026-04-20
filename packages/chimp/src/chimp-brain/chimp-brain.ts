@@ -93,6 +93,8 @@ export abstract class ChimpBrain {
         return this.handleSetAllowedTools(command.args.tools);
       case "setup-github-auth":
         return this.handleSetupGithubAuth();
+      case "resume-transmogrify":
+        return this.handleResumeTransmogrify(command.args);
       default:
         return Typing.unreachable(command);
     }
@@ -166,6 +168,19 @@ export abstract class ChimpBrain {
 
   protected async handleSetupGithubAuth(): Promise<CommandResult> {
     await setupGithubAuth(this.logger);
+    return "continue";
+  }
+
+  protected async handleResumeTransmogrify(args: {
+    fromProfile: string;
+    reason: string;
+    summary: string;
+  }): Promise<CommandResult> {
+    this.log(
+      "info",
+      `Resumed after transmogrify from ${args.fromProfile}: ${args.reason}`,
+    );
+    this.log("info", `Previous context: ${args.summary}`);
     return "continue";
   }
 

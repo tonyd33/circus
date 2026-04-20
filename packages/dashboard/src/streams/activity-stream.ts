@@ -1,4 +1,5 @@
 import { type Logger, Protocol, Standards } from "@mnke/circus-shared";
+import type { TopicRegistry } from "@mnke/circus-shared/lib";
 import {
   AckPolicy,
   type Consumer,
@@ -12,16 +13,16 @@ const PING_INTERVAL_MS = 3_000;
 
 interface ActivityEvent {
   id: string;
-  type: "input" | "output";
+  type: "command" | "output" | "event";
   messageType: string;
   timestamp: string;
   data: Protocol.ChimpCommand | Protocol.ChimpOutputMessage | unknown;
 }
 
 export async function createActivityStream(
-  profile: string,
   chimpId: string,
   nc: NatsConnection,
+  topicRegistry: TopicRegistry,
   logger: Logger.Logger,
 ): Promise<ReadableStream> {
   const js = nc.jetstream();
@@ -29,10 +30,8 @@ export async function createActivityStream(
 
   const encoder = new TextEncoder();
   let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
-  let inputMessages: ConsumerMessages | null = null;
-  let outputMessages: ConsumerMessages | null = null;
-  let inputConsumer: Consumer | null = null;
-  let outputConsumer: Consumer | null = null;
+  const allMessages: ConsumerMessages[] = [];
+  const allConsumers: Consumer[] = [];
   let pingInterval: ReturnType<typeof setInterval>;
 
   const stream = new ReadableStream<Uint8Array>({
@@ -47,24 +46,20 @@ export async function createActivityStream(
     },
     cancel() {
       clearInterval(pingInterval);
-      inputMessages?.stop();
-      outputMessages?.stop();
-      inputConsumer
-        ?.delete()
-        .catch((e) =>
-          logger.error({ err: e }, "Failed to delete input consumer"),
-        );
-      outputConsumer
-        ?.delete()
-        .catch((e) =>
-          logger.error({ err: e }, "Failed to delete output consumer"),
-        );
+      for (const msgs of allMessages) msgs.stop();
+      for (const consumer of allConsumers) {
+        consumer
+          .delete()
+          .catch((e) =>
+            logger.error({ err: e }, "Failed to delete activity consumer"),
+          );
+      }
     },
   });
 
   function processMessages(
     messages: ConsumerMessages,
-    type: "input" | "output",
+    type: ActivityEvent["type"],
   ): void {
     (async () => {
       try {
@@ -72,10 +67,10 @@ export async function createActivityStream(
           const raw: unknown = msg.json();
           let event: ActivityEvent;
 
-          if (type === "input") {
+          if (type === "command") {
             const parsed = Protocol.safeParseChimpCommand(raw);
             event = {
-              id: msg.seq.toString(),
+              id: `${type}-${msg.seq}`,
               type,
               messageType: parsed.success ? parsed.data.command : "unknown",
               timestamp: new Date(
@@ -83,16 +78,26 @@ export async function createActivityStream(
               ).toISOString(),
               data: parsed.success ? parsed.data : raw,
             };
-          } else {
+          } else if (type === "output") {
             const parsed = Protocol.safeParseChimpOutputMessage(raw);
             event = {
-              id: msg.seq.toString(),
+              id: `${type}-${msg.seq}`,
               type,
               messageType: parsed.success ? parsed.data.type : "unknown",
               timestamp: new Date(
                 millis(msg.info.timestampNanos),
               ).toISOString(),
               data: parsed.success ? parsed.data : raw,
+            };
+          } else {
+            event = {
+              id: `${type}-${msg.seq}`,
+              type,
+              messageType: "event",
+              timestamp: new Date(
+                millis(msg.info.timestampNanos),
+              ).toISOString(),
+              data: raw,
             };
           }
 
@@ -108,37 +113,53 @@ export async function createActivityStream(
     })();
   }
 
-  const _tasks: Promise<void>[] = [];
-  try {
-    const inputInfo = await jsm.consumers.add(
-      Standards.Chimp.Naming.inputStreamName(),
-      {
-        ack_policy: AckPolicy.None,
-        filter_subject: Standards.Chimp.Naming.inputSubject(profile, chimpId),
-        deliver_policy: DeliverPolicy.All,
-      },
-    );
-    inputConsumer = await js.consumers.get(
-      Standards.Chimp.Naming.inputStreamName(),
-      inputInfo.name,
-    );
-    inputMessages = await inputConsumer.consume();
-    processMessages(inputMessages, "input");
+  async function addConsumer(
+    streamName: string,
+    filterSubject: string | string[],
+    type: ActivityEvent["type"],
+  ): Promise<void> {
+    const config: Record<string, unknown> = {
+      ack_policy: AckPolicy.None,
+      deliver_policy: DeliverPolicy.All,
+    };
+    if (Array.isArray(filterSubject)) {
+      config.filter_subjects = filterSubject;
+    } else {
+      config.filter_subject = filterSubject;
+    }
+    const info = await jsm.consumers.add(streamName, config);
+    const consumer = await js.consumers.get(streamName, info.name);
+    allConsumers.push(consumer);
+    const messages = await consumer.consume();
+    allMessages.push(messages);
+    processMessages(messages, type);
+  }
 
-    const outputInfo = await jsm.consumers.add(
-      Standards.Chimp.Naming.outputStreamName(),
-      {
-        ack_policy: AckPolicy.None,
-        filter_subject: Standards.Chimp.Naming.outputSubject(profile, chimpId),
-        deliver_policy: DeliverPolicy.All,
-      },
+  try {
+    // Commands (direct commands to this chimp)
+    await addConsumer(
+      Standards.Chimp.Naming.commandsStreamName(),
+      Standards.Chimp.Naming.commandSubject(chimpId),
+      "command",
     );
-    outputConsumer = await js.consumers.get(
-      Standards.Chimp.Naming.outputStreamName(),
-      outputInfo.name,
+
+    // Outputs (messages from this chimp)
+    await addConsumer(
+      Standards.Chimp.Naming.outputsStreamName(),
+      Standards.Chimp.Naming.outputSubject(chimpId),
+      "output",
     );
-    outputMessages = await outputConsumer.consume();
-    processMessages(outputMessages, "output");
+
+    // Events (topics this chimp subscribes to)
+    const topics = await topicRegistry.listForChimp(chimpId);
+    if (topics.length > 0) {
+      const eventFilters = topics.map(Standards.Topic.topicToEventSubject);
+      await addConsumer(
+        Standards.Chimp.Naming.eventsStreamName(),
+        eventFilters,
+        "event",
+      );
+    }
   } catch (e) {
     logger.error({ err: e }, "Failed to subscribe to activity");
     controller?.error(e instanceof Error ? e : new Error(String(e)));

@@ -1,4 +1,4 @@
-import type { Logger, Protocol } from "@mnke/circus-shared";
+import { type Logger, type Protocol, Standards } from "@mnke/circus-shared";
 import { EnvReader as ER } from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
 import { App } from "@octokit/app";
@@ -28,7 +28,9 @@ export class GitHubAdapter implements Adapter {
 
     const result = ER.record({
       botName: ER.str("GITHUB_BOT_NAME"),
-      profile: ER.str("GITHUB_PROFILE").fallback("default"),
+      profile: ER.str("GITHUB_PROFILE").fallback(
+        Standards.Chimp.DEFAULT_PROFILE,
+      ),
       webhookSecret: ER.str("GITHUB_WEBHOOK_SECRET").fallbackW(null),
       appId: ER.str("GITHUB_APP_ID"),
       privateKey: ER.str("GITHUB_PRIVATE_KEY"),
@@ -99,10 +101,18 @@ export class GitHubAdapter implements Adapter {
     const prompt = payload.comment.body.replace(mention, "").trim();
     const installationId = payload.installation?.id;
 
-    const chimpId = `gh-${repo.replace("/", "-")}-${isPR ? "pr" : "issue"}-${issueNumber}`;
+    const [owner, repoName] = this.splitRepo(repo);
+    const type = isPR ? ("pr" as const) : ("issue" as const);
+    const topic: Standards.Topic.Topic = {
+      platform: "github",
+      owner,
+      repo: repoName,
+      type,
+      number: issueNumber,
+    };
 
     this.logger.info(
-      { repo, issueNumber, isPR, author, chimpId },
+      { repo, issueNumber, isPR, author },
       "GitHub issue comment received",
     );
 
@@ -111,7 +121,7 @@ export class GitHubAdapter implements Adapter {
     }
 
     return this.buildResult(
-      chimpId,
+      Standards.Topic.buildEventSubject(topic, "comment"),
       repo,
       installationId,
       {
@@ -145,10 +155,17 @@ export class GitHubAdapter implements Adapter {
     const filePath = payload.comment.path;
     const diffHunk = payload.comment.diff_hunk;
 
-    const chimpId = `gh-${repo.replace("/", "-")}-pr-${prNumber}`;
+    const [owner, repoName] = this.splitRepo(repo);
+    const topic: Standards.Topic.Topic = {
+      platform: "github",
+      owner,
+      repo: repoName,
+      type: "pr",
+      number: prNumber,
+    };
 
     this.logger.info(
-      { repo, prNumber, author, filePath, chimpId },
+      { repo, prNumber, author, filePath },
       "GitHub PR review comment received",
     );
 
@@ -157,7 +174,7 @@ export class GitHubAdapter implements Adapter {
     }
 
     return this.buildResult(
-      chimpId,
+      Standards.Topic.buildEventSubject(topic, "review_comment"),
       repo,
       installationId,
       {
@@ -190,19 +207,23 @@ export class GitHubAdapter implements Adapter {
     const prompt = body.replace(mention, "").trim();
     const installationId = payload.installation?.id;
 
-    const chimpId = `gh-${repo.replace("/", "-")}-issue-${issueNumber}`;
+    const [owner, repoName] = this.splitRepo(repo);
+    const topic: Standards.Topic.Topic = {
+      platform: "github",
+      owner,
+      repo: repoName,
+      type: "issue",
+      number: issueNumber,
+    };
 
-    this.logger.info(
-      { repo, issueNumber, author, chimpId },
-      "GitHub issue opened",
-    );
+    this.logger.info({ repo, issueNumber, author }, "GitHub issue opened");
 
     if (installationId) {
       this.reactToIssue(repo, issueNumber, installationId);
     }
 
     return this.buildResult(
-      chimpId,
+      Standards.Topic.buildEventSubject(topic, "opened"),
       repo,
       installationId,
       {
@@ -219,14 +240,17 @@ export class GitHubAdapter implements Adapter {
     );
   }
 
+  private splitRepo(fullName: string): [string, string] {
+    const parts = fullName.split("/");
+    return [parts[0] ?? "", parts[1] ?? ""];
+  }
+
   private reactToComment(
     repo: string,
     commentId: number,
     installationId: number,
   ): void {
-    const parts = repo.split("/");
-    const owner = parts[0] ?? "";
-    const repoName = parts[1] ?? "";
+    const [owner, repoName] = this.splitRepo(repo);
 
     this.app
       .getInstallationOctokit(installationId)
@@ -254,9 +278,7 @@ export class GitHubAdapter implements Adapter {
     issueNumber: number,
     installationId: number,
   ): void {
-    const parts = repo.split("/");
-    const owner = parts[0] ?? "";
-    const repoName = parts[1] ?? "";
+    const [owner, repoName] = this.splitRepo(repo);
 
     this.app
       .getInstallationOctokit(installationId)
@@ -280,7 +302,7 @@ export class GitHubAdapter implements Adapter {
   }
 
   private buildResult(
-    chimpId: string,
+    eventSubject: string,
     repo: string,
     installationId: number | undefined,
     event: Protocol.GithubEvent,
@@ -288,8 +310,8 @@ export class GitHubAdapter implements Adapter {
   ): AdapterResponse {
     return {
       result: {
-        profile: this.profile,
-        chimpId,
+        eventSubject,
+        defaultProfile: this.profile,
         command: {
           command: "send-agent-message",
           args: {

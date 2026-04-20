@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
-import { Logger } from "@mnke/circus-shared";
-import { EnvReader as ER } from "@mnke/circus-shared/lib";
+import { Logger, Standards } from "@mnke/circus-shared";
+import { EnvReader as ER, TopicRegistry } from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
 import { serve } from "bun";
 import Redis from "ioredis";
@@ -38,13 +38,19 @@ async function main() {
   });
   logger.info({ url: config.natsUrl }, "Connected to NATS");
 
+  const js = nc.jetstream();
+  const kv = await js.views.kv(Standards.Topic.TOPIC_OWNERS_BUCKET);
+  const topicRegistry = new TopicRegistry(kv);
+
   const activityRouter = new ActivityRouter(
     nc,
+    topicRegistry,
     logger.child({ component: "ActivityRouter" }),
   );
   const chimpRouter = new ChimpRouter(
     statusSource,
     nc,
+    topicRegistry,
     logger.child({ component: "ChimpRouter" }),
   );
   const profileRouter = new ProfileRouter(

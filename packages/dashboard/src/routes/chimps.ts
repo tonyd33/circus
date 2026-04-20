@@ -1,4 +1,5 @@
-import { type Logger, Protocol } from "@mnke/circus-shared";
+import { type Logger, Protocol, Standards } from "@mnke/circus-shared";
+import type { TopicRegistry } from "@mnke/circus-shared/lib";
 import type { NatsConnection } from "nats";
 import type { RedisStatusSource } from "../lib/status-source";
 
@@ -7,15 +8,18 @@ const PING_INTERVAL_MS = 3_000;
 export class ChimpRouter {
   private statusSource: RedisStatusSource;
   private nc: NatsConnection;
+  private topicRegistry: TopicRegistry;
   private logger: Logger.Logger;
 
   constructor(
     statusSource: RedisStatusSource,
     nc: NatsConnection,
+    topicRegistry: TopicRegistry,
     logger: Logger.Logger,
   ) {
     this.statusSource = statusSource;
     this.nc = nc;
+    this.topicRegistry = topicRegistry;
     this.logger = logger;
   }
 
@@ -25,6 +29,16 @@ export class ChimpRouter {
         GET: async () => {
           const chimps = await this.statusSource.list();
           return Response.json({ chimps });
+        },
+      },
+      "/api/chimp/:chimpId/topics": {
+        GET: async (req: Bun.BunRequest<"/api/chimp/:chimpId/topics">) => {
+          const chimpId = req.params.chimpId;
+          if (!chimpId) {
+            return new Response("Missing chimpId", { status: 400 });
+          }
+          const topics = await this.topicRegistry.listForChimp(chimpId);
+          return Response.json({ topics });
         },
       },
       "/api/chimp/:chimpId/status": {
@@ -49,7 +63,7 @@ export class ChimpRouter {
           const statusSource = this.statusSource;
           const log = this.logger;
 
-          const sub = nc.subscribe("chimp.meta.*.*");
+          const sub = nc.subscribe(`${Standards.Chimp.Prefix.META}.>`);
           let pingInterval: ReturnType<typeof setInterval>;
 
           const stream = new ReadableStream<Uint8Array>({

@@ -13,8 +13,8 @@ export class SlackAdapter implements Adapter {
 
     return {
       result: {
-        profile: "default",
-        chimpId: "stub",
+        eventSubject: "events.slack.stub",
+        defaultProfile: "default",
         command: {
           command: "send-agent-message",
           args: { prompt },

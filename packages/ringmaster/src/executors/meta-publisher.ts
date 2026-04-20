@@ -1,9 +1,3 @@
-/**
- * Ringmaster - Meta Event Publisher
- *
- * Publishes meta events to NATS for Chimp lifecycle monitoring
- */
-
 import { type Logger, type Protocol, Standards } from "@mnke/circus-shared";
 import type { NatsConnection } from "nats";
 
@@ -28,7 +22,7 @@ export class MetaPublisher {
       chimpId,
       status,
     };
-    const subject = Standards.Chimp.Naming.metaSubject(profile, chimpId);
+    const subject = Standards.Chimp.Naming.metaSubject(chimpId);
     this.nc.publish(subject, JSON.stringify(event));
     this.logger.info(
       { subject, chimpId, profile, status },

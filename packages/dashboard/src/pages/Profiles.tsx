@@ -1,5 +1,5 @@
-import { Loader2, Plus } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { Loader2, Plus, Upload } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -16,6 +16,7 @@ export function Profiles() {
   const [error, setError] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     try {
@@ -58,6 +59,21 @@ export function Profiles() {
     }
   }
 
+  async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text) as ChimpProfile;
+      const name = file.name.replace(/\.profile\.json$|\.json$/, "");
+      await saveProfile(name, data);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Import failed");
+    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
   if (loading) {
     return (
       <div className="container mx-auto p-8 flex justify-center">
@@ -98,6 +114,21 @@ export function Profiles() {
               <Plus className="h-4 w-4" />
             )}
             Create
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json"
+            className="hidden"
+            onChange={handleImport}
+          />
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Upload className="h-4 w-4" />
+            Import
           </Button>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import type { Logger } from "@mnke/circus-shared";
+import { type Logger, Standards } from "@mnke/circus-shared";
 import { EnvReader as ER } from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
 import {
@@ -35,7 +35,9 @@ export class DiscordAdapter implements Adapter {
     const result = ER.record({
       publicKey: ER.str("DISCORD_PUBLIC_KEY"),
       applicationId: ER.str("DISCORD_APPLICATION_ID"),
-      profile: ER.str("DISCORD_PROFILE").fallback("default"),
+      profile: ER.str("DISCORD_PROFILE").fallback(
+        Standards.Chimp.DEFAULT_PROFILE,
+      ),
     }).read(process.env).value;
 
     if (Either.isLeft(result)) {
@@ -104,17 +106,19 @@ export class DiscordAdapter implements Adapter {
         interaction.member?.user?.username ??
         interaction.user?.username ??
         "unknown";
-      const chimpId = `discord-${interaction.guild_id ?? "dm"}-${interaction.channel_id ?? "unknown"}`;
+      const guild = interaction.guild_id ?? "dm";
+      const channel = interaction.channel_id ?? "unknown";
+      const eventSubject = `events.discord.${guild}.${channel}.message`;
 
       this.logger.info(
-        { user, chimpId, prompt: prompt.slice(0, 100) },
+        { user, eventSubject, prompt: prompt.slice(0, 100) },
         "Discord slash command received",
       );
 
       return {
         result: {
-          profile: this.profile,
-          chimpId,
+          eventSubject,
+          defaultProfile: this.profile,
           command: {
             command: "send-agent-message",
             args: {

@@ -63,7 +63,10 @@ Set these on the usher service:
 1. User types `/circus fix the login bug` in Discord
 2. Discord POSTs interaction to usher endpoint
 3. Usher verifies signature, returns deferred ack (shows "thinking...")
-4. Adapter publishes `send-agent-message` to NATS with Discord context
-5. Chimp processes, calls `respond` MCP tool with result
-6. MCP publishes `discord-response` output
-7. Bullhorn PATCHes Discord webhook to update the deferred message
+4. Usher publishes to event subject: `events.discord.{guild}.{channel}.message`
+5. Ringmaster detects unclaimed event, spawns chimp
+6. Chimp processes, calls `respond` MCP tool with result
+7. MCP publishes `discord-response` output
+8. Bullhorn PATCHes Discord webhook to update the deferred message
+
+Chimps can call `subscribe_topic` to receive future events from other platforms (e.g. GitHub PR comments) for cross-platform continuity.

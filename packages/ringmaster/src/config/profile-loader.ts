@@ -3,14 +3,51 @@ import Redis from "ioredis";
 
 const Naming = Standards.Chimp.Naming;
 
-const DEFAULT_PROFILE: Protocol.ChimpProfile = {
-  brain: "echo",
-  model: "haiku-4-5",
-  image: "chimp",
-  extraEnv: [],
-  volumeMounts: [],
-  volumes: [],
-  initCommands: [],
+const DEFAULT_PROFILES: Record<string, Protocol.ChimpProfile> = {
+  scout: {
+    brain: "claude",
+    model: "claude-haiku-4-5-20251001",
+    image: "chimp",
+    description:
+      "Fast triage and simple tasks. Good for initial assessment, small fixes, and deciding if work needs a more powerful profile.",
+    extraEnv: [],
+    volumeMounts: [],
+    volumes: [],
+    initCommands: [],
+  },
+  worker: {
+    brain: "claude",
+    model: "claude-sonnet-4-20250514",
+    image: "chimp",
+    description:
+      "General-purpose coding agent. Handles most tasks — bug fixes, feature implementation, code review.",
+    extraEnv: [],
+    volumeMounts: [],
+    volumes: [],
+    initCommands: [],
+  },
+  architect: {
+    brain: "claude",
+    model: "claude-opus-4-20250514",
+    image: "chimp",
+    description:
+      "Deep reasoning and complex refactors. Use for architectural changes, multi-file rewrites, or when worker gets stuck.",
+    extraEnv: [],
+    volumeMounts: [],
+    volumes: [],
+    initCommands: [],
+  },
+  "opencode-worker": {
+    brain: "opencode",
+    model: "anthropic:claude-sonnet-4-20250514",
+    image: "chimp",
+    description:
+      "General-purpose via OpenCode. Alternative runtime for tasks that benefit from OpenCode's tooling.",
+    extraEnv: [],
+    volumeMounts: [],
+    volumes: [],
+    initCommands: [],
+  },
 };
 
 export class ProfileLoader {
@@ -26,9 +63,15 @@ export class ProfileLoader {
     const keys = await this.redis.keys(Naming.redisProfilePattern());
     if (keys.length > 0) return;
 
-    const key = Naming.redisProfileKey("default");
-    await this.redis.set(key, JSON.stringify(DEFAULT_PROFILE));
-    this.logger.info("Seeded default profile");
+    const pipeline = this.redis.pipeline();
+    for (const [name, profile] of Object.entries(DEFAULT_PROFILES)) {
+      pipeline.set(Naming.redisProfileKey(name), JSON.stringify(profile));
+    }
+    await pipeline.exec();
+    this.logger.info(
+      { profiles: Object.keys(DEFAULT_PROFILES) },
+      "Seeded default profiles",
+    );
   }
 
   async getProfile(name: string): Promise<Protocol.ChimpProfile> {
