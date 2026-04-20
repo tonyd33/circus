@@ -16,6 +16,8 @@ async function main() {
   const result = ER.record({
     natsUrl: ER.str("NATS_URL").fallback("nats://localhost:4222"),
     metricsPort: ER.int("METRICS_PORT").fallback(9090),
+    githubAppId: ER.str("GITHUB_APP_ID"),
+    githubPrivateKey: ER.str("GITHUB_PRIVATE_KEY"),
   }).read(process.env).value;
 
   if (Either.isLeft(result)) {
@@ -28,6 +30,8 @@ async function main() {
   const bullhorn = new Bullhorn({
     logger: logger.child({ component: "Bullhorn" }),
     natsUrl: config.natsUrl,
+    githubAppId: config.githubAppId,
+    githubPrivateKey: config.githubPrivateKey,
   });
 
   const shutdown = (signal: string) => async () => {

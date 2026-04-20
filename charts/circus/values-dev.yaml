@@ -14,14 +14,21 @@ usher:
       path: /api/webhooks/github
   extraEnv:
     - name: GITHUB_BOT_NAME
-      value: tonyd33
+      value: circus-chimp
     - name: GITHUB_PROFILE
       value: default
+    - name: GITHUB_APP_ID
+      value: '3434984'
     - name: GITHUB_WEBHOOK_SECRET
       valueFrom:
         secretKeyRef:
           name: circus-secrets
           key: GITHUB_WEBHOOK_SECRET
+    - name: GITHUB_PRIVATE_KEY
+      valueFrom:
+        secretKeyRef:
+          name: circus-secrets
+          key: GITHUB_PRIVATE_KEY
 
 bullhorn:
   enabled: true

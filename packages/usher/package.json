@@ -13,6 +13,7 @@
   "dependencies": {
     "@commander-js/extra-typings": "catalog:",
     "@mnke/circus-shared": "workspace:*",
+    "@octokit/app": "catalog:",
     "@octokit/webhooks-methods": "^6.0.0",
     "commander": "catalog:",
     "discord-interactions": "^4.4.0",

@@ -1,25 +1,23 @@
-/**
- * Abstract Chimp base class
- *
- * Defines the interface for a Chimp - a worker that processes messages from NATS.
- * Implementations should handle messages and define startup/shutdown behavior.
- */
-
+import path from "node:path";
 import { type Logger, Protocol } from "@mnke/circus-shared";
+import { Typing } from "@mnke/circus-shared/lib";
+import { setupGithubAuth } from "@/lib/github-auth";
+import { cloneRepo, ghCloneRepo } from "@/lib/tooling";
 
-/**
- * Publish function for sending output messages
- */
 export type PublishFn = (message: Protocol.ChimpOutputMessage) => void;
+export type CommandResult = "continue" | "stop";
 
 export abstract class ChimpBrain {
   protected chimpId: string;
   protected model: string;
   protected systemPrompt: string | undefined;
   protected allowedTools: string[] = [];
+  protected workingDir: string = process.cwd();
   protected publish: PublishFn;
   protected logger: Logger.Logger;
   protected mcpUrl: string;
+
+  onEventContext?: (ctx: Protocol.EventContext) => void;
 
   constructor(
     chimpId: string,
@@ -35,9 +33,6 @@ export abstract class ChimpBrain {
     this.mcpUrl = mcpUrl;
   }
 
-  /**
-   * Log locally (Pino) and publish to NATS.
-   */
   protected log(
     level: Logger.LogLevel,
     message: string,
@@ -51,31 +46,111 @@ export abstract class ChimpBrain {
     this.publish(Protocol.createLogMessage(level, message, data));
   }
 
-  /**
-   * Handle an incoming message
-   * @returns "continue" to keep processing messages, "stop" to shutdown
-   */
-  protected setSystemPrompt(prompt: string): void {
+  async handleCommand(command: Protocol.ChimpCommand): Promise<CommandResult> {
+    switch (command.command) {
+      case "send-agent-message":
+        if (command.args.context && this.onEventContext) {
+          this.onEventContext(command.args.context);
+        }
+        return this.handlePrompt(command.args.prompt);
+      case "stop":
+        return this.handleStop();
+      case "clone-repo":
+        return this.handleCloneRepo(
+          command.args.url,
+          command.args.path,
+          command.args.branch,
+        );
+      case "gh-clone-repo":
+        return this.handleGhCloneRepo(
+          command.args.repo,
+          command.args.path,
+          command.args.branch,
+        );
+      case "set-working-dir":
+        return this.handleSetWorkingDir(command.args.path);
+      case "set-system-prompt":
+        return this.handleSetSystemPrompt(command.args.prompt);
+      case "set-allowed-tools":
+        return this.handleSetAllowedTools(command.args.tools);
+      case "setup-github-auth":
+        return this.handleSetupGithubAuth();
+      default:
+        return Typing.unreachable(command);
+    }
+  }
+
+  abstract handlePrompt(prompt: string): Promise<CommandResult>;
+
+  protected async handleStop(): Promise<CommandResult> {
+    this.log("info", "Stop command received");
+    return "stop";
+  }
+
+  protected async handleCloneRepo(
+    url: string,
+    targetPath?: string,
+    branch?: string,
+  ): Promise<CommandResult> {
+    this.log("info", `Cloning repository: ${url}`);
+    const { repoPath, branch: actualBranch } = await cloneRepo(
+      url,
+      targetPath,
+      branch,
+    );
+    this.log(
+      "info",
+      `Repository cloned successfully to ${repoPath} (branch: ${actualBranch})`,
+    );
+    return "continue";
+  }
+
+  protected async handleGhCloneRepo(
+    repo: string,
+    targetPath?: string,
+    branch?: string,
+  ): Promise<CommandResult> {
+    this.log("info", `Cloning repository via gh: ${repo}`);
+    const { repoPath, branch: actualBranch } = await ghCloneRepo(
+      repo,
+      targetPath,
+      branch,
+    );
+    this.log(
+      "info",
+      `Repository cloned successfully to ${repoPath} (branch: ${actualBranch})`,
+    );
+    return "continue";
+  }
+
+  protected async handleSetWorkingDir(
+    inputPath: string,
+  ): Promise<CommandResult> {
+    const absolutePath = path.isAbsolute(inputPath)
+      ? inputPath
+      : path.resolve(inputPath);
+    this.workingDir = absolutePath;
+    this.log("info", `Working directory set to: ${absolutePath}`);
+    return "continue";
+  }
+
+  protected handleSetSystemPrompt(prompt: string): CommandResult {
     this.systemPrompt = prompt;
     this.log("info", "System prompt set");
+    return "continue";
   }
 
-  protected setAllowedTools(tools: string[]): void {
+  protected handleSetAllowedTools(tools: string[]): CommandResult {
     this.allowedTools = tools;
     this.log("info", "Allowed tools set", { tools });
+    return "continue";
   }
 
-  abstract handleMessage(
-    message: Protocol.ChimpCommand,
-  ): Promise<"continue" | "stop">;
+  protected async handleSetupGithubAuth(): Promise<CommandResult> {
+    await setupGithubAuth(this.logger);
+    return "continue";
+  }
 
-  /**
-   * Called once when the chimp starts up, before processing any messages
-   */
   abstract onStartup(): Promise<void>;
-
-  /**
-   * Called once when the chimp shuts down, after processing all messages
-   */
   abstract onShutdown(): Promise<void>;
 }

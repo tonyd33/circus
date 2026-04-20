@@ -1,16 +1,10 @@
-/**
- * OpencodeBrain - Chimp powered by Opencode SDK
- */
-
-import * as path from "node:path";
 import type { S3Client } from "@aws-sdk/client-s3";
 import { Protocol } from "@mnke/circus-shared";
-import { EnvReader as ER, Typing } from "@mnke/circus-shared/lib";
+import { EnvReader as ER } from "@mnke/circus-shared/lib";
 import { Either as E } from "@mnke/circus-shared/lib/fp";
 import * as Opencode from "@opencode-ai/sdk";
 import { createS3Client, s3ConfigReader } from "@/lib/s3";
-import { cloneRepo } from "@/lib/tooling";
-import { ChimpBrain } from "../chimp-brain";
+import { ChimpBrain, type CommandResult } from "../chimp-brain";
 import {
   restoreOpencodeChimpStateFromS3,
   restoreOpencodeStateFromS3,
@@ -18,7 +12,6 @@ import {
   saveOpencodeStateToS3,
 } from "./session-storage";
 
-// Undocumented/noisy events that shouldn't trigger publish (and thus reset idle timer)
 const IGNORED_EVENTS: Set<string> = new Set([
   "session.idle",
   "server.heartbeat",
@@ -29,7 +22,6 @@ export class OpencodeBrain extends ChimpBrain {
     null;
   private client: Opencode.OpencodeClient | null = null;
   private sessionId: string | null = null;
-  private workingDir = process.cwd();
   private eventAbortController: AbortController | null = null;
   private s3Client: S3Client | null = null;
   private s3Bucket: string | null = null;
@@ -69,7 +61,6 @@ export class OpencodeBrain extends ChimpBrain {
   async onStartup(): Promise<void> {
     this.log("info", "OpencodeBrain starting up", { chimpId: this.chimpId });
 
-    // Read S3 config from env
     const s3Result = s3ConfigReader.read(process.env).value;
     if (E.isLeft(s3Result)) {
       this.log("error", ER.formatReadError(s3Result.value));
@@ -79,7 +70,6 @@ export class OpencodeBrain extends ChimpBrain {
     this.s3Client = createS3Client(s3Config);
     this.s3Bucket = s3Config.bucket;
 
-    // Restore opencode data dir from S3 before starting server
     try {
       await restoreOpencodeStateFromS3(
         this.s3Client,
@@ -91,7 +81,6 @@ export class OpencodeBrain extends ChimpBrain {
       this.log("warn", "No existing opencode state found, starting fresh");
     }
 
-    // Restore chimp metadata (workingDir, sessionId)
     let savedSessionId: string | null = null;
     try {
       const savedState = await restoreOpencodeChimpStateFromS3(
@@ -118,8 +107,6 @@ export class OpencodeBrain extends ChimpBrain {
 
     const sessionTitle = `Chimp ${this.chimpId} session`;
 
-    // Prefer resuming by saved session ID (exact match, no duplicate risk).
-    // Fall back to creating a new session if the ID is gone.
     if (savedSessionId !== null) {
       try {
         const getResult = await this.client.session.get({
@@ -134,9 +121,7 @@ export class OpencodeBrain extends ChimpBrain {
         this.log(
           "warn",
           "Saved session ID no longer valid, creating new session",
-          {
-            savedSessionId,
-          },
+          { savedSessionId },
         );
         const createResult = await this.client.session.create({
           body: { title: sessionTitle },
@@ -154,7 +139,7 @@ export class OpencodeBrain extends ChimpBrain {
       this.log("info", "Created new session", { sessionId: this.sessionId });
     }
 
-    await this.bindEventSubscription(this.workingDir);
+    await this.bindEventSubscription(this.workingDir ?? process.cwd());
 
     this.log("info", "Opencode server started", {
       serverUrl: opencode.server.url,
@@ -174,7 +159,6 @@ export class OpencodeBrain extends ChimpBrain {
       this.log("info", "Opencode server closed");
     }
 
-    // Save state to S3 after server closed so SQLite is flushed
     if (this.s3Client && this.s3Bucket) {
       try {
         await saveOpencodeChimpStateToS3(
@@ -196,86 +180,38 @@ export class OpencodeBrain extends ChimpBrain {
     }
   }
 
-  async handleMessage(
-    command: Protocol.ChimpCommand,
-  ): Promise<"continue" | "stop"> {
-    this.log("info", "Handling command", { command: command.command });
+  protected override async handleSetWorkingDir(
+    inputPath: string,
+  ): Promise<CommandResult> {
+    const result = await super.handleSetWorkingDir(inputPath);
+    await this.bindEventSubscription(this.workingDir ?? process.cwd());
+    return result;
+  }
 
+  async handlePrompt(prompt: string): Promise<CommandResult> {
     if (this.client == null || this.sessionId == null) {
       throw new Error("Opencode client not initialized");
     }
 
-    switch (command.command) {
-      case "send-agent-message": {
-        const userPrompt = command.args.prompt;
-        const { data } = await this.client.session.prompt({
-          path: { id: this.sessionId },
-          query: {
-            directory: this.workingDir,
-          },
-          body: {
-            parts: [{ type: "text", text: userPrompt }],
-            model: {
-              providerID: "opencode",
-              modelID: this.model,
-            },
-          },
-          throwOnError: true,
-        });
-        const texts = data.parts
-          .flatMap((part) => (part.type === "text" ? [part.text] : []))
-          .join("\n");
+    const { data } = await this.client.session.prompt({
+      path: { id: this.sessionId },
+      query: {
+        directory: this.workingDir ?? process.cwd(),
+      },
+      body: {
+        parts: [{ type: "text", text: prompt }],
+        model: {
+          providerID: "opencode",
+          modelID: this.model,
+        },
+      },
+      throwOnError: true,
+    });
+    const texts = data.parts
+      .flatMap((part) => (part.type === "text" ? [part.text] : []))
+      .join("\n");
 
-        this.publish(
-          Protocol.createAgentMessageResponse(texts, this.sessionId),
-        );
-        break;
-      }
-
-      case "stop":
-        this.log("info", "Stop command received");
-        return "stop";
-
-      case "clone-repo": {
-        const { url, branch, path: targetPath } = command.args;
-        this.log("info", `Cloning repository: ${url}`);
-        const { repoPath, branch: actualBranch } = await cloneRepo(
-          url,
-          targetPath,
-          branch,
-        );
-        this.log(
-          "info",
-          `Repository cloned successfully to ${repoPath} (branch: ${actualBranch})`,
-        );
-        break;
-      }
-
-      case "set-working-dir": {
-        const { path: inputPath } = command.args;
-
-        const absolutePath = path.isAbsolute(inputPath)
-          ? inputPath
-          : path.resolve(inputPath);
-
-        this.workingDir = absolutePath;
-        await this.bindEventSubscription(absolutePath);
-
-        this.log("info", `Working directory set to: ${absolutePath}`);
-        break;
-      }
-
-      case "set-system-prompt":
-        this.setSystemPrompt(command.args.prompt);
-        break;
-
-      case "set-allowed-tools":
-        this.setAllowedTools(command.args.tools);
-        break;
-
-      default:
-        Typing.unreachable(command);
-    }
+    this.publish(Protocol.createAgentMessageResponse(texts, this.sessionId));
 
     return "continue";
   }

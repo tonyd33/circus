@@ -1,6 +1,7 @@
 import type { Logger } from "@mnke/circus-shared";
 import { EnvReader as ER } from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
+import { App } from "@octokit/app";
 import { verify } from "@octokit/webhooks-methods";
 import type { Adapter, AdapterResponse } from "./types";
 
@@ -18,12 +19,16 @@ interface IssueCommentPayload {
   repository: {
     full_name: string;
   };
+  installation: {
+    id: number;
+  };
 }
 
 export class GitHubAdapter implements Adapter {
   private botName: string;
   private profile: string;
   private webhookSecret: string | null;
+  private app: App;
   private logger: Logger.Logger;
 
   constructor(logger: Logger.Logger) {
@@ -33,6 +38,8 @@ export class GitHubAdapter implements Adapter {
       botName: ER.str("GITHUB_BOT_NAME"),
       profile: ER.str("GITHUB_PROFILE").fallback("default"),
       webhookSecret: ER.str("GITHUB_WEBHOOK_SECRET").fallbackW(null),
+      appId: ER.str("GITHUB_APP_ID"),
+      privateKey: ER.str("GITHUB_PRIVATE_KEY"),
     }).read(process.env).value;
 
     if (Either.isLeft(result)) {
@@ -42,6 +49,10 @@ export class GitHubAdapter implements Adapter {
     this.botName = result.value.botName;
     this.profile = result.value.profile;
     this.webhookSecret = result.value.webhookSecret;
+    this.app = new App({
+      appId: result.value.appId,
+      privateKey: result.value.privateKey,
+    });
   }
 
   async handleEvent(
@@ -80,6 +91,10 @@ export class GitHubAdapter implements Adapter {
     const isPR = payload.issue.pull_request != null;
     const author = payload.comment.user.login;
     const prompt = payload.comment.body.replace(mention, "").trim();
+    const installationId = payload.installation.id;
+    const parts = repo.split("/");
+    const owner = parts[0] ?? "";
+    const repoName = parts[1] ?? "";
 
     const chimpId = `gh-${repo.replace("/", "-")}-${isPR ? "pr" : "issue"}-${issueNumber}`;
 
@@ -87,6 +102,26 @@ export class GitHubAdapter implements Adapter {
       { repo, issueNumber, isPR, author, chimpId },
       "GitHub comment received",
     );
+
+    this.app
+      .getInstallationOctokit(installationId)
+      .then((octokit) =>
+        octokit.request(
+          "POST /repos/{owner}/{repo}/issues/comments/{comment_id}/reactions",
+          {
+            owner,
+            repo: repoName,
+            comment_id: payload.comment.id,
+            content: "eyes",
+          },
+        ),
+      )
+      .catch((err) => {
+        this.logger.error(
+          { err, repo, commentId: payload.comment.id },
+          "Failed to react to comment",
+        );
+      });
 
     return {
       result: {
@@ -105,6 +140,7 @@ export class GitHubAdapter implements Adapter {
               repo,
               issueNumber,
               commentId: payload.comment.id,
+              installationId,
             },
           },
         },

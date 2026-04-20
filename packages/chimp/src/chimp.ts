@@ -87,6 +87,7 @@ export class Chimp {
       mcpUrl,
     );
     const brain = this.brain;
+    brain.onEventContext = (ctx) => this.mcp?.setEventContext(ctx);
 
     await brain.onStartup();
     this.logger.info("Chimp startup complete");
@@ -99,10 +100,7 @@ export class Chimp {
     };
     const onStopRequested = () => this.shutdown("explicit_stop");
     const handler: MessageHandler = (command) => {
-      if (command.command === "send-agent-message" && command.args.context) {
-        this.mcp?.setEventContext(command.args.context);
-      }
-      return brain.handleMessage(command);
+      return brain.handleCommand(command);
     };
 
     this.input = this.createInput(handler, onActivity, onStopRequested);
@@ -174,7 +172,7 @@ export class Chimp {
 
       for (const cmd of profile.initCommands) {
         this.logger.info({ command: cmd.command }, "Init command");
-        const result = await brain.handleMessage(cmd);
+        const result = await brain.handleCommand(cmd);
         if (result === "stop") {
           this.logger.info("Init command requested stop");
           break;
