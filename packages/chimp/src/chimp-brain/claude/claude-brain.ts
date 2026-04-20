@@ -5,10 +5,14 @@ import { Either as E } from "@mnke/circus-shared/lib/fp";
 import {
   restoreChimpStateFromS3,
   restoreClaudeStateFromS3,
-  type StoredEventContext,
   saveChimpStateToS3,
   saveClaudeStateToS3,
 } from "@/chimp-brain/claude/session-storage";
+import {
+  appendUniqueEventContext,
+  composeSystemPromptWithEventContexts,
+  type StoredEventContext,
+} from "@/chimp-brain/event-contexts";
 import { createS3Client, s3ConfigReader } from "@/lib/s3";
 import { ChimpBrain, type CommandResult } from "../chimp-brain";
 import { processWithClaude } from "./agent";
@@ -77,6 +81,8 @@ export class ClaudeChimp extends ChimpBrain {
     } catch (_error) {
       this.log("warn", "Could not restore chimp state, using defaults");
     }
+
+    this.onEventContextsChanged?.(this.eventContexts);
   }
 
   async onShutdown(): Promise<void> {
@@ -111,7 +117,7 @@ export class ClaudeChimp extends ChimpBrain {
         messageCount: this.messageCount,
         sessionId: this.sessionId,
         model: this.model,
-        systemPrompt: this.systemPrompt,
+        systemPrompt: this.composeSystemPrompt(),
         allowedTools: this.allowedTools,
         workingDir: this.workingDir,
         mcpUrl: this.mcpUrl,
@@ -129,5 +135,28 @@ export class ClaudeChimp extends ChimpBrain {
     this.publish(Protocol.createAgentMessageResponse(agentResponse, sessionId));
 
     return "continue";
+  }
+
+  protected override recordEventContext(ctx: Protocol.EventContext): void {
+    const next = appendUniqueEventContext(this.eventContexts, ctx);
+    if (next === this.eventContexts) return;
+    this.eventContexts = next;
+    this.onEventContextsChanged?.(this.eventContexts);
+  }
+
+  /**
+   * Compose the effective system prompt for the next turn. Appends a
+   * `<known_event_contexts>` block describing every platform/channel
+   * the chimp has seen so far, so the agent can pick one to reply on
+   * even when it's not the turn's originating channel.
+   *
+   * Recomposed on every turn so restarts and new contexts flow through
+   * without mutating `this.systemPrompt`.
+   */
+  protected composeSystemPrompt(): string | undefined {
+    return composeSystemPromptWithEventContexts(
+      this.systemPrompt,
+      this.eventContexts,
+    );
   }
 }

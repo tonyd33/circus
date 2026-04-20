@@ -1,6 +1,7 @@
 import path from "node:path";
 import { type Logger, Protocol } from "@mnke/circus-shared";
 import { Typing } from "@mnke/circus-shared/lib";
+import type { StoredEventContext } from "@/chimp-brain/event-contexts";
 import { setupGithubAuth } from "@/lib/github-auth";
 import { cloneRepo, ghCloneRepo } from "@/lib/tooling";
 
@@ -18,6 +19,22 @@ export abstract class ChimpBrain {
   protected mcpUrl: string;
 
   onEventContext?: (ctx: Protocol.EventContext) => void;
+
+  /**
+   * Fires whenever the brain's recorded event-context list changes
+   * (restore on startup or a new context appended). The chimp layer
+   * uses this to sync the list into the MCP server so the agent can
+   * query it via `list_event_contexts`.
+   */
+  onEventContextsChanged?: (list: StoredEventContext[]) => void;
+
+  /**
+   * Subclasses override to persist every event context the chimp has seen,
+   * so later turns can respond on channels other than the one that
+   * triggered the current turn. Default is a no-op — brains that don't
+   * support cross-channel responses (echo, opencode) can leave it.
+   */
+  protected recordEventContext(_ctx: Protocol.EventContext): void {}
 
   constructor(
     chimpId: string,
@@ -49,8 +66,9 @@ export abstract class ChimpBrain {
   async handleCommand(command: Protocol.ChimpCommand): Promise<CommandResult> {
     switch (command.command) {
       case "send-agent-message":
-        if (command.args.context && this.onEventContext) {
-          this.onEventContext(command.args.context);
+        if (command.args.context) {
+          this.onEventContext?.(command.args.context);
+          this.recordEventContext(command.args.context);
         }
         return this.handlePrompt(command.args.prompt);
       case "stop":

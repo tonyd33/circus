@@ -5,22 +5,11 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { S3Client } from "@aws-sdk/client-s3";
 import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
-import { Protocol } from "@mnke/circus-shared";
 import { z } from "zod";
+import { StoredEventContextSchema } from "@/chimp-brain/event-contexts";
 import { downloadDirFromS3, uploadDirToS3 } from "@/lib/s3-tarball";
 
-/**
- * A single event context the chimp has been exposed to, paired with the
- * time it was first observed. The chimp uses these to respond on a
- * platform/channel other than the one that triggered the current turn
- * (e.g. user pings on Discord, later asks via GitHub; chimp can still
- * reach the original Discord interaction).
- */
-export const StoredEventContextSchema = z.object({
-  seenAt: z.string(),
-  context: Protocol.EventContextSchema,
-});
-export type StoredEventContext = z.infer<typeof StoredEventContextSchema>;
+export type { StoredEventContext } from "@/chimp-brain/event-contexts";
 
 /**
  * Persisted ClaudeChimp metadata. `eventContexts` was added after the
