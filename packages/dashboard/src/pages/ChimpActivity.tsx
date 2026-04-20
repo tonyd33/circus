@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { useSSE } from "@/hooks/useSSE";
+import { ExpandableJSON } from "@/components/ExpandableJSON";
 
 interface ActivityMessage {
   id: string;
@@ -242,9 +243,7 @@ export function ChimpActivity() {
                 {getString(data, "message")}
               </code>
               {data.data !== undefined && (
-                <pre className="text-xs font-mono bg-muted/50 rounded px-2 py-1 overflow-x-auto">
-                  {JSON.stringify(data.data, null, 2)}
-                </pre>
+                <ExpandableJSON data={data.data} label="Log data" />
               )}
             </div>
           </div>
@@ -350,18 +349,12 @@ export function ChimpActivity() {
                 {eventType || "unknown"}
               </Badge>
             </div>
-            <pre className="text-xs text-muted-foreground bg-muted/30 rounded-lg p-2 overflow-x-auto max-h-32">
-              {JSON.stringify(event, null, 2)}
-            </pre>
+            {event && <ExpandableJSON data={event} label="Event details" />}
           </div>
         );
       }
       default:
-        return (
-          <pre className="text-xs text-muted-foreground bg-muted/30 rounded-lg p-3 overflow-x-auto max-h-48">
-            {JSON.stringify(data, null, 2)}
-          </pre>
-        );
+        return <ExpandableJSON data={data} label="Payload" />;
     }
   };
 
