@@ -5,15 +5,37 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { S3Client } from "@aws-sdk/client-s3";
 import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import { Protocol } from "@mnke/circus-shared";
+import { z } from "zod";
 import { downloadDirFromS3, uploadDirToS3 } from "@/lib/s3-tarball";
 
-export interface ClaudeChimpState {
-  sessionId: string | undefined;
-  workingDir: string;
-  messageCount: number;
-  model: string;
-  allowedTools: string[];
-}
+/**
+ * A single event context the chimp has been exposed to, paired with the
+ * time it was first observed. The chimp uses these to respond on a
+ * platform/channel other than the one that triggered the current turn
+ * (e.g. user pings on Discord, later asks via GitHub; chimp can still
+ * reach the original Discord interaction).
+ */
+export const StoredEventContextSchema = z.object({
+  seenAt: z.string(),
+  context: Protocol.EventContextSchema,
+});
+export type StoredEventContext = z.infer<typeof StoredEventContextSchema>;
+
+/**
+ * Persisted ClaudeChimp metadata. `eventContexts` was added after the
+ * initial schema; legacy blobs that predate the field parse to `[]` via
+ * the schema default, so no S3 migration is required.
+ */
+export const ClaudeChimpStateSchema = z.object({
+  sessionId: z.string().optional(),
+  workingDir: z.string(),
+  messageCount: z.number(),
+  model: z.string(),
+  allowedTools: z.array(z.string()),
+  eventContexts: z.array(StoredEventContextSchema).default([]),
+});
+export type ClaudeChimpState = z.infer<typeof ClaudeChimpStateSchema>;
 
 export function getSessionFilePath(
   workingDir: string,
@@ -113,7 +135,9 @@ export async function restoreChimpStateFromS3(
       chunks.push(chunk);
     }
     const text = Buffer.concat(chunks).toString("utf-8");
-    return JSON.parse(text) as ClaudeChimpState;
+    const parsed = ClaudeChimpStateSchema.safeParse(JSON.parse(text));
+    if (!parsed.success) return null;
+    return parsed.data;
   } catch {
     return null;
   }
