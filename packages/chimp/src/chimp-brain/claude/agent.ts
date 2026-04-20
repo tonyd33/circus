@@ -32,14 +32,6 @@ function createHookHandler(
   options: { signal: AbortSignal },
 ) => Promise<ClaudeSDK.HookJSONOutput> {
   return async (input, toolUseID, _options) => {
-    log("debug", `Hook triggered: ${input.hook_event_name}`, {
-      hookEvent: input.hook_event_name,
-      sessionId: input.session_id,
-      toolUseID,
-      agentId: input.agent_id,
-      agentType: input.agent_type,
-    });
-
     return {
       async: true,
     };
