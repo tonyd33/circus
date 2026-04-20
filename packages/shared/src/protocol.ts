@@ -368,6 +368,8 @@ export type ChimpCommand = z.infer<typeof ChimpCommandSchema>;
 
 // Outgoing message types - specific responses
 export type AgentMessageResponse = z.infer<typeof AgentMessageResponseSchema>;
+export type DiscordResponse = z.infer<typeof DiscordResponseSchema>;
+export type GithubComment = z.infer<typeof GithubCommentSchema>;
 
 // Outgoing message types - autonomous messages
 export type ArtifactMessage = z.infer<typeof ArtifactMessageSchema>;
@@ -578,5 +580,43 @@ export function createThought(brain: ChimpBrainType, event: unknown): Thought {
     type: "thought",
     brain,
     event,
+  };
+}
+
+/**
+ * Create a Discord response message. Consumed by bullhorn's Discord
+ * output handler, which posts it as the response to the originating
+ * interaction.
+ */
+export function createDiscordResponse(args: {
+  interactionToken: string;
+  applicationId: string;
+  content: string;
+}): DiscordResponse {
+  return {
+    type: "discord-response",
+    interactionToken: args.interactionToken,
+    applicationId: args.applicationId,
+    content: args.content,
+  };
+}
+
+/**
+ * Create a GitHub comment message. Consumed by bullhorn's GitHub output
+ * handler, which posts the content as a comment on the given issue/PR
+ * using the installation token for `installationId`.
+ */
+export function createGithubComment(args: {
+  installationId: number;
+  repo: string;
+  issueNumber: number;
+  content: string;
+}): GithubComment {
+  return {
+    type: "github-comment",
+    installationId: args.installationId,
+    repo: args.repo,
+    issueNumber: args.issueNumber,
+    content: args.content,
   };
 }

@@ -22,7 +22,6 @@ export interface CircusMcpConfig {
 export class CircusMcp {
   private mcpServer: McpServer;
   private transport: WebStandardStreamableHTTPServerTransport;
-  private eventContext: Protocol.EventContext | undefined;
   private eventContexts: StoredEventContext[] = [];
   private httpServer: ReturnType<typeof Bun.serve> | null = null;
   private redis: Redis;
@@ -42,10 +41,6 @@ export class CircusMcp {
     });
 
     this.registerTools();
-  }
-
-  setEventContext(context: Protocol.EventContext | undefined): void {
-    this.eventContext = context;
   }
 
   setEventContexts(list: StoredEventContext[]): void {
@@ -115,55 +110,108 @@ export class CircusMcp {
     );
 
     this.mcpServer.tool(
-      "respond",
-      "Send a response back to the originating platform (Discord, GitHub, dashboard, etc.)",
+      "github_respond",
+      "Post a comment on a GitHub issue or pull request. Accepts explicit " +
+        "arguments so you can reply on any GitHub channel you know about " +
+        "(including ones from `list_event_contexts`), not only the one that " +
+        "triggered the current turn.",
       {
-        content: z.string().describe("Response content to send"),
+        repo: z
+          .string()
+          .describe(
+            "Target repository in 'owner/name' form (e.g. 'tonyd33/circus')",
+          ),
+        issueNumber: z
+          .number()
+          .describe("Issue or pull request number to comment on"),
+        installationId: z
+          .number()
+          .describe("GitHub App installation id from the event context"),
+        content: z.string().describe("Comment body"),
       },
       async (args) => {
-        const ctx = this.eventContext;
         this.config.logger.info(
-          { tool: "respond", source: ctx?.source ?? "unknown" },
-          "MCP tool called: respond",
+          {
+            tool: "github_respond",
+            repo: args.repo,
+            issueNumber: args.issueNumber,
+          },
+          "MCP tool called: github_respond",
         );
-
-        if (!ctx || ctx.source === "unknown" || ctx.source === "dashboard") {
-          publish(
-            Protocol.createAgentMessageResponse(args.content, "mcp-respond"),
-          );
-        } else if (ctx.source === "discord") {
-          publish({
-            type: "discord-response",
-            interactionToken: ctx.interactionToken,
-            applicationId: ctx.applicationId,
-            content: args.content,
-          });
-        } else if (ctx.source === "github") {
-          const issueNumber =
-            ctx.event.name === "pull_request_review_comment.created"
-              ? ctx.event.prNumber
-              : ctx.event.issueNumber;
-          if (ctx.installationId === undefined) {
-            this.config.logger.warn(
-              { repo: ctx.repo, issueNumber, event: ctx.event.name },
-              "Cannot post GitHub comment: missing installationId in context",
-            );
-          } else {
-            publish({
-              type: "github-comment",
-              installationId: ctx.installationId,
-              repo: ctx.repo,
-              issueNumber,
-              content: args.content,
-            });
-          }
-        }
-
+        publish(Protocol.createGithubComment(args));
         return {
           content: [
             {
               type: "text" as const,
-              text: `Response sent via ${ctx?.source ?? "default"}`,
+              text: `Comment posted to ${args.repo}#${args.issueNumber}`,
+            },
+          ],
+        };
+      },
+    );
+
+    this.mcpServer.tool(
+      "discord_respond",
+      "Post a reply to a Discord interaction. Accepts explicit arguments so " +
+        "you can reply on any Discord interaction you know about (including " +
+        "ones from `list_event_contexts`), not only the one that triggered " +
+        "the current turn.",
+      {
+        interactionToken: z
+          .string()
+          .describe("Discord interaction token from the event context"),
+        applicationId: z
+          .string()
+          .describe("Discord application id from the event context"),
+        content: z.string().describe("Reply content"),
+      },
+      async (args) => {
+        this.config.logger.info(
+          { tool: "discord_respond", applicationId: args.applicationId },
+          "MCP tool called: discord_respond",
+        );
+        publish(Protocol.createDiscordResponse(args));
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: "Discord response sent",
+            },
+          ],
+        };
+      },
+    );
+
+    this.mcpServer.tool(
+      "dashboard_respond",
+      "Send a response back to the dashboard (or any caller that consumes " +
+        "`agent-message-response`). Use this when the current turn was " +
+        "triggered by the dashboard or no platform-specific context applies.",
+      {
+        content: z.string().describe("Response content to send"),
+        sessionId: z
+          .string()
+          .optional()
+          .describe(
+            "Session id to tag the response with (defaults to 'mcp-respond')",
+          ),
+      },
+      async (args) => {
+        this.config.logger.info(
+          { tool: "dashboard_respond", sessionId: args.sessionId },
+          "MCP tool called: dashboard_respond",
+        );
+        publish(
+          Protocol.createAgentMessageResponse(
+            args.content,
+            args.sessionId ?? "mcp-respond",
+          ),
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: "Dashboard response sent",
             },
           ],
         };
