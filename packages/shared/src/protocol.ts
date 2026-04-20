@@ -16,6 +16,42 @@ export const PROTOCOL_VERSION = "0.1.0";
 // INCOMING: Commands sent TO the chimp
 // ============================================================================
 
+/**
+ * GitHub webhook event context.
+ *
+ * A discriminated union keyed by `name` that mirrors the GitHub webhook
+ * events circus consumes, carrying only the properties relevant to us.
+ * Adding support for a new event type is a matter of adding a new
+ * variant here; consumers that switch on `name` get exhaustiveness
+ * checks for free.
+ *
+ * The `name` value matches the `<event>.<action>` form used by
+ * `@octokit/webhooks` (e.g. `issue_comment.created`).
+ */
+export const GithubEventSchema = z.discriminatedUnion("name", [
+  z.object({
+    name: z.literal("issue_comment.created"),
+    issueNumber: z.number(),
+    isPR: z.boolean(),
+    commentId: z.number(),
+    author: z.string(),
+  }),
+  z.object({
+    name: z.literal("pull_request_review_comment.created"),
+    prNumber: z.number(),
+    commentId: z.number(),
+    author: z.string(),
+    filePath: z.string(),
+  }),
+  z.object({
+    name: z.literal("issues.opened"),
+    issueNumber: z.number(),
+    author: z.string(),
+    title: z.string(),
+  }),
+]);
+export type GithubEvent = z.infer<typeof GithubEventSchema>;
+
 export const EventContextSchema = z.discriminatedUnion("source", [
   z.object({
     source: z.literal("discord"),
@@ -25,9 +61,8 @@ export const EventContextSchema = z.discriminatedUnion("source", [
   z.object({
     source: z.literal("github"),
     repo: z.string(),
-    issueNumber: z.number(),
-    commentId: z.number().optional(),
     installationId: z.number().optional(),
+    event: GithubEventSchema,
   }),
   z.object({ source: z.literal("dashboard") }),
   z.object({ source: z.literal("unknown") }),
