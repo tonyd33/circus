@@ -37,7 +37,8 @@
     "commander": "^14.0.3",
     "@commander-js/extra-typings": "^14.0.0",
     "@octokit/app": "^16.1.2",
-    "@octokit/auth-app": "^8.2.0"
+    "@octokit/auth-app": "^8.2.0",
+    "@octokit/webhooks": "^14.2.0"
   },
   "lint-staged": {
     "*.{js,ts,jsx,tsx,json,jsonc}": [

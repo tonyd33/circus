@@ -2,27 +2,19 @@ import type { Logger } from "@mnke/circus-shared";
 import { EnvReader as ER } from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
 import { App } from "@octokit/app";
+import type { EmitterWebhookEvent } from "@octokit/webhooks";
 import { verify } from "@octokit/webhooks-methods";
 import type { Adapter, AdapterResponse } from "./types";
 
-interface IssueCommentPayload {
-  action: string;
-  comment: {
-    id: number;
-    body: string;
-    user: { login: string };
-  };
-  issue: {
-    number: number;
-    pull_request?: { url: string };
-  };
-  repository: {
-    full_name: string;
-  };
-  installation: {
-    id: number;
-  };
-}
+type IssueCommentCreated = EmitterWebhookEvent<"issue_comment.created">;
+type PRReviewCommentCreated =
+  EmitterWebhookEvent<"pull_request_review_comment.created">;
+type IssuesOpened = EmitterWebhookEvent<"issues.opened">;
+
+const OK: AdapterResponse = {
+  result: null,
+  response: new Response("ok", { status: 200 }),
+};
 
 export class GitHubAdapter implements Adapter {
   private botName: string;
@@ -59,13 +51,11 @@ export class GitHubAdapter implements Adapter {
     body: unknown,
     headers: Record<string, string>,
   ): Promise<AdapterResponse> {
-    const ok = { result: null, response: new Response("ok", { status: 200 }) };
-
     if (this.webhookSecret) {
       const signature = headers["x-hub-signature-256"];
       if (!signature) {
         this.logger.warn("Missing webhook signature");
-        return ok;
+        return OK;
       }
       const valid = await verify(
         this.webhookSecret,
@@ -74,34 +64,134 @@ export class GitHubAdapter implements Adapter {
       );
       if (!valid) {
         this.logger.warn("Invalid webhook signature");
-        return ok;
+        return OK;
       }
     }
 
-    const payload = body as IssueCommentPayload;
+    const eventType = headers["x-github-event"];
 
-    if (payload.action !== "created") return ok;
-    if (!payload.comment?.body) return ok;
+    switch (eventType) {
+      case "issue_comment":
+        return this.handleIssueComment(body as IssueCommentCreated["payload"]);
+      case "pull_request_review_comment":
+        return this.handlePRReviewComment(
+          body as PRReviewCommentCreated["payload"],
+        );
+      case "issues":
+        return this.handleIssues(body as IssuesOpened["payload"]);
+      default:
+        return OK;
+    }
+  }
+
+  private handleIssueComment(
+    payload: IssueCommentCreated["payload"],
+  ): AdapterResponse {
+    if (payload.action !== "created") return OK;
 
     const mention = `@${this.botName}`;
-    if (!payload.comment.body.includes(mention)) return ok;
+    if (!payload.comment.body.includes(mention)) return OK;
 
     const repo = payload.repository.full_name;
     const issueNumber = payload.issue.number;
     const isPR = payload.issue.pull_request != null;
-    const author = payload.comment.user.login;
+    const author = payload.comment.user?.login ?? "unknown";
     const prompt = payload.comment.body.replace(mention, "").trim();
-    const installationId = payload.installation.id;
-    const parts = repo.split("/");
-    const owner = parts[0] ?? "";
-    const repoName = parts[1] ?? "";
+    const installationId = payload.installation?.id;
 
     const chimpId = `gh-${repo.replace("/", "-")}-${isPR ? "pr" : "issue"}-${issueNumber}`;
 
     this.logger.info(
       { repo, issueNumber, isPR, author, chimpId },
-      "GitHub comment received",
+      "GitHub issue comment received",
     );
+
+    if (installationId) {
+      this.reactToComment(repo, payload.comment.id, installationId);
+    }
+
+    return this.buildResult(chimpId, repo, issueNumber, installationId, [
+      `GitHub ${isPR ? "PR" : "issue"} #${issueNumber} on ${repo}`,
+      `Comment by @${author}:`,
+      prompt,
+    ]);
+  }
+
+  private handlePRReviewComment(
+    payload: PRReviewCommentCreated["payload"],
+  ): AdapterResponse {
+    if (payload.action !== "created") return OK;
+
+    const mention = `@${this.botName}`;
+    if (!payload.comment.body.includes(mention)) return OK;
+
+    const repo = payload.repository.full_name;
+    const prNumber = payload.pull_request.number;
+    const author = payload.comment.user?.login ?? "unknown";
+    const prompt = payload.comment.body.replace(mention, "").trim();
+    const installationId = payload.installation?.id;
+    const filePath = payload.comment.path;
+    const diffHunk = payload.comment.diff_hunk;
+
+    const chimpId = `gh-${repo.replace("/", "-")}-pr-${prNumber}`;
+
+    this.logger.info(
+      { repo, prNumber, author, filePath, chimpId },
+      "GitHub PR review comment received",
+    );
+
+    if (installationId) {
+      this.reactToComment(repo, payload.comment.id, installationId);
+    }
+
+    return this.buildResult(chimpId, repo, prNumber, installationId, [
+      `GitHub PR #${prNumber} on ${repo}`,
+      `Review comment by @${author} on ${filePath}:`,
+      `\`\`\`diff\n${diffHunk}\n\`\`\``,
+      prompt,
+    ]);
+  }
+
+  private handleIssues(payload: IssuesOpened["payload"]): AdapterResponse {
+    if (payload.action !== "opened") return OK;
+
+    const mention = `@${this.botName}`;
+    const body = payload.issue.body ?? "";
+    if (!body.includes(mention)) return OK;
+
+    const repo = payload.repository.full_name;
+    const issueNumber = payload.issue.number;
+    const author = payload.issue.user?.login ?? "unknown";
+    const title = payload.issue.title;
+    const prompt = body.replace(mention, "").trim();
+    const installationId = payload.installation?.id;
+
+    const chimpId = `gh-${repo.replace("/", "-")}-issue-${issueNumber}`;
+
+    this.logger.info(
+      { repo, issueNumber, author, chimpId },
+      "GitHub issue opened",
+    );
+
+    if (installationId) {
+      this.reactToIssue(repo, issueNumber, installationId);
+    }
+
+    return this.buildResult(chimpId, repo, issueNumber, installationId, [
+      `GitHub issue #${issueNumber} on ${repo}`,
+      `Opened by @${author}: ${title}`,
+      prompt,
+    ]);
+  }
+
+  private reactToComment(
+    repo: string,
+    commentId: number,
+    installationId: number,
+  ): void {
+    const parts = repo.split("/");
+    const owner = parts[0] ?? "";
+    const repoName = parts[1] ?? "";
 
     this.app
       .getInstallationOctokit(installationId)
@@ -111,18 +201,56 @@ export class GitHubAdapter implements Adapter {
           {
             owner,
             repo: repoName,
-            comment_id: payload.comment.id,
+            comment_id: commentId,
             content: "eyes",
           },
         ),
       )
       .catch((err) => {
         this.logger.error(
-          { err, repo, commentId: payload.comment.id },
+          { err, repo, commentId },
           "Failed to react to comment",
         );
       });
+  }
 
+  private reactToIssue(
+    repo: string,
+    issueNumber: number,
+    installationId: number,
+  ): void {
+    const parts = repo.split("/");
+    const owner = parts[0] ?? "";
+    const repoName = parts[1] ?? "";
+
+    this.app
+      .getInstallationOctokit(installationId)
+      .then((octokit) =>
+        octokit.request(
+          "POST /repos/{owner}/{repo}/issues/{issue_number}/reactions",
+          {
+            owner,
+            repo: repoName,
+            issue_number: issueNumber,
+            content: "eyes",
+          },
+        ),
+      )
+      .catch((err) => {
+        this.logger.error(
+          { err, repo, issueNumber },
+          "Failed to react to issue",
+        );
+      });
+  }
+
+  private buildResult(
+    chimpId: string,
+    repo: string,
+    issueNumber: number,
+    installationId: number | undefined,
+    promptParts: string[],
+  ): AdapterResponse {
     return {
       result: {
         profile: this.profile,
@@ -130,17 +258,13 @@ export class GitHubAdapter implements Adapter {
         command: {
           command: "send-agent-message",
           args: {
-            prompt: [
-              `GitHub ${isPR ? "PR" : "issue"} #${issueNumber} on ${repo}`,
-              `Comment by @${author}:`,
-              prompt,
-            ].join("\n"),
+            prompt: promptParts.join("\n"),
             context: {
-              source: "github",
+              source: "github" as const,
               repo,
               issueNumber,
-              commentId: payload.comment.id,
-              installationId,
+              commentId: 0,
+              installationId: installationId ?? 0,
             },
           },
         },
