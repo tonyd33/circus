@@ -19,7 +19,7 @@ interface ActivityEvent {
 }
 
 export async function createActivityStream(
-  profile: string,
+  _profile: string,
   chimpId: string,
   nc: NatsConnection,
   logger: Logger.Logger,
@@ -110,31 +110,31 @@ export async function createActivityStream(
 
   const _tasks: Promise<void>[] = [];
   try {
-    const inputInfo = await jsm.consumers.add(
-      Standards.Chimp.Naming.inputStreamName(),
+    const commandInfo = await jsm.consumers.add(
+      Standards.Chimp.Naming.commandsStreamName(),
       {
         ack_policy: AckPolicy.None,
-        filter_subject: Standards.Chimp.Naming.inputSubject(profile, chimpId),
+        filter_subject: Standards.Chimp.Naming.commandSubject(chimpId),
         deliver_policy: DeliverPolicy.All,
       },
     );
     inputConsumer = await js.consumers.get(
-      Standards.Chimp.Naming.inputStreamName(),
-      inputInfo.name,
+      Standards.Chimp.Naming.commandsStreamName(),
+      commandInfo.name,
     );
     inputMessages = await inputConsumer.consume();
     processMessages(inputMessages, "input");
 
     const outputInfo = await jsm.consumers.add(
-      Standards.Chimp.Naming.outputStreamName(),
+      Standards.Chimp.Naming.outputsStreamName(),
       {
         ack_policy: AckPolicy.None,
-        filter_subject: Standards.Chimp.Naming.outputSubject(profile, chimpId),
+        filter_subject: Standards.Chimp.Naming.outputSubject(chimpId),
         deliver_policy: DeliverPolicy.All,
       },
     );
     outputConsumer = await js.consumers.get(
-      Standards.Chimp.Naming.outputStreamName(),
+      Standards.Chimp.Naming.outputsStreamName(),
       outputInfo.name,
     );
     outputMessages = await outputConsumer.consume();

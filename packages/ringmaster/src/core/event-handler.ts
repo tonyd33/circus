@@ -1,24 +1,19 @@
-/**
- * Ringmaster - Event Handler
- *
- * Main event handling logic that bridges events to core decision-making
- */
-
-import type { Logger } from "@mnke/circus-shared";
-import { Typing } from "@mnke/circus-shared/lib";
+import { type Logger, Standards } from "@mnke/circus-shared";
+import { type TopicRegistry, Typing } from "@mnke/circus-shared/lib";
 import type {
   ConsumerManager,
   JobManager,
   MetaPublisher,
   StateManager,
 } from "@/executors";
-import { type Action, decide, type EventPayload } from "./core";
+import { type Action, decide, deriveChimpId, type EventPayload } from "./core";
 
 export interface EventHandlerDeps {
   jobManager: JobManager;
   consumerManager: ConsumerManager;
   stateManager: StateManager;
   metaPublisher: MetaPublisher;
+  topicRegistry: TopicRegistry;
   getPod: (
     chimpId: string,
   ) => import("@kubernetes/client-node").V1Pod | undefined;
@@ -34,10 +29,30 @@ export class EventHandler {
     this.logger = deps.logger;
   }
 
-  async handle(chimpId: string, payload: EventPayload): Promise<void> {
+  async handleEvent(payload: EventPayload): Promise<void> {
     try {
-      const state = { now: Date.now(), pod: this.deps.getPod(chimpId) };
-      const decision = decide(state, payload);
+      let chimpId: string;
+      let topicOwner = null;
+
+      if (payload.type === "event_received") {
+        if (payload.topic) {
+          topicOwner = await this.deps.topicRegistry.lookup(payload.topic);
+        }
+        chimpId = topicOwner
+          ? topicOwner.chimpId
+          : deriveChimpId(payload.topic, payload.eventSubject);
+      } else {
+        // pod_event — chimpId comes from pod labels, passed by PodWatcher
+        chimpId = ""; // set by caller via handlePodEvent
+      }
+
+      const state = {
+        now: Date.now(),
+        pod: this.deps.getPod(chimpId),
+        topicOwner,
+      };
+      const decision = decide(state, chimpId, payload);
+      chimpId = decision.chimpId;
 
       this.logger.info(
         { chimpId, reason: decision.reason },
@@ -54,10 +69,31 @@ export class EventHandler {
       );
     } catch (error) {
       this.logger.error(
-        { err: error, chimpId, payloadType: payload.type },
+        { err: error, payloadType: payload.type },
         "Error handling event",
       );
       throw error;
+    }
+  }
+
+  async handlePodEvent(
+    chimpId: string,
+    payload: EventPayload & { type: "pod_event" },
+  ): Promise<void> {
+    const state = {
+      now: Date.now(),
+      pod: this.deps.getPod(chimpId),
+      topicOwner: null,
+    };
+    const decision = decide(state, chimpId, payload);
+
+    this.logger.info(
+      { chimpId, reason: decision.reason },
+      "Executing decision",
+    );
+
+    for (const action of decision.actions) {
+      await this.executeAction(action, chimpId);
     }
   }
 
@@ -74,25 +110,51 @@ export class EventHandler {
         await this.deps.jobManager.createJob(chimpId, action.profile);
         break;
 
-      case "create_consumer":
+      case "create_consumers":
         this.logger.info(
           {
             chimpId,
             profile: action.profile,
+            eventFilterSubjects: action.eventFilterSubjects,
             startSequence: action.startSequence,
           },
-          "Executing: create_consumer",
+          "Executing: create_consumers",
         );
-        await this.deps.consumerManager.ensureConsumer(
-          action.profile,
+        await this.deps.consumerManager.ensureEventConsumer(
+          chimpId,
+          action.eventFilterSubjects,
+          action.startSequence,
+        );
+        await this.deps.consumerManager.ensureCommandConsumer(
           chimpId,
           action.startSequence,
         );
         break;
 
-      case "delete_consumer":
-        this.logger.info({ chimpId }, "Executing: delete_consumer");
-        await this.deps.consumerManager.deleteConsumer(chimpId);
+      case "register_topic":
+        this.logger.info(
+          {
+            chimpId,
+            topic: Standards.Topic.serializeTopic(action.topic),
+            profile: action.profile,
+          },
+          "Executing: register_topic",
+        );
+        await this.deps.topicRegistry.subscribe(
+          action.topic,
+          chimpId,
+          action.profile,
+        );
+        break;
+
+      case "delete_consumers":
+        this.logger.info({ chimpId }, "Executing: delete_consumers");
+        await this.deps.consumerManager.deleteConsumers(chimpId);
+        break;
+
+      case "cleanup_topics":
+        this.logger.info({ chimpId }, "Executing: cleanup_topics");
+        await this.deps.topicRegistry.unsubscribeAll(chimpId);
         break;
 
       case "upsert_state":

@@ -1,5 +1,5 @@
 import { type Logger, Protocol, Standards } from "@mnke/circus-shared";
-import { Typing } from "@mnke/circus-shared/lib";
+import { TopicRegistry, Typing } from "@mnke/circus-shared/lib";
 import Redis from "ioredis";
 import type { NatsConnection } from "nats";
 import { connect } from "nats";
@@ -37,6 +37,7 @@ export class Chimp {
   private input: ChimpInput | null = null;
   private output: ChimpOutput | null = null;
   private mcp: CircusMcp | null = null;
+  private topicRegistry: TopicRegistry | null = null;
   private isShuttingDown = false;
   private lastActivity = Date.now();
   private idleCheckTimer: Timer | null = null;
@@ -63,6 +64,11 @@ export class Chimp {
         reconnectTimeWait: 2000,
       });
       this.logger.info("Connected to NATS");
+
+      const js = this.nc.jetstream();
+      const kv = await js.views.kv(Standards.Topic.TOPIC_OWNERS_BUCKET);
+      this.topicRegistry = new TopicRegistry(kv);
+      this.logger.info("Topic registry connected");
     }
 
     this.output = this.createOutput();
@@ -73,10 +79,14 @@ export class Chimp {
       output.publish(message);
     };
 
-    this.mcp = new CircusMcp(
-      publishFn,
-      this.logger.child({ component: "MCP" }),
-    );
+    this.mcp = new CircusMcp({
+      publish: publishFn,
+      chimpId: this.config.chimpId,
+      profile: this.config.profile,
+      topicRegistry: this.topicRegistry,
+      nc: this.nc,
+      logger: this.logger.child({ component: "MCP" }),
+    });
     const mcpUrl = await this.mcp.start();
 
     this.brain = this.brainFactory.create(
@@ -114,11 +124,7 @@ export class Chimp {
     switch (this.config.outputMode) {
       case "nats":
         if (!this.nc) throw new Error("NATS connection not established");
-        return new NatsOutput(
-          this.nc,
-          this.config.profile,
-          this.config.chimpId,
-        );
+        return new NatsOutput(this.nc, this.config.chimpId);
       case "stdout":
         return new StdoutOutput();
       default:
@@ -224,6 +230,11 @@ export class Chimp {
 
     if (this.mcp) {
       await this.mcp.stop();
+    }
+
+    if (this.topicRegistry) {
+      await this.topicRegistry.unsubscribeAll(this.config.chimpId);
+      this.logger.info("Cleaned up topic subscriptions");
     }
 
     // Chimp owns NATS connection — drain and close last

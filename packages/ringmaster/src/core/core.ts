@@ -1,24 +1,15 @@
-/**
- * Ringmaster - Pure Core Logic
- *
- * This module contains pure business logic with no side effects.
- * All functions are deterministic and testable.
- */
-
 import type * as k8s from "@kubernetes/client-node";
-import type { Standards } from "@mnke/circus-shared";
+import { Standards } from "@mnke/circus-shared";
 
-/**
- * Core state - minimal stub for decision making
- */
+type Topic = Standards.Topic.Topic;
+type TopicSubscription = Standards.Topic.TopicSubscription;
+
 export interface CoreState {
   now: number;
   pod: k8s.V1Pod | undefined;
+  topicOwner: TopicSubscription | null;
 }
 
-/**
- * Event-specific payloads
- */
 export type EventPayload =
   | {
       type: "pod_event";
@@ -27,18 +18,24 @@ export type EventPayload =
       pod: k8s.V1Pod;
     }
   | {
-      type: "message_received";
+      type: "event_received";
       profile: string;
+      eventSubject: string;
+      topic: Topic | null;
       messageSequence: number;
     };
 
-/**
- * Actions that the effectful layer should perform
- */
 export type Action =
   | { type: "create_job"; profile: string }
-  | { type: "create_consumer"; profile: string; startSequence: number }
-  | { type: "delete_consumer" }
+  | {
+      type: "create_consumers";
+      profile: string;
+      eventFilterSubjects: string[];
+      startSequence: number;
+    }
+  | { type: "register_topic"; topic: Topic; profile: string }
+  | { type: "delete_consumers" }
+  | { type: "cleanup_topics" }
   | {
       type: "upsert_state";
       profile: string;
@@ -47,9 +44,12 @@ export type Action =
   | { type: "delete_state" }
   | { type: "noop" };
 
-/**
- * Map K8s pod phase to Standards.Chimp.ChimpStatus
- */
+export interface Decision {
+  chimpId: string;
+  actions: Action[];
+  reason: string;
+}
+
 function podPhaseToStatus(
   phase: string | undefined,
 ): Standards.Chimp.ChimpStatus {
@@ -67,21 +67,19 @@ function podPhaseToStatus(
   }
 }
 
-/**
- * Decision result from pure logic
- */
-export interface Decision {
-  /** Actions to perform in order */
-  actions: Action[];
-  /** Human-readable reason for the decision */
-  reason: string;
+export function deriveChimpId(
+  topic: Topic | null,
+  eventSubject: string,
+): string {
+  const key = topic
+    ? Standards.Topic.serializeTopic(topic)
+    : eventSubject.slice(Standards.Chimp.Prefix.EVENTS.length + 1);
+  return `evt-${Bun.hash(key).toString(36)}`;
 }
 
-/**
- * Decide what to do when a pod event occurs
- */
 export function decideOnPodEvent(
   _state: CoreState,
+  chimpId: string,
   profile: string,
   eventType: string,
   pod: k8s.V1Pod,
@@ -91,65 +89,91 @@ export function decideOnPodEvent(
 
   if (eventType === "DELETED") {
     return {
+      chimpId,
       actions: [
-        { type: "delete_consumer" },
+        { type: "delete_consumers" },
+        { type: "cleanup_topics" },
         { type: "upsert_state", profile, status: "stopped" },
       ],
-      reason: "Pod deleted - deleting consumer and state",
+      reason: "Pod deleted — cleaning up consumers, topics, and state",
     };
   }
 
   return {
+    chimpId,
     actions: [{ type: "upsert_state", profile, status }],
-    reason: `Pod ${eventType} with phase ${phase} - updating state to ${status}`,
+    reason: `Pod ${eventType} with phase ${phase} — updating state to ${status}`,
   };
 }
 
-/**
- * Decide what to do when a message is received
- */
-export function decideOnMessageReceived(
+export function decideOnEventReceived(
   state: CoreState,
   profile: string,
+  eventSubject: string,
+  topic: Topic | null,
   messageSequence: number,
 ): Decision {
-  if (!state.pod) {
+  if (state.topicOwner) {
     return {
-      actions: [
-        { type: "upsert_state", profile, status: "scheduled" },
-        { type: "create_consumer", profile, startSequence: messageSequence },
-        { type: "create_job", profile },
-      ],
-      reason: "Message received, no pod exists - scheduling",
+      chimpId: state.topicOwner.chimpId,
+      actions: [{ type: "noop" }],
+      reason: `Event topic already claimed by ${state.topicOwner.chimpId}`,
     };
   }
 
+  const chimpId = deriveChimpId(topic, eventSubject);
+  const topicFilter = topic
+    ? Standards.Topic.topicToEventSubject(topic)
+    : eventSubject;
+
+  const actions: Action[] = [];
+
+  if (!state.pod) {
+    actions.push({ type: "upsert_state", profile, status: "scheduled" });
+  }
+
+  actions.push({
+    type: "create_consumers",
+    profile,
+    eventFilterSubjects: [topicFilter],
+    startSequence: messageSequence,
+  });
+
+  if (topic) {
+    actions.push({ type: "register_topic", topic, profile });
+  }
+
+  actions.push({ type: "create_job", profile });
+
   return {
-    actions: [
-      { type: "create_consumer", profile, startSequence: messageSequence },
-      { type: "create_job", profile },
-    ],
-    reason: "Message received, pod exists - ensuring consumer and job",
+    chimpId,
+    actions,
+    reason: state.pod
+      ? "Unclaimed event, pod exists — ensuring consumers and job"
+      : "Unclaimed event, no pod — scheduling new chimp",
   };
 }
 
-/**
- * Main decision function that routes to specific handlers
- */
-export function decide(state: CoreState, payload: EventPayload): Decision {
+export function decide(
+  state: CoreState,
+  chimpId: string,
+  payload: EventPayload,
+): Decision {
   switch (payload.type) {
     case "pod_event":
       return decideOnPodEvent(
         state,
+        chimpId,
         payload.profile,
         payload.eventType,
         payload.pod,
       );
-
-    case "message_received":
-      return decideOnMessageReceived(
+    case "event_received":
+      return decideOnEventReceived(
         state,
         payload.profile,
+        payload.eventSubject,
+        payload.topic,
         payload.messageSequence,
       );
   }

@@ -12,8 +12,7 @@ export class NatsInput extends ChimpInput {
   private handler: MessageHandler;
   private onActivity: ActivityCallback;
   private onStopRequested: () => Promise<void>;
-  private consumer: Consumer | null = null;
-  private stopConsumer: (() => void) | null = null;
+  private stopCallbacks: (() => void)[] = [];
   private logger: Logger.Logger;
 
   constructor(
@@ -35,15 +34,53 @@ export class NatsInput extends ChimpInput {
 
   async start(): Promise<void> {
     const js = this.nc.jetstream();
-    const streamName = Standards.Chimp.Naming.inputStreamName();
-    const consumerName = `chimp-${this.chimpId}`;
-    this.consumer = await js.consumers.get(streamName, consumerName);
-    this.logger.info({ consumerName }, "Connected to JetStream consumer");
 
-    const messages = await this.consumer.consume();
-    this.stopConsumer = () => messages.stop();
+    // Events consumer — subscribed topics
+    const eventsStream = Standards.Chimp.Naming.eventsStreamName();
+    const eventsConsumerName = Standards.Chimp.Naming.eventConsumerName(
+      this.chimpId,
+    );
+    try {
+      const eventsConsumer = await js.consumers.get(
+        eventsStream,
+        eventsConsumerName,
+      );
+      this.logger.info(
+        { consumerName: eventsConsumerName },
+        "Connected to events consumer",
+      );
+      this.consumeFrom(eventsConsumer);
+    } catch {
+      this.logger.info(
+        "No events consumer yet — will receive events once subscribed to topics",
+      );
+    }
 
+    // Commands consumer — direct addressing
+    const commandsStream = Standards.Chimp.Naming.commandsStreamName();
+    const commandsConsumerName = Standards.Chimp.Naming.commandConsumerName(
+      this.chimpId,
+    );
+    try {
+      const commandsConsumer = await js.consumers.get(
+        commandsStream,
+        commandsConsumerName,
+      );
+      this.logger.info(
+        { consumerName: commandsConsumerName },
+        "Connected to commands consumer",
+      );
+      this.consumeFrom(commandsConsumer);
+    } catch {
+      this.logger.info("No commands consumer yet");
+    }
+  }
+
+  private consumeFrom(consumer: Consumer): void {
     (async () => {
+      const messages = await consumer.consume();
+      this.stopCallbacks.push(() => messages.stop());
+
       try {
         for await (const msg of messages) {
           this.onActivity();
@@ -57,7 +94,7 @@ export class NatsInput extends ChimpInput {
           const result = await this.handler(command);
 
           msg.ack();
-          this.logger.info({ seq: msg.seq }, "Processed message successfully");
+          this.logger.info({ seq: msg.seq }, "Processed message");
 
           if (result === "stop") {
             await this.onStopRequested();
@@ -72,9 +109,9 @@ export class NatsInput extends ChimpInput {
   }
 
   async stop(): Promise<void> {
-    if (this.stopConsumer) {
-      this.stopConsumer();
-      this.stopConsumer = null;
+    for (const stop of this.stopCallbacks) {
+      stop();
     }
+    this.stopCallbacks = [];
   }
 }

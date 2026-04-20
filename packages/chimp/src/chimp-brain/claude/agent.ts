@@ -73,6 +73,8 @@ export async function processWithClaude(
   }
 
   const options: ClaudeSDK.Options = {
+    // TODO: resolve dynamically — hardcoded because SDK platform detection picks musl on glibc images
+    pathToClaudeCodeExecutable: "/usr/local/bin/claude",
     model: state.model,
     systemPrompt: state.systemPrompt,
     allowedTools: state.allowedTools,

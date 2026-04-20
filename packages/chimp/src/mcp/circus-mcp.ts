@@ -1,19 +1,30 @@
-import { type Logger, Protocol } from "@mnke/circus-shared";
+import { type Logger, Protocol, Standards } from "@mnke/circus-shared";
+import type { TopicRegistry } from "@mnke/circus-shared/lib";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import type { NatsConnection } from "nats";
 import { z } from "zod";
 
 type PublishFn = (message: Protocol.ChimpOutputMessage) => void;
+
+export interface CircusMcpConfig {
+  publish: PublishFn;
+  chimpId: string;
+  profile: string;
+  topicRegistry: TopicRegistry | null;
+  nc: NatsConnection | null;
+  logger: Logger.Logger;
+}
 
 export class CircusMcp {
   private mcpServer: McpServer;
   private transport: WebStandardStreamableHTTPServerTransport;
   private eventContext: Protocol.EventContext | undefined;
   private httpServer: ReturnType<typeof Bun.serve> | null = null;
-  private logger: Logger.Logger;
+  private config: CircusMcpConfig;
 
-  constructor(publish: PublishFn, logger: Logger.Logger) {
-    this.logger = logger;
+  constructor(config: CircusMcpConfig) {
+    this.config = config;
 
     this.mcpServer = new McpServer({
       name: "circus",
@@ -24,14 +35,16 @@ export class CircusMcp {
       sessionIdGenerator: () => crypto.randomUUID(),
     });
 
-    this.registerTools(publish);
+    this.registerTools();
   }
 
   setEventContext(context: Protocol.EventContext | undefined): void {
     this.eventContext = context;
   }
 
-  private registerTools(publish: PublishFn): void {
+  private registerTools(): void {
+    const { publish } = this.config;
+
     this.mcpServer.tool(
       "chimp_request",
       "Request creation of a new chimp agent with a specific profile and initial message",
@@ -43,7 +56,7 @@ export class CircusMcp {
           .describe("Initial message to send to the new chimp"),
       },
       async (args) => {
-        this.logger.info(
+        this.config.logger.info(
           {
             tool: "chimp_request",
             targetProfile: args.profile,
@@ -76,7 +89,7 @@ export class CircusMcp {
       },
       async (args) => {
         const ctx = this.eventContext;
-        this.logger.info(
+        this.config.logger.info(
           { tool: "respond", source: ctx?.source ?? "unknown" },
           "MCP tool called: respond",
         );
@@ -98,9 +111,8 @@ export class CircusMcp {
               ? ctx.event.prNumber
               : ctx.event.issueNumber;
           if (ctx.installationId === undefined) {
-            this.logger.warn(
-              { repo: ctx.repo, issueNumber, event: ctx.event.name },
-              "Cannot post GitHub comment: missing installationId in context",
+            this.config.logger.warn(
+              "Cannot post GitHub comment: missing installationId",
             );
           } else {
             publish({
@@ -123,6 +135,76 @@ export class CircusMcp {
         };
       },
     );
+
+    this.mcpServer.tool(
+      "subscribe_topic",
+      "Subscribe to a topic so future events matching it route to this chimp. Use after creating a PR, claiming an issue, etc.",
+      {
+        platform: z.literal("github").describe("Platform"),
+        owner: z.string().describe("Repository owner"),
+        repo: z.string().describe("Repository name"),
+        type: z.enum(["pr", "issue"]).describe("PR or issue"),
+        number: z.number().describe("PR/issue number"),
+      },
+      async (args) => {
+        const topic: Standards.Topic.Topic = args;
+        const { topicRegistry, nc, chimpId, profile, logger } = this.config;
+
+        if (!topicRegistry || !nc) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: "Topic subscription unavailable (no NATS)",
+              },
+            ],
+          };
+        }
+
+        const success = await topicRegistry.subscribe(topic, chimpId, profile);
+        if (!success) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: "Topic already claimed by another chimp",
+              },
+            ],
+          };
+        }
+
+        // Update event consumer to include new topic filter
+        const filterSubject = Standards.Topic.topicToEventSubject(topic);
+        try {
+          const jsm = await nc.jetstreamManager();
+          const streamName = Standards.Chimp.Naming.eventsStreamName();
+          const consumerName =
+            Standards.Chimp.Naming.eventConsumerName(chimpId);
+
+          const info = await jsm.consumers.info(streamName, consumerName);
+          const existing = info.config.filter_subjects ?? [];
+          if (!existing.includes(filterSubject)) {
+            await jsm.consumers.update(streamName, consumerName, {
+              filter_subjects: [...existing, filterSubject],
+            });
+          }
+        } catch (err) {
+          logger.error(
+            { err, filterSubject },
+            "Failed to update consumer filter",
+          );
+        }
+
+        const topicKey = Standards.Topic.serializeTopic(topic);
+        logger.info({ topic: topicKey, chimpId }, "Subscribed to topic");
+
+        return {
+          content: [
+            { type: "text" as const, text: `Subscribed to ${topicKey}` },
+          ],
+        };
+      },
+    );
   }
 
   async start(): Promise<string> {
@@ -131,29 +213,29 @@ export class CircusMcp {
     this.httpServer = Bun.serve({
       port: 0,
       fetch: async (req) => {
-        this.logger.debug(
+        this.config.logger.debug(
           { method: req.method, url: req.url },
           "MCP HTTP request",
         );
         try {
           const res = await this.transport.handleRequest(req);
-          this.logger.debug({ status: res.status }, "MCP HTTP response");
+          this.config.logger.debug({ status: res.status }, "MCP HTTP response");
           return res;
         } catch (err) {
-          this.logger.error({ err }, "MCP HTTP error");
+          this.config.logger.error({ err }, "MCP HTTP error");
           return new Response("Internal Server Error", { status: 500 });
         }
       },
     });
 
     const url = `http://localhost:${this.httpServer.port}`;
-    this.logger.info({ url }, "MCP server started");
+    this.config.logger.info({ url }, "MCP server started");
     return url;
   }
 
   async stop(): Promise<void> {
     this.httpServer?.stop();
     await this.mcpServer.close();
-    this.logger.info("MCP server stopped");
+    this.config.logger.info("MCP server stopped");
   }
 }

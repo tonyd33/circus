@@ -104,17 +104,19 @@ export class DiscordAdapter implements Adapter {
         interaction.member?.user?.username ??
         interaction.user?.username ??
         "unknown";
-      const chimpId = `discord-${interaction.guild_id ?? "dm"}-${interaction.channel_id ?? "unknown"}`;
+      const guild = interaction.guild_id ?? "dm";
+      const channel = interaction.channel_id ?? "unknown";
+      const eventSubject = `events.discord.${guild}.${channel}.message`;
 
       this.logger.info(
-        { user, chimpId, prompt: prompt.slice(0, 100) },
+        { user, eventSubject, prompt: prompt.slice(0, 100) },
         "Discord slash command received",
       );
 
       return {
         result: {
-          profile: this.profile,
-          chimpId,
+          eventSubject,
+          defaultProfile: this.profile,
           command: {
             command: "send-agent-message",
             args: {

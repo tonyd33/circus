@@ -34,6 +34,14 @@ bullhorn:
   enabled: true
   image:
     repository: bullhorn
+  extraEnv:
+    - name: GITHUB_APP_ID
+      value: '3434984'
+    - name: GITHUB_PRIVATE_KEY
+      valueFrom:
+        secretKeyRef:
+          name: circus-secrets
+          key: GITHUB_PRIVATE_KEY
 
 dashboard:
   enabled: true

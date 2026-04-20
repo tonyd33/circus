@@ -1,10 +1,3 @@
-/**
- * Ringmaster - Message Listener
- *
- * Listens to NATS for incoming messages to trigger faster Chimp creation
- * Borrows NATS connection from Ringmaster - does not own the connection lifecycle
- */
-
 import { type Logger, Standards } from "@mnke/circus-shared";
 import {
   AckPolicy,
@@ -14,9 +7,9 @@ import {
 } from "nats";
 import type { EventHandler } from "../core/event-handler.ts";
 
-const MESSAGE_LISTENER_CONSUMER_NAME = "chimp-message-listener";
+const EVENT_LISTENER_CONSUMER_NAME = "event-listener";
 
-export class MessageListener {
+export class EventListener {
   private nc: NatsConnection;
   private consumer: Consumer | null = null;
   private eventHandler: EventHandler;
@@ -33,24 +26,20 @@ export class MessageListener {
     this.logger = logger;
   }
 
-  /**
-   * Start listening for input messages
-   */
   async start(): Promise<void> {
     const js = this.nc.jetstream();
     const jsm = await this.nc.jetstreamManager();
-    const streamName = Standards.Chimp.Naming.inputStreamName();
+    const streamName = Standards.Chimp.Naming.eventsStreamName();
 
     const consumer = await jsm.consumers.add(streamName, {
-      durable_name: MESSAGE_LISTENER_CONSUMER_NAME,
+      durable_name: EVENT_LISTENER_CONSUMER_NAME,
       ack_policy: AckPolicy.Explicit,
-      filter_subject: `${Standards.Chimp.Prefix.INPUTS}.>`,
+      filter_subject: `${Standards.Chimp.Prefix.EVENTS}.>`,
       deliver_policy: DeliverPolicy.LastPerSubject,
     });
 
     this.consumer = js.consumers.getPullConsumerFor(consumer);
-
-    this.logger.info("Created consumer for chimp.inputs.*");
+    this.logger.info("Created consumer for events.>");
 
     const messages = await this.consumer.consume();
     this.stopConsumer = () => messages.stop();
@@ -58,49 +47,33 @@ export class MessageListener {
     (async () => {
       for await (const msg of messages) {
         try {
-          const parsed = Standards.Chimp.Naming.parseInputSubject(msg.subject);
-          if (!parsed) {
-            this.logger.error(
-              { subject: msg.subject },
-              "Invalid subject format",
-            );
-            msg.ack();
-            continue;
-          }
+          const subject = msg.subject;
+          const topic = Standards.Topic.eventSubjectToTopic(subject);
+          const profile = msg.headers?.get("profile") ?? "default";
 
-          const { chimpId, profile } = parsed;
-          const messageSequence = msg.seq;
-          this.logger.info(
-            { chimpId, profile, messageSequence },
-            "Detected message for chimp",
-          );
-
-          await this.eventHandler.handle(chimpId, {
-            type: "message_received",
+          await this.eventHandler.handleEvent({
+            type: "event_received",
             profile,
-            messageSequence,
+            eventSubject: subject,
+            topic,
+            messageSequence: msg.seq,
           });
 
           msg.ack();
         } catch (error) {
-          this.logger.error({ err: error }, "Error processing message");
+          this.logger.error({ err: error }, "Error processing event");
           msg.ack();
         }
       }
     })();
   }
 
-  /**
-   * Stop listening for messages
-   */
   async stop(): Promise<void> {
     if (this.stopConsumer) {
       this.stopConsumer();
       this.stopConsumer = null;
     }
-
     this.consumer = null;
-
     this.logger.info("Stopped");
   }
 }

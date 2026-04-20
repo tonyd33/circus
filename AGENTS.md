@@ -5,15 +5,14 @@
 ```sh
 # Run a package
 bun run packages/ringmaster/src/index.ts
-bun run packages/ledger/src/index.ts
+bun run packages/bullhorn/src/index.ts
 bun run packages/dashboard/src/index.ts
 
 # Test
 bun test
 
 # Typecheck (all packages)
-cd packages/ringmaster && bun run typecheck
-cd packages/ledger && bun run typecheck
+bun run --filter='*' typecheck
 
 # Dev with hot reload
 bun --watch packages/ringmaster/src/index.ts
@@ -24,19 +23,34 @@ bun --watch packages/ringmaster/src/index.ts
 | Package | Purpose | Entry |
 |---------|---------|-------|
 | ringmaster | Chimp lifecycle orchestrator | `src/index.ts` |
-| ledger | Chimp status API (reads Redis) | `src/index.ts` |
 | dashboard | Web UI (React + Bun.serve) | `src/index.ts` |
 | chimp | Agent implementation | `src/index.ts` |
-| usher | Input adapters (Slack, etc) | `src/index.ts` |
-| bullhorn | Output handlers | `src/index.ts` |
+| usher | Event ingress adapters (GitHub, Discord) | `src/index.ts` |
+| bullhorn | Output dispatchers (GitHub API, Discord API) | `src/index.ts` |
 | shared | Types, standards, utils | `src/index.ts` |
 
 ## Architecture
 
-- **Event-driven**: Components react to NATS messages and K8s events. No direct calls.
+- **Event-centric NATS subjects**: Events describe what happened in the world (`events.github.{owner}.{repo}.pr.{number}.comment`). Chimps subscribe to topics they care about. Direct commands via `commands.{chimpId}`.
+- **Topic subscriptions**: Chimps register interest in topics (via MCP `subscribe_topic` tool). NATS KV bucket `topic-owners` maps topics to chimps. Enables cross-platform continuity (e.g. discord-triggered chimp receives github PR comments).
 - **Pure core**: Ringmaster's `core/core.ts` is pure decision logic. Side effects in event handler.
 - **Chimp state in Redis**: Key pattern `chimp:{id}:state` via `Standards.Chimp.Naming.redisChimpKey()`
-- **Types in shared**: Put types in `packages/shared/src/standards/chimp.ts`, not separate files.
+- **Types in shared**: Put types in `packages/shared/src/standards/`, not separate files.
+
+### NATS Subject Topology
+
+```
+events.{platform}.{...path}   — world events (usher publishes)
+commands.{chimpId}             — direct commands to chimps (dashboard, chimp-to-chimp)
+outputs.{chimpId}              — chimp output messages
+meta.{chimpId}                 — chimp lifecycle events
+```
+
+Streams: `events`, `commands`, `outputs`
+
+Each chimp has:
+- Events consumer: `chimp-{chimpId}` on `events` stream (filtered to subscribed topics)
+- Commands consumer: `chimp-{chimpId}-commands` on `commands` stream
 
 ## TypeScript Safety
 
@@ -240,6 +254,14 @@ Ensure every resource created has a clear destruction path documented in the com
 - KEEP: Non-obvious rationale, race conditions, magic values
 - RECOMMENDED: File/class docstrings at top of file
 
+## Magic Numbers and Strings
+
+**NEVER use unexplained numeric literals or string slicing indices.**
+
+- Extract constants with descriptive names
+- If slicing arrays/strings, derive indices from the data structure (e.g. `prefix.length + 1` not `6`)
+- Use named functions for non-obvious transformations
+
 ## Environment Configuration
 
 **Rule: All env reading at program entrypoint. Components receive config via constructor/injection.**
@@ -348,5 +370,9 @@ const profile: Protocol.ChimpProfile = ...;
 
 ## Key Files
 
-- `ARCHITECTURE.md` - system design
-- `packages/shared/src/standards/chimp.ts` - naming + types (source of truth)
+- `packages/shared/src/standards/chimp.ts` — NATS subject naming, stream names, consumer names, Redis keys
+- `packages/shared/src/standards/topic.ts` — topic schema, serialization, event subject parsing
+- `packages/shared/src/lib/topic-registry.ts` — NATS KV topic subscription registry
+- `packages/shared/src/protocol.ts` — all Zod schemas (commands, outputs, meta events, event context)
+- `packages/ringmaster/src/core/core.ts` — pure decision logic (event routing, chimp spawning)
+- `packages/chimp/src/chimp-brain/chimp-brain.ts` — base brain class (command dispatch, overridable handlers)

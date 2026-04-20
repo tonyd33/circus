@@ -42,7 +42,7 @@ export class MessageRouter {
           try {
             const js = this.nc.jetstream();
             await js.publish(
-              Naming.inputSubject(profile, chimpId),
+              Naming.commandSubject(chimpId),
               JSON.stringify(Protocol.createAgentCommand(parsed.data.prompt)),
             );
             return Response.json({ ok: true });
@@ -56,7 +56,7 @@ export class MessageRouter {
         GET: (): Response => {
           const nc = this.nc;
           const log = this.logger;
-          const sub = nc.subscribe("chimp.meta.*.*");
+          const sub = nc.subscribe(`${Standards.Chimp.Prefix.META}.>`);
 
           const stream = new ReadableStream<Uint8Array>({
             start(controller) {

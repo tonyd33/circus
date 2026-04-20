@@ -1,4 +1,4 @@
-import { type Logger, Protocol } from "@mnke/circus-shared";
+import { type Logger, Protocol, Standards } from "@mnke/circus-shared";
 import type { NatsConnection } from "nats";
 import type { RedisStatusSource } from "../lib/status-source";
 
@@ -49,7 +49,7 @@ export class ChimpRouter {
           const statusSource = this.statusSource;
           const log = this.logger;
 
-          const sub = nc.subscribe("chimp.meta.*.*");
+          const sub = nc.subscribe(`${Standards.Chimp.Prefix.META}.>`);
           let pingInterval: ReturnType<typeof setInterval>;
 
           const stream = new ReadableStream<Uint8Array>({

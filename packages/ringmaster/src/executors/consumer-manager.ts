@@ -1,10 +1,3 @@
-/**
- * Ringmaster - Consumer Manager
- *
- * Manages NATS JetStream consumers for Chimps on the shared input stream
- * Borrows NATS connection from Ringmaster - does not own the connection lifecycle
- */
-
 import { type Logger, Standards } from "@mnke/circus-shared";
 import { NatsLib } from "@mnke/circus-shared/lib";
 import { AckPolicy, DeliverPolicy, type JetStreamManager } from "nats";
@@ -18,50 +11,42 @@ export class ConsumerManager {
     this.logger = logger;
   }
 
-  /**
-   * Ensure a consumer exists for a chimp on the shared input stream (idempotent)
-   */
-  async ensureConsumer(
-    profile: string,
+  async ensureEventConsumer(
     chimpId: string,
+    filterSubjects: string[],
     startSequence: number,
   ): Promise<void> {
-    const inputStreamName = Standards.Chimp.Naming.inputStreamName();
-    const consumerName = `chimp-${chimpId}`;
+    const streamName = Standards.Chimp.Naming.eventsStreamName();
+    const consumerName = Standards.Chimp.Naming.eventConsumerName(chimpId);
 
     try {
-      await this.jsm.consumers.info(inputStreamName, consumerName);
+      await this.jsm.consumers.info(streamName, consumerName);
       this.logger.debug(
         { consumerName, chimpId },
-        "Consumer already exists, skipping creation",
+        "Event consumer already exists",
       );
       return;
     } catch (error) {
-      if (NatsLib.isNatsNotFound(error)) {
-      } else {
-        throw error;
-      }
+      if (!NatsLib.isNatsNotFound(error)) throw error;
     }
 
     try {
-      await this.jsm.consumers.add(inputStreamName, {
+      await this.jsm.consumers.add(streamName, {
         durable_name: consumerName,
         ack_policy: AckPolicy.Explicit,
-        filter_subject: Standards.Chimp.Naming.inputSubject(profile, chimpId),
+        filter_subjects: filterSubjects,
         deliver_policy: DeliverPolicy.StartSequence,
         opt_start_seq: startSequence,
       });
-
       this.logger.info(
-        { consumerName, chimpId, startSequence },
-        "Created consumer",
+        { consumerName, chimpId, filterSubjects, startSequence },
+        "Created event consumer",
       );
     } catch (error) {
-      // Handle race condition
       if (NatsLib.isNatsAlreadyExists(error)) {
         this.logger.debug(
           { consumerName, chimpId },
-          "Consumer already exists (race condition), continuing",
+          "Event consumer already exists (race), continuing",
         );
         return;
       }
@@ -69,25 +54,94 @@ export class ConsumerManager {
     }
   }
 
-  /**
-   * Delete a consumer for a chimp on the shared input stream (idempotent)
-   */
-  async deleteConsumer(chimpId: string): Promise<void> {
-    const inputStreamName = Standards.Chimp.Naming.inputStreamName();
-    const consumerName = `chimp-${chimpId}`;
+  async ensureCommandConsumer(
+    chimpId: string,
+    startSequence: number,
+  ): Promise<void> {
+    const streamName = Standards.Chimp.Naming.commandsStreamName();
+    const consumerName = Standards.Chimp.Naming.commandConsumerName(chimpId);
 
     try {
-      await this.jsm.consumers.delete(inputStreamName, consumerName);
-      this.logger.info({ consumerName, chimpId }, "Deleted consumer");
+      await this.jsm.consumers.info(streamName, consumerName);
+      this.logger.debug(
+        { consumerName, chimpId },
+        "Command consumer already exists",
+      );
+      return;
     } catch (error) {
-      if (NatsLib.isNatsNotFound(error)) {
+      if (!NatsLib.isNatsNotFound(error)) throw error;
+    }
+
+    try {
+      await this.jsm.consumers.add(streamName, {
+        durable_name: consumerName,
+        ack_policy: AckPolicy.Explicit,
+        filter_subject: Standards.Chimp.Naming.commandSubject(chimpId),
+        deliver_policy: DeliverPolicy.StartSequence,
+        opt_start_seq: startSequence,
+      });
+      this.logger.info({ consumerName, chimpId }, "Created command consumer");
+    } catch (error) {
+      if (NatsLib.isNatsAlreadyExists(error)) {
         this.logger.debug(
           { consumerName, chimpId },
-          "Consumer doesn't exist, skipping deletion",
+          "Command consumer already exists (race), continuing",
         );
         return;
       }
       throw error;
+    }
+  }
+
+  async addEventFilter(chimpId: string, filterSubject: string): Promise<void> {
+    const streamName = Standards.Chimp.Naming.eventsStreamName();
+    const consumerName = Standards.Chimp.Naming.eventConsumerName(chimpId);
+
+    try {
+      const info = await this.jsm.consumers.info(streamName, consumerName);
+      const existing = info.config.filter_subjects ?? [];
+      if (existing.includes(filterSubject)) return;
+
+      await this.jsm.consumers.update(streamName, consumerName, {
+        filter_subjects: [...existing, filterSubject],
+      });
+      this.logger.info(
+        { consumerName, chimpId, filterSubject },
+        "Added event filter",
+      );
+    } catch (error) {
+      this.logger.error(
+        { err: error, chimpId, filterSubject },
+        "Failed to add event filter",
+      );
+      throw error;
+    }
+  }
+
+  async deleteConsumers(chimpId: string): Promise<void> {
+    const eventsStream = Standards.Chimp.Naming.eventsStreamName();
+    const eventConsumer = Standards.Chimp.Naming.eventConsumerName(chimpId);
+    const commandsStream = Standards.Chimp.Naming.commandsStreamName();
+    const commandConsumer = Standards.Chimp.Naming.commandConsumerName(chimpId);
+
+    const pairs: [string, string][] = [
+      [eventsStream, eventConsumer],
+      [commandsStream, commandConsumer],
+    ];
+    for (const [stream, consumer] of pairs) {
+      try {
+        await this.jsm.consumers.delete(stream, consumer);
+        this.logger.info({ consumer, chimpId }, "Deleted consumer");
+      } catch (error) {
+        if (NatsLib.isNatsNotFound(error)) {
+          this.logger.debug(
+            { consumer, chimpId },
+            "Consumer doesn't exist, skipping",
+          );
+        } else {
+          throw error;
+        }
+      }
     }
   }
 }

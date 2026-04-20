@@ -1,4 +1,4 @@
-import type { Logger, Protocol } from "@mnke/circus-shared";
+import { type Logger, type Protocol, Standards } from "@mnke/circus-shared";
 import { EnvReader as ER } from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
 import { App } from "@octokit/app";
@@ -99,10 +99,13 @@ export class GitHubAdapter implements Adapter {
     const prompt = payload.comment.body.replace(mention, "").trim();
     const installationId = payload.installation?.id;
 
-    const chimpId = `gh-${repo.replace("/", "-")}-${isPR ? "pr" : "issue"}-${issueNumber}`;
+    const parts = repo.split("/");
+    const owner = parts[0] ?? "";
+    const repoName = parts[1] ?? "";
+    const type = isPR ? "pr" : "issue";
 
     this.logger.info(
-      { repo, issueNumber, isPR, author, chimpId },
+      { repo, issueNumber, isPR, author },
       "GitHub issue comment received",
     );
 
@@ -111,7 +114,7 @@ export class GitHubAdapter implements Adapter {
     }
 
     return this.buildResult(
-      chimpId,
+      `${Standards.Chimp.Prefix.EVENTS}.github.${owner}.${repoName}.${type}.${issueNumber}.comment`,
       repo,
       installationId,
       {
@@ -145,10 +148,12 @@ export class GitHubAdapter implements Adapter {
     const filePath = payload.comment.path;
     const diffHunk = payload.comment.diff_hunk;
 
-    const chimpId = `gh-${repo.replace("/", "-")}-pr-${prNumber}`;
+    const parts = repo.split("/");
+    const owner = parts[0] ?? "";
+    const repoName = parts[1] ?? "";
 
     this.logger.info(
-      { repo, prNumber, author, filePath, chimpId },
+      { repo, prNumber, author, filePath },
       "GitHub PR review comment received",
     );
 
@@ -157,7 +162,7 @@ export class GitHubAdapter implements Adapter {
     }
 
     return this.buildResult(
-      chimpId,
+      `${Standards.Chimp.Prefix.EVENTS}.github.${owner}.${repoName}.pr.${prNumber}.review_comment`,
       repo,
       installationId,
       {
@@ -190,19 +195,18 @@ export class GitHubAdapter implements Adapter {
     const prompt = body.replace(mention, "").trim();
     const installationId = payload.installation?.id;
 
-    const chimpId = `gh-${repo.replace("/", "-")}-issue-${issueNumber}`;
+    const parts = repo.split("/");
+    const owner = parts[0] ?? "";
+    const repoName = parts[1] ?? "";
 
-    this.logger.info(
-      { repo, issueNumber, author, chimpId },
-      "GitHub issue opened",
-    );
+    this.logger.info({ repo, issueNumber, author }, "GitHub issue opened");
 
     if (installationId) {
       this.reactToIssue(repo, issueNumber, installationId);
     }
 
     return this.buildResult(
-      chimpId,
+      `${Standards.Chimp.Prefix.EVENTS}.github.${owner}.${repoName}.issue.${issueNumber}.opened`,
       repo,
       installationId,
       {
@@ -280,7 +284,7 @@ export class GitHubAdapter implements Adapter {
   }
 
   private buildResult(
-    chimpId: string,
+    eventSubject: string,
     repo: string,
     installationId: number | undefined,
     event: Protocol.GithubEvent,
@@ -288,8 +292,8 @@ export class GitHubAdapter implements Adapter {
   ): AdapterResponse {
     return {
       result: {
-        profile: this.profile,
-        chimpId,
+        eventSubject,
+        defaultProfile: this.profile,
         command: {
           command: "send-agent-message",
           args: {
