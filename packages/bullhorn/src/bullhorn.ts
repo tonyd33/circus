@@ -209,6 +209,14 @@ export class Bullhorn {
     const parts = msg.repo.split("/");
     const owner = parts[0] ?? "";
     const repo = parts[1] ?? "";
+
+    if (!owner || !repo) {
+      this.logger.error(
+        { repo: msg.repo },
+        "Invalid repo format, expected owner/repo",
+      );
+      return;
+    }
     try {
       const octokit = await this.githubApp.getInstallationOctokit(
         msg.installationId,

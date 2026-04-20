@@ -53,7 +53,7 @@ export async function ghCloneRepo(
   }
 
   if (branch) {
-    ghArgs.push("--", "--branch", branch);
+    ghArgs.push("--branch", branch);
   }
 
   const proc = Bun.spawn(["gh", ...ghArgs], {
