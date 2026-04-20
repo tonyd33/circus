@@ -93,13 +93,24 @@ export class CircusMcp {
             content: args.content,
           });
         } else if (ctx.source === "github") {
-          publish({
-            type: "github-comment",
-            installationId: ctx.installationId,
-            repo: ctx.repo,
-            issueNumber: ctx.issueNumber,
-            content: args.content,
-          });
+          const issueNumber =
+            ctx.event.name === "pull_request_review_comment.created"
+              ? ctx.event.prNumber
+              : ctx.event.issueNumber;
+          if (ctx.installationId === undefined) {
+            this.logger.warn(
+              { repo: ctx.repo, issueNumber, event: ctx.event.name },
+              "Cannot post GitHub comment: missing installationId in context",
+            );
+          } else {
+            publish({
+              type: "github-comment",
+              installationId: ctx.installationId,
+              repo: ctx.repo,
+              issueNumber,
+              content: args.content,
+            });
+          }
         }
 
         return {

@@ -1,4 +1,4 @@
-import type { Logger } from "@mnke/circus-shared";
+import type { Logger, Protocol } from "@mnke/circus-shared";
 import { EnvReader as ER } from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
 import { App } from "@octokit/app";
@@ -110,11 +110,23 @@ export class GitHubAdapter implements Adapter {
       this.reactToComment(repo, payload.comment.id, installationId);
     }
 
-    return this.buildResult(chimpId, repo, issueNumber, installationId, [
-      `GitHub ${isPR ? "PR" : "issue"} #${issueNumber} on ${repo}`,
-      `Comment by @${author}:`,
-      prompt,
-    ]);
+    return this.buildResult(
+      chimpId,
+      repo,
+      installationId,
+      {
+        name: "issue_comment.created",
+        issueNumber,
+        isPR,
+        commentId: payload.comment.id,
+        author,
+      },
+      [
+        `GitHub ${isPR ? "PR" : "issue"} #${issueNumber} on ${repo}`,
+        `Comment by @${author}:`,
+        prompt,
+      ],
+    );
   }
 
   private handlePRReviewComment(
@@ -144,12 +156,24 @@ export class GitHubAdapter implements Adapter {
       this.reactToComment(repo, payload.comment.id, installationId);
     }
 
-    return this.buildResult(chimpId, repo, prNumber, installationId, [
-      `GitHub PR #${prNumber} on ${repo}`,
-      `Review comment by @${author} on ${filePath}:`,
-      `\`\`\`diff\n${diffHunk}\n\`\`\``,
-      prompt,
-    ]);
+    return this.buildResult(
+      chimpId,
+      repo,
+      installationId,
+      {
+        name: "pull_request_review_comment.created",
+        prNumber,
+        commentId: payload.comment.id,
+        author,
+        filePath,
+      },
+      [
+        `GitHub PR #${prNumber} on ${repo}`,
+        `Review comment by @${author} on ${filePath}:`,
+        `\`\`\`diff\n${diffHunk}\n\`\`\``,
+        prompt,
+      ],
+    );
   }
 
   private handleIssues(payload: IssuesOpened["payload"]): AdapterResponse {
@@ -177,11 +201,22 @@ export class GitHubAdapter implements Adapter {
       this.reactToIssue(repo, issueNumber, installationId);
     }
 
-    return this.buildResult(chimpId, repo, issueNumber, installationId, [
-      `GitHub issue #${issueNumber} on ${repo}`,
-      `Opened by @${author}: ${title}`,
-      prompt,
-    ]);
+    return this.buildResult(
+      chimpId,
+      repo,
+      installationId,
+      {
+        name: "issues.opened",
+        issueNumber,
+        author,
+        title,
+      },
+      [
+        `GitHub issue #${issueNumber} on ${repo}`,
+        `Opened by @${author}: ${title}`,
+        prompt,
+      ],
+    );
   }
 
   private reactToComment(
@@ -247,8 +282,8 @@ export class GitHubAdapter implements Adapter {
   private buildResult(
     chimpId: string,
     repo: string,
-    issueNumber: number,
     installationId: number | undefined,
+    event: Protocol.GithubEvent,
     promptParts: string[],
   ): AdapterResponse {
     return {
@@ -262,9 +297,8 @@ export class GitHubAdapter implements Adapter {
             context: {
               source: "github" as const,
               repo,
-              issueNumber,
-              commentId: 0,
-              installationId: installationId ?? 0,
+              ...(installationId !== undefined && { installationId }),
+              event,
             },
           },
         },
