@@ -2,6 +2,7 @@ import { type Logger, Protocol } from "@mnke/circus-shared";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
+import type { StoredEventContext } from "@/chimp-brain/event-contexts";
 
 type PublishFn = (message: Protocol.ChimpOutputMessage) => void;
 
@@ -9,6 +10,7 @@ export class CircusMcp {
   private mcpServer: McpServer;
   private transport: WebStandardStreamableHTTPServerTransport;
   private eventContext: Protocol.EventContext | undefined;
+  private eventContexts: StoredEventContext[] = [];
   private httpServer: ReturnType<typeof Bun.serve> | null = null;
   private logger: Logger.Logger;
 
@@ -29,6 +31,10 @@ export class CircusMcp {
 
   setEventContext(context: Protocol.EventContext | undefined): void {
     this.eventContext = context;
+  }
+
+  setEventContexts(list: StoredEventContext[]): void {
+    this.eventContexts = list;
   }
 
   private registerTools(publish: PublishFn): void {
@@ -62,6 +68,29 @@ export class CircusMcp {
             {
               type: "text" as const,
               text: `Chimp requested: ${args.chimpId} (profile: ${args.profile})`,
+            },
+          ],
+        };
+      },
+    );
+
+    this.mcpServer.tool(
+      "list_event_contexts",
+      "List every event context (Discord interactions, GitHub issues/PRs, " +
+        "etc.) this chimp has been exposed to so far. Use alongside the " +
+        "platform-specific response tools to reply on a channel other than " +
+        "the one that triggered the current turn.",
+      {},
+      async () => {
+        this.logger.info(
+          { tool: "list_event_contexts", count: this.eventContexts.length },
+          "MCP tool called: list_event_contexts",
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(this.eventContexts),
             },
           ],
         };
