@@ -4,6 +4,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import type { NatsConnection } from "nats";
 import { z } from "zod";
+import type { StoredEventContext } from "@/chimp-brain/event-contexts";
 
 type PublishFn = (message: Protocol.ChimpOutputMessage) => void;
 
@@ -20,6 +21,7 @@ export class CircusMcp {
   private mcpServer: McpServer;
   private transport: WebStandardStreamableHTTPServerTransport;
   private eventContext: Protocol.EventContext | undefined;
+  private eventContexts: StoredEventContext[] = [];
   private httpServer: ReturnType<typeof Bun.serve> | null = null;
   private config: CircusMcpConfig;
 
@@ -40,6 +42,10 @@ export class CircusMcp {
 
   setEventContext(context: Protocol.EventContext | undefined): void {
     this.eventContext = context;
+  }
+
+  setEventContexts(list: StoredEventContext[]): void {
+    this.eventContexts = list;
   }
 
   private registerTools(): void {
@@ -82,6 +88,29 @@ export class CircusMcp {
     );
 
     this.mcpServer.tool(
+      "list_event_contexts",
+      "List every event context (Discord interactions, GitHub issues/PRs, " +
+        "etc.) this chimp has been exposed to so far. Use alongside the " +
+        "platform-specific response tools to reply on a channel other than " +
+        "the one that triggered the current turn.",
+      {},
+      async () => {
+        this.config.logger.info(
+          { tool: "list_event_contexts", count: this.eventContexts.length },
+          "MCP tool called: list_event_contexts",
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(this.eventContexts),
+            },
+          ],
+        };
+      },
+    );
+
+    this.mcpServer.tool(
       "respond",
       "Send a response back to the originating platform (Discord, GitHub, dashboard, etc.)",
       {
@@ -112,7 +141,8 @@ export class CircusMcp {
               : ctx.event.issueNumber;
           if (ctx.installationId === undefined) {
             this.config.logger.warn(
-              "Cannot post GitHub comment: missing installationId",
+              { repo: ctx.repo, issueNumber, event: ctx.event.name },
+              "Cannot post GitHub comment: missing installationId in context",
             );
           } else {
             publish({

@@ -98,6 +98,7 @@ export class Chimp {
     );
     const brain = this.brain;
     brain.onEventContext = (ctx) => this.mcp?.setEventContext(ctx);
+    brain.onEventContextsChanged = (list) => this.mcp?.setEventContexts(list);
 
     await brain.onStartup();
     this.logger.info("Chimp startup complete");

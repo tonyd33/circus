@@ -8,6 +8,11 @@ import {
   saveChimpStateToS3,
   saveClaudeStateToS3,
 } from "@/chimp-brain/claude/session-storage";
+import {
+  appendUniqueEventContext,
+  composeSystemPromptWithEventContexts,
+  type StoredEventContext,
+} from "@/chimp-brain/event-contexts";
 import { createS3Client, s3ConfigReader } from "@/lib/s3";
 import { ChimpBrain, type CommandResult } from "../chimp-brain";
 import { processWithClaude } from "./agent";
@@ -17,6 +22,7 @@ export class ClaudeChimp extends ChimpBrain {
   private sessionId?: string;
   private s3Client: S3Client | null = null;
   private s3Bucket: string | null = null;
+  protected eventContexts: StoredEventContext[] = [];
 
   async onStartup(): Promise<void> {
     this.log("info", "ClaudeChimp starting up", { chimpId: this.chimpId });
@@ -64,15 +70,19 @@ export class ClaudeChimp extends ChimpBrain {
         this.messageCount = savedState.messageCount;
         this.model = savedState.model;
         this.allowedTools = savedState.allowedTools;
+        this.eventContexts = savedState.eventContexts;
         this.log("info", "Chimp state restored from S3", {
           sessionId: this.sessionId,
           workingDir: this.workingDir,
           messageCount: this.messageCount,
+          eventContextCount: this.eventContexts.length,
         });
       }
     } catch (_error) {
       this.log("warn", "Could not restore chimp state, using defaults");
     }
+
+    this.onEventContextsChanged?.(this.eventContexts);
   }
 
   async onShutdown(): Promise<void> {
@@ -86,6 +96,7 @@ export class ClaudeChimp extends ChimpBrain {
           messageCount: this.messageCount,
           model: this.model,
           allowedTools: this.allowedTools,
+          eventContexts: this.eventContexts,
         });
         this.log("info", "Chimp state saved to S3");
 
@@ -106,7 +117,7 @@ export class ClaudeChimp extends ChimpBrain {
         messageCount: this.messageCount,
         sessionId: this.sessionId,
         model: this.model,
-        systemPrompt: this.systemPrompt,
+        systemPrompt: this.composeSystemPrompt(),
         allowedTools: this.allowedTools,
         workingDir: this.workingDir,
         mcpUrl: this.mcpUrl,
@@ -124,5 +135,28 @@ export class ClaudeChimp extends ChimpBrain {
     this.publish(Protocol.createAgentMessageResponse(agentResponse, sessionId));
 
     return "continue";
+  }
+
+  protected override recordEventContext(ctx: Protocol.EventContext): void {
+    const next = appendUniqueEventContext(this.eventContexts, ctx);
+    if (next === this.eventContexts) return;
+    this.eventContexts = next;
+    this.onEventContextsChanged?.(this.eventContexts);
+  }
+
+  /**
+   * Compose the effective system prompt for the next turn. Appends a
+   * `<known_event_contexts>` block describing every platform/channel
+   * the chimp has seen so far, so the agent can pick one to reply on
+   * even when it's not the turn's originating channel.
+   *
+   * Recomposed on every turn so restarts and new contexts flow through
+   * without mutating `this.systemPrompt`.
+   */
+  protected composeSystemPrompt(): string | undefined {
+    return composeSystemPromptWithEventContexts(
+      this.systemPrompt,
+      this.eventContexts,
+    );
   }
 }

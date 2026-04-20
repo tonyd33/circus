@@ -99,10 +99,15 @@ export class GitHubAdapter implements Adapter {
     const prompt = payload.comment.body.replace(mention, "").trim();
     const installationId = payload.installation?.id;
 
-    const parts = repo.split("/");
-    const owner = parts[0] ?? "";
-    const repoName = parts[1] ?? "";
-    const type = isPR ? "pr" : "issue";
+    const [owner, repoName] = this.splitRepo(repo);
+    const type = isPR ? ("pr" as const) : ("issue" as const);
+    const topic: Standards.Topic.Topic = {
+      platform: "github",
+      owner,
+      repo: repoName,
+      type,
+      number: issueNumber,
+    };
 
     this.logger.info(
       { repo, issueNumber, isPR, author },
@@ -114,7 +119,7 @@ export class GitHubAdapter implements Adapter {
     }
 
     return this.buildResult(
-      `${Standards.Chimp.Prefix.EVENTS}.github.${owner}.${repoName}.${type}.${issueNumber}.comment`,
+      Standards.Topic.buildEventSubject(topic, "comment"),
       repo,
       installationId,
       {
@@ -148,9 +153,14 @@ export class GitHubAdapter implements Adapter {
     const filePath = payload.comment.path;
     const diffHunk = payload.comment.diff_hunk;
 
-    const parts = repo.split("/");
-    const owner = parts[0] ?? "";
-    const repoName = parts[1] ?? "";
+    const [owner, repoName] = this.splitRepo(repo);
+    const topic: Standards.Topic.Topic = {
+      platform: "github",
+      owner,
+      repo: repoName,
+      type: "pr",
+      number: prNumber,
+    };
 
     this.logger.info(
       { repo, prNumber, author, filePath },
@@ -162,7 +172,7 @@ export class GitHubAdapter implements Adapter {
     }
 
     return this.buildResult(
-      `${Standards.Chimp.Prefix.EVENTS}.github.${owner}.${repoName}.pr.${prNumber}.review_comment`,
+      Standards.Topic.buildEventSubject(topic, "review_comment"),
       repo,
       installationId,
       {
@@ -195,9 +205,14 @@ export class GitHubAdapter implements Adapter {
     const prompt = body.replace(mention, "").trim();
     const installationId = payload.installation?.id;
 
-    const parts = repo.split("/");
-    const owner = parts[0] ?? "";
-    const repoName = parts[1] ?? "";
+    const [owner, repoName] = this.splitRepo(repo);
+    const topic: Standards.Topic.Topic = {
+      platform: "github",
+      owner,
+      repo: repoName,
+      type: "issue",
+      number: issueNumber,
+    };
 
     this.logger.info({ repo, issueNumber, author }, "GitHub issue opened");
 
@@ -206,7 +221,7 @@ export class GitHubAdapter implements Adapter {
     }
 
     return this.buildResult(
-      `${Standards.Chimp.Prefix.EVENTS}.github.${owner}.${repoName}.issue.${issueNumber}.opened`,
+      Standards.Topic.buildEventSubject(topic, "opened"),
       repo,
       installationId,
       {
@@ -223,14 +238,17 @@ export class GitHubAdapter implements Adapter {
     );
   }
 
+  private splitRepo(fullName: string): [string, string] {
+    const parts = fullName.split("/");
+    return [parts[0] ?? "", parts[1] ?? ""];
+  }
+
   private reactToComment(
     repo: string,
     commentId: number,
     installationId: number,
   ): void {
-    const parts = repo.split("/");
-    const owner = parts[0] ?? "";
-    const repoName = parts[1] ?? "";
+    const [owner, repoName] = this.splitRepo(repo);
 
     this.app
       .getInstallationOctokit(installationId)
@@ -258,9 +276,7 @@ export class GitHubAdapter implements Adapter {
     issueNumber: number,
     installationId: number,
   ): void {
-    const parts = repo.split("/");
-    const owner = parts[0] ?? "";
-    const repoName = parts[1] ?? "";
+    const [owner, repoName] = this.splitRepo(repo);
 
     this.app
       .getInstallationOctokit(installationId)

@@ -32,6 +32,10 @@ export function topicToEventSubject(topic: Topic): string {
   return `events.${serializeTopic(topic)}.>`;
 }
 
+export function buildEventSubject(topic: Topic, action: string): string {
+  return `events.${serializeTopic(topic)}.${action}`;
+}
+
 const dot = P.grapheme(".");
 const segment = P.flat(P.many1(P.noneOf(".")));
 const digits = P.flat(P.many1(P.oneOf("0123456789")));
