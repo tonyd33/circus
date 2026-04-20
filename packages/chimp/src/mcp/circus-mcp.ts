@@ -269,22 +269,6 @@ export class CircusMcp {
           "Transmogrify initiated",
         );
 
-        // Queue resume command for new incarnation (durable in commands stream)
-        const resumeCommand: Protocol.ChimpCommand = {
-          command: "resume-transmogrify",
-          args: {
-            fromProfile: profile,
-            reason: args.reason,
-            summary: args.summary,
-          },
-        };
-        const js = nc.jetstream();
-        await js.publish(
-          Standards.Chimp.Naming.commandSubject(chimpId),
-          JSON.stringify(resumeCommand),
-        );
-
-        // Publish transmogrify output (ringmaster picks this up)
         publish({
           type: "transmogrify",
           targetProfile: args.targetProfile,

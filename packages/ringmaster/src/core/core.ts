@@ -14,7 +14,6 @@ export type EventPayload =
   | {
       type: "pod_event";
       chimpId: string;
-      profile: string;
       eventType: string;
       pod: k8s.V1Pod;
     }
@@ -47,6 +46,7 @@ export type Action =
       profile: string;
       status: Standards.Chimp.ChimpStatus;
     }
+  | { type: "upsert_status"; status: Standards.Chimp.ChimpStatus }
   | { type: "delete_job" }
   | { type: "delete_state" }
   | { type: "noop" };
@@ -87,29 +87,24 @@ export function deriveChimpId(
 function decideOnPodEvent(
   _state: CoreState,
   chimpId: string,
-  profile: string,
   eventType: string,
   pod: k8s.V1Pod,
 ): Decision {
-  const phase = pod.status?.phase;
-  const status = podPhaseToStatus(phase);
-
   if (eventType === "DELETED") {
     return {
       chimpId,
-      actions: [
-        { type: "delete_consumers" },
-        { type: "cleanup_topics" },
-        { type: "upsert_state", profile, status: "stopped" },
-      ],
+      actions: [],
       reason: "Pod deleted",
     };
   }
 
+  const phase = pod.status?.phase;
+  const status = podPhaseToStatus(phase);
+
   return {
     chimpId,
-    actions: [{ type: "upsert_state", profile, status }],
-    reason: "Pod phase changed",
+    actions: [{ type: "upsert_status", status }],
+    reason: `Pod ${eventType} phase ${phase}`,
   };
 }
 
@@ -128,7 +123,6 @@ function decideOnEventReceived(
     };
   }
 
-  // If topicOwner exists but no pod, reuse the chimpId for continuity
   const chimpId = state.topicOwner
     ? state.topicOwner.chimpId
     : deriveChimpId(topic, eventSubject);
@@ -174,6 +168,11 @@ function decideOnChimpOutput(
       return {
         chimpId,
         actions: [
+          {
+            type: "upsert_state",
+            profile: message.targetProfile,
+            status: "scheduled",
+          },
           { type: "delete_job" },
           { type: "create_job", profile: message.targetProfile },
         ],
@@ -194,7 +193,6 @@ export function decide(state: CoreState, payload: EventPayload): Decision {
       return decideOnPodEvent(
         state,
         payload.chimpId,
-        payload.profile,
         payload.eventType,
         payload.pod,
       );
