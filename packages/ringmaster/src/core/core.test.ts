@@ -8,36 +8,30 @@ function state(overrides: Partial<CoreState> = {}): CoreState {
 }
 
 describe("pod_event", () => {
-  test("DELETED: deletes consumers, cleans topics, updates state", () => {
+  test("DELETED: no actions", () => {
     const pod: any = { status: { phase: "Succeeded" } };
     const decision = decide(state(), {
       type: "pod_event",
       chimpId: "chimp-1",
-      profile: P,
       eventType: "DELETED",
       pod,
     });
 
     expect(decision.chimpId).toBe("chimp-1");
-    expect(decision.actions).toEqual([
-      { type: "delete_consumers" },
-      { type: "cleanup_topics" },
-      { type: "upsert_state", profile: P, status: "stopped" },
-    ]);
+    expect(decision.actions).toEqual([]);
   });
 
-  test("ADDED Running: upserts state", () => {
+  test("ADDED Running: upserts status", () => {
     const pod: any = { status: { phase: "Running" } };
     const decision = decide(state(), {
       type: "pod_event",
       chimpId: "chimp-1",
-      profile: P,
       eventType: "ADDED",
       pod,
     });
 
     expect(decision.actions).toEqual([
-      { type: "upsert_state", profile: P, status: "running" },
+      { type: "upsert_status", status: "running" },
     ]);
   });
 
@@ -46,13 +40,12 @@ describe("pod_event", () => {
     const decision = decide(state(), {
       type: "pod_event",
       chimpId: "chimp-1",
-      profile: P,
       eventType: "ADDED",
       pod,
     });
 
     expect(decision.actions).toEqual([
-      { type: "upsert_state", profile: P, status: "pending" },
+      { type: "upsert_status", status: "pending" },
     ]);
   });
 
@@ -61,13 +54,12 @@ describe("pod_event", () => {
     const decision = decide(state(), {
       type: "pod_event",
       chimpId: "chimp-1",
-      profile: P,
       eventType: "MODIFIED",
       pod,
     });
 
     expect(decision.actions).toEqual([
-      { type: "upsert_state", profile: P, status: "failed" },
+      { type: "upsert_status", status: "failed" },
     ]);
   });
 });
@@ -196,7 +188,7 @@ describe("event_received", () => {
 });
 
 describe("chimp_output", () => {
-  test("transmogrify: deletes job and creates new with target profile", () => {
+  test("transmogrify: upserts state, deletes job, creates new", () => {
     const decision = decide(state(), {
       type: "chimp_output",
       chimpId: "chimp-1",
@@ -210,6 +202,7 @@ describe("chimp_output", () => {
 
     expect(decision.chimpId).toBe("chimp-1");
     expect(decision.actions).toEqual([
+      { type: "upsert_state", profile: "powerful", status: "scheduled" },
       { type: "delete_job" },
       { type: "create_job", profile: "powerful" },
     ]);

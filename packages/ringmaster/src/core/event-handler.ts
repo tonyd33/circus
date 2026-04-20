@@ -158,6 +158,22 @@ export class EventHandler {
         );
         break;
 
+      case "upsert_status": {
+        const currentState = await this.deps.stateManager.get(chimpId);
+        const profile = currentState?.profile ?? "unknown";
+        this.logger.info(
+          { chimpId, profile, status: action.status },
+          "Executing: upsert_status",
+        );
+        await this.deps.stateManager.upsert(chimpId, profile, action.status);
+        await this.deps.metaPublisher.publishStatus(
+          profile,
+          chimpId,
+          action.status,
+        );
+        break;
+      }
+
       case "delete_state":
         this.logger.info({ chimpId }, "Executing: delete_state");
         await this.deps.stateManager.delete(chimpId);
