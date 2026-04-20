@@ -93,13 +93,20 @@ export class CircusMcp {
             content: args.content,
           });
         } else if (ctx.source === "github") {
-          publish({
-            type: "github-comment",
-            installationId: ctx.installationId,
-            repo: ctx.repo,
-            issueNumber: ctx.issueNumber,
-            content: args.content,
-          });
+          if (ctx.installationId === undefined) {
+            this.logger.warn(
+              { repo: ctx.repo, issueNumber: ctx.issueNumber },
+              "Cannot post GitHub comment: missing installationId in context",
+            );
+          } else {
+            publish({
+              type: "github-comment",
+              installationId: ctx.installationId,
+              repo: ctx.repo,
+              issueNumber: ctx.issueNumber,
+              content: args.content,
+            });
+          }
         }
 
         return {

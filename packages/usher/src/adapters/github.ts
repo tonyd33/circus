@@ -110,11 +110,18 @@ export class GitHubAdapter implements Adapter {
       this.reactToComment(repo, payload.comment.id, installationId);
     }
 
-    return this.buildResult(chimpId, repo, issueNumber, installationId, [
-      `GitHub ${isPR ? "PR" : "issue"} #${issueNumber} on ${repo}`,
-      `Comment by @${author}:`,
-      prompt,
-    ]);
+    return this.buildResult(
+      chimpId,
+      repo,
+      issueNumber,
+      installationId,
+      [
+        `GitHub ${isPR ? "PR" : "issue"} #${issueNumber} on ${repo}`,
+        `Comment by @${author}:`,
+        prompt,
+      ],
+      payload.comment.id,
+    );
   }
 
   private handlePRReviewComment(
@@ -144,12 +151,19 @@ export class GitHubAdapter implements Adapter {
       this.reactToComment(repo, payload.comment.id, installationId);
     }
 
-    return this.buildResult(chimpId, repo, prNumber, installationId, [
-      `GitHub PR #${prNumber} on ${repo}`,
-      `Review comment by @${author} on ${filePath}:`,
-      `\`\`\`diff\n${diffHunk}\n\`\`\``,
-      prompt,
-    ]);
+    return this.buildResult(
+      chimpId,
+      repo,
+      prNumber,
+      installationId,
+      [
+        `GitHub PR #${prNumber} on ${repo}`,
+        `Review comment by @${author} on ${filePath}:`,
+        `\`\`\`diff\n${diffHunk}\n\`\`\``,
+        prompt,
+      ],
+      payload.comment.id,
+    );
   }
 
   private handleIssues(payload: IssuesOpened["payload"]): AdapterResponse {
@@ -250,6 +264,7 @@ export class GitHubAdapter implements Adapter {
     issueNumber: number,
     installationId: number | undefined,
     promptParts: string[],
+    commentId?: number,
   ): AdapterResponse {
     return {
       result: {
@@ -263,8 +278,8 @@ export class GitHubAdapter implements Adapter {
               source: "github" as const,
               repo,
               issueNumber,
-              commentId: 0,
-              installationId: installationId ?? 0,
+              ...(commentId !== undefined && { commentId }),
+              ...(installationId !== undefined && { installationId }),
             },
           },
         },
