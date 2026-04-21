@@ -88,7 +88,7 @@ export class DiscordAdapter implements Adapter {
 
     if (interaction.type === InteractionType.APPLICATION_COMMAND) {
       const commandName = interaction.data?.name;
-      if (commandName !== "circus") {
+      if (commandName !== "chimp") {
         return {
           result: null,
           response: Response.json({
@@ -108,7 +108,13 @@ export class DiscordAdapter implements Adapter {
         "unknown";
       const guild = interaction.guild_id ?? "dm";
       const channel = interaction.channel_id ?? "unknown";
-      const eventSubject = `events.discord.${guild}.${channel}.message`;
+      const topic: Standards.Topic.Topic = {
+        platform: "discord",
+        guildId: guild,
+        channelId: channel,
+        interactionId: interaction.id,
+      };
+      const eventSubject = Standards.Topic.buildEventSubject(topic, "command");
 
       this.logger.info(
         { user, eventSubject, prompt: prompt.slice(0, 100) },
@@ -127,6 +133,7 @@ export class DiscordAdapter implements Adapter {
                 source: "discord",
                 interactionToken: interaction.token,
                 applicationId: this.applicationId,
+                channelId: channel,
               },
             },
           },

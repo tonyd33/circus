@@ -9,13 +9,18 @@ export const TopicSchema = z.discriminatedUnion("platform", [
     type: z.enum(["pr", "issue"]),
     number: z.number(),
   }),
+  z.object({
+    platform: z.literal("discord"),
+    guildId: z.string(),
+    channelId: z.string(),
+    interactionId: z.string(),
+  }),
 ]);
 
 export type Topic = z.infer<typeof TopicSchema>;
 
 export interface TopicSubscription {
   chimpId: string;
-  profile: string;
   subscribedAt: string;
 }
 
@@ -25,6 +30,8 @@ export function serializeTopic(topic: Topic): string {
   switch (topic.platform) {
     case "github":
       return `github.${topic.owner}.${topic.repo}.${topic.type}.${topic.number}`;
+    case "discord":
+      return `discord.${topic.guildId}.${topic.channelId}.${topic.interactionId}`;
   }
 }
 
@@ -62,7 +69,25 @@ const githubTopicParser = P.Do()
     }),
   );
 
-const eventSubjectParser = P.choice([githubTopicParser]);
+const discordTopicParser = P.Do()
+  .do(P.str("events."))
+  .do(P.str("discord"))
+  .do(dot)
+  .bind("guildId", segment)
+  .do(dot)
+  .bind("channelId", segment)
+  .do(dot)
+  .bind("interactionId", segment)
+  .return(
+    (env): Topic => ({
+      platform: "discord",
+      guildId: env.guildId,
+      channelId: env.channelId,
+      interactionId: env.interactionId,
+    }),
+  );
+
+const eventSubjectParser = P.choice([githubTopicParser, discordTopicParser]);
 
 export function eventSubjectToTopic(subject: string): Topic | null {
   return eventSubjectParser.parse(subject).unwrapOr(null);

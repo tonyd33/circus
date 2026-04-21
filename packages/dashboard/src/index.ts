@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { Logger, Standards } from "@mnke/circus-shared";
+import { Logger } from "@mnke/circus-shared";
 import { EnvReader as ER, TopicRegistry } from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
 import { serve } from "bun";
@@ -38,9 +38,8 @@ async function main() {
   });
   logger.info({ url: config.natsUrl }, "Connected to NATS");
 
-  const js = nc.jetstream();
-  const kv = await js.views.kv(Standards.Topic.TOPIC_OWNERS_BUCKET);
-  const topicRegistry = new TopicRegistry(kv);
+  const topicRegistry = new TopicRegistry(nc);
+  await topicRegistry.start();
 
   const activityRouter = new ActivityRouter(
     nc,

@@ -1,41 +1,77 @@
-import type { KV } from "nats";
+import type { JetStreamManager, KV, NatsConnection } from "nats";
+import { Naming } from "../standards/chimp";
 import {
+  eventSubjectToTopic,
   serializeTopic,
+  TOPIC_OWNERS_BUCKET,
   type Topic,
   type TopicSubscription,
+  topicToEventSubject,
 } from "../standards/topic";
 
 export class TopicRegistry {
-  constructor(private kv: KV) {}
+  private kv: KV | null = null;
+  private jsm: JetStreamManager | null = null;
+
+  constructor(private nc: NatsConnection) {}
+
+  async start(): Promise<void> {
+    const js = this.nc.jetstream();
+    this.jsm = await this.nc.jetstreamManager();
+    this.kv = await js.views.kv(TOPIC_OWNERS_BUCKET, { history: 1 });
+  }
 
   async subscribe(
     topic: Topic,
     chimpId: string,
-    profile: string,
     { force = false } = {},
   ): Promise<boolean> {
+    if (!this.kv || !this.jsm) throw new Error("TopicRegistry not started");
+
     const key = serializeTopic(topic);
     const value: TopicSubscription = {
       chimpId,
-      profile,
       subscribedAt: new Date().toISOString(),
     };
+
     if (force) {
       await this.kv.put(key, JSON.stringify(value));
-      return true;
-    }
-    try {
-      await this.kv.create(key, JSON.stringify(value));
-      return true;
-    } catch (err) {
-      if (err instanceof Error && err.message.includes("wrong last sequence")) {
-        return false;
+    } else {
+      try {
+        await this.kv.create(key, JSON.stringify(value));
+      } catch (err) {
+        if (
+          err instanceof Error &&
+          err.message.includes("wrong last sequence")
+        ) {
+          return false;
+        }
+        throw err;
       }
-      throw err;
     }
+
+    const filterSubject = topicToEventSubject(topic);
+    const streamName = Naming.eventsStreamName();
+    const consumerName = Naming.eventConsumerName(chimpId);
+
+    try {
+      const info = await this.jsm.consumers.info(streamName, consumerName);
+      const existing = info.config.filter_subjects ?? [];
+      if (!existing.includes(filterSubject)) {
+        await this.jsm.consumers.update(streamName, consumerName, {
+          filter_subjects: [...existing, filterSubject],
+        });
+      }
+    } catch {
+      // Consumer may not exist yet
+    }
+
+    return true;
   }
 
   async lookup(topic: Topic): Promise<TopicSubscription | null> {
+    if (!this.kv) throw new Error("TopicRegistry not started");
+
     const key = serializeTopic(topic);
     try {
       const entry = await this.kv.get(key);
@@ -47,6 +83,8 @@ export class TopicRegistry {
   }
 
   async unsubscribe(topic: Topic, chimpId: string): Promise<void> {
+    if (!this.kv) return;
+
     const key = serializeTopic(topic);
     try {
       const entry = await this.kv.get(key);
@@ -58,13 +96,19 @@ export class TopicRegistry {
         await this.kv.delete(key);
       }
     } catch {
-      // best-effort cleanup
+      // best-effort
     }
   }
 
   async unsubscribeAll(chimpId: string): Promise<void> {
+    if (!this.kv) return;
+
+    const allKeys: string[] = [];
     const keys = await this.kv.keys();
     for await (const key of keys) {
+      allKeys.push(key);
+    }
+    for (const key of allKeys) {
       try {
         const entry = await this.kv.get(key);
         if (!entry?.value) continue;
@@ -75,47 +119,25 @@ export class TopicRegistry {
           await this.kv.delete(key);
         }
       } catch {
-        // best-effort cleanup
+        // best-effort
       }
     }
   }
 
   async listForChimp(chimpId: string): Promise<Topic[]> {
-    const topics: Topic[] = [];
-    const keys = await this.kv.keys();
-    for await (const key of keys) {
-      try {
-        const entry = await this.kv.get(key);
-        if (!entry?.value) continue;
-        const sub: TopicSubscription = JSON.parse(
-          new TextDecoder().decode(entry.value),
-        );
-        if (sub.chimpId !== chimpId) continue;
-        const topic = parseTopicKey(key);
-        if (topic) topics.push(topic);
-      } catch {
-        // skip malformed entries
-      }
-    }
-    return topics;
-  }
-}
+    if (!this.jsm) return [];
 
-function parseTopicKey(key: string): Topic | null {
-  const parts = key.split(".");
-  switch (parts[0]) {
-    case "github": {
-      const owner = parts[1];
-      const repo = parts[2];
-      const type = parts[3];
-      const number = parts[4];
-      if (!owner || !repo || !type || !number) return null;
-      if (type !== "pr" && type !== "issue") return null;
-      const parsed = Number(number);
-      if (Number.isNaN(parsed)) return null;
-      return { platform: "github", owner, repo, type, number: parsed };
+    const streamName = Naming.eventsStreamName();
+    const consumerName = Naming.eventConsumerName(chimpId);
+
+    try {
+      const info = await this.jsm.consumers.info(streamName, consumerName);
+      const filterSubjects = info.config.filter_subjects ?? [];
+      return filterSubjects
+        .map((s) => eventSubjectToTopic(s))
+        .filter((t): t is Topic => t !== null);
+    } catch {
+      return [];
     }
-    default:
-      return null;
   }
 }

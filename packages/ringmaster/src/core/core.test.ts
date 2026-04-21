@@ -80,7 +80,6 @@ describe("event_received", () => {
       pod,
       topicOwner: {
         chimpId: "existing-chimp",
-        profile: P,
         subscribedAt: new Date().toISOString(),
       },
     });
@@ -101,7 +100,6 @@ describe("event_received", () => {
     const s = state({
       topicOwner: {
         chimpId: "stale-chimp",
-        profile: P,
         subscribedAt: new Date().toISOString(),
       },
     });

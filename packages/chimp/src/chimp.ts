@@ -65,9 +65,8 @@ export class Chimp {
       });
       this.logger.info("Connected to NATS");
 
-      const js = this.nc.jetstream();
-      const kv = await js.views.kv(Standards.Topic.TOPIC_OWNERS_BUCKET);
-      this.topicRegistry = new TopicRegistry(kv);
+      this.topicRegistry = new TopicRegistry(this.nc);
+      await this.topicRegistry.start();
       this.logger.info("Topic registry connected");
     }
 

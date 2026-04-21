@@ -118,12 +118,9 @@ export class EventHandler {
           },
           "Executing: register_topic",
         );
-        await this.deps.topicRegistry.subscribe(
-          action.topic,
-          chimpId,
-          action.profile,
-          { force: action.force ?? false },
-        );
+        await this.deps.topicRegistry.subscribe(action.topic, chimpId, {
+          force: action.force ?? false,
+        });
         break;
 
       case "delete_consumers":

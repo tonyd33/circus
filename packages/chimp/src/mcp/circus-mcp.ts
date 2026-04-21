@@ -20,8 +20,10 @@ export interface CircusMcpConfig {
 }
 
 export class CircusMcp {
-  private mcpServer: McpServer;
-  private transport: WebStandardStreamableHTTPServerTransport;
+  private activeTransports: Map<
+    string,
+    WebStandardStreamableHTTPServerTransport
+  > = new Map();
   private eventContexts: StoredEventContext[] = [];
   private httpServer: ReturnType<typeof Bun.serve> | null = null;
   private redis: Redis;
@@ -30,27 +32,32 @@ export class CircusMcp {
   constructor(config: CircusMcpConfig) {
     this.config = config;
     this.redis = new Redis(config.redisUrl);
-
-    this.mcpServer = new McpServer({
-      name: "circus",
-      version: "0.1.0",
-    });
-
-    this.transport = new WebStandardStreamableHTTPServerTransport({
-      sessionIdGenerator: () => crypto.randomUUID(),
-    });
-
-    this.registerTools();
   }
 
   setEventContexts(list: StoredEventContext[]): void {
     this.eventContexts = list;
   }
 
-  private registerTools(): void {
+  private async createSessionHandler(): Promise<WebStandardStreamableHTTPServerTransport> {
+    const transport = new WebStandardStreamableHTTPServerTransport({
+      sessionIdGenerator: () => crypto.randomUUID(),
+      onsessioninitialized: (id) => {
+        this.activeTransports.set(id, transport);
+      },
+      onsessionclosed: (id) => {
+        this.activeTransports.delete(id);
+      },
+    });
+    const server = new McpServer({ name: "circus", version: "0.1.0" });
+    this.registerTools(server);
+    await server.connect(transport);
+    return transport;
+  }
+
+  private registerTools(server: McpServer): void {
     const { publish } = this.config;
 
-    this.mcpServer.tool(
+    server.tool(
       "chimp_request",
       "Request creation of a new chimp agent with a specific profile and initial message",
       {
@@ -86,7 +93,7 @@ export class CircusMcp {
       },
     );
 
-    this.mcpServer.tool(
+    server.tool(
       "list_event_contexts",
       "List every event context (Discord interactions, GitHub issues/PRs, " +
         "etc.) this chimp has been exposed to so far. Use alongside the " +
@@ -109,7 +116,7 @@ export class CircusMcp {
       },
     );
 
-    this.mcpServer.tool(
+    server.tool(
       "github_respond",
       "Post a comment on a GitHub issue or pull request. Accepts explicit " +
         "arguments so you can reply on any GitHub channel you know about " +
@@ -150,7 +157,7 @@ export class CircusMcp {
       },
     );
 
-    this.mcpServer.tool(
+    server.tool(
       "discord_respond",
       "Post a reply to a Discord interaction. Accepts explicit arguments so " +
         "you can reply on any Discord interaction you know about (including " +
@@ -182,7 +189,7 @@ export class CircusMcp {
       },
     );
 
-    this.mcpServer.tool(
+    server.tool(
       "dashboard_respond",
       "Send a response back to the dashboard (or any caller that consumes " +
         "`agent-message-response`). Use this when the current turn was " +
@@ -218,7 +225,7 @@ export class CircusMcp {
       },
     );
 
-    this.mcpServer.tool(
+    server.tool(
       "subscribe_topic",
       "Subscribe to a topic so future events matching it route to this chimp. Use after creating a PR, claiming an issue, etc.",
       {
@@ -243,7 +250,7 @@ export class CircusMcp {
           };
         }
 
-        const success = await topicRegistry.subscribe(topic, chimpId, profile);
+        const success = await topicRegistry.subscribe(topic, chimpId);
         if (!success) {
           return {
             content: [
@@ -253,28 +260,6 @@ export class CircusMcp {
               },
             ],
           };
-        }
-
-        // Update event consumer to include new topic filter
-        const filterSubject = Standards.Topic.topicToEventSubject(topic);
-        try {
-          const jsm = await nc.jetstreamManager();
-          const streamName = Standards.Chimp.Naming.eventsStreamName();
-          const consumerName =
-            Standards.Chimp.Naming.eventConsumerName(chimpId);
-
-          const info = await jsm.consumers.info(streamName, consumerName);
-          const existing = info.config.filter_subjects ?? [];
-          if (!existing.includes(filterSubject)) {
-            await jsm.consumers.update(streamName, consumerName, {
-              filter_subjects: [...existing, filterSubject],
-            });
-          }
-        } catch (err) {
-          logger.error(
-            { err, filterSubject },
-            "Failed to update consumer filter",
-          );
         }
 
         const topicKey = Standards.Topic.serializeTopic(topic);
@@ -288,7 +273,7 @@ export class CircusMcp {
       },
     );
 
-    this.mcpServer.tool(
+    server.tool(
       "transmogrify",
       "Transform this chimp into a more powerful profile. Queues a handoff message for the new incarnation, then signals the platform to replace this pod. Use when the current profile is insufficient for the task.",
       {
@@ -335,7 +320,7 @@ export class CircusMcp {
       },
     );
 
-    this.mcpServer.tool(
+    server.tool(
       "list_profiles",
       "List available chimp profiles with descriptions, brain type, and model. Use to decide which profile to transmogrify into.",
       {},
@@ -372,8 +357,6 @@ export class CircusMcp {
   }
 
   async start(): Promise<string> {
-    await this.mcpServer.connect(this.transport);
-
     this.httpServer = Bun.serve({
       port: 0,
       fetch: async (req) => {
@@ -382,9 +365,18 @@ export class CircusMcp {
           "MCP HTTP request",
         );
         try {
-          const res = await this.transport.handleRequest(req);
-          this.config.logger.debug({ status: res.status }, "MCP HTTP response");
-          return res;
+          const sessionId = req.headers.get("mcp-session-id");
+
+          if (sessionId) {
+            const existing = this.activeTransports.get(sessionId);
+            if (existing) {
+              return await existing.handleRequest(req);
+            }
+            return new Response("Session not found", { status: 404 });
+          }
+
+          const transport = await this.createSessionHandler();
+          return await transport.handleRequest(req);
         } catch (err) {
           this.config.logger.error({ err }, "MCP HTTP error");
           return new Response("Internal Server Error", { status: 500 });
@@ -399,7 +391,6 @@ export class CircusMcp {
 
   async stop(): Promise<void> {
     this.httpServer?.stop();
-    await this.mcpServer.close();
     await this.redis.quit();
     this.config.logger.info("MCP server stopped");
   }
