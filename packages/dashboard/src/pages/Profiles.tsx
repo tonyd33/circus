@@ -105,7 +105,9 @@ export function Profiles() {
     <div className="container mx-auto p-8">
       <div className="flex items-end justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-bold">Profiles</h1>
+          <h1 className="text-3xl font-bold text-circus-crimson">
+            🎩 Profiles
+          </h1>
           <p className="text-muted-foreground">
             Configure chimp profiles. Changes take effect on next job creation.
           </p>
