@@ -1,5 +1,5 @@
 import { type Logger, Protocol, Standards } from "@mnke/circus-shared";
-import { TopicRegistry, Typing } from "@mnke/circus-shared/lib";
+import { ProfileStore, TopicRegistry, Typing } from "@mnke/circus-shared/lib";
 import Redis from "ioredis";
 import type { NatsConnection } from "nats";
 import { connect } from "nats";
@@ -78,11 +78,14 @@ export class Chimp {
       output.publish(message);
     };
 
+    const profileRedis = new Redis(this.config.redisUrl);
+    const profileStore = new ProfileStore(profileRedis);
+
     this.mcp = new CircusMcp({
       publish: publishFn,
       chimpId: this.config.chimpId,
       profile: this.config.profile,
-      redisUrl: this.config.redisUrl,
+      profileStore,
       topicRegistry: this.topicRegistry,
       nc: this.nc,
       logger: this.logger.child({ component: "MCP" }),
@@ -102,7 +105,7 @@ export class Chimp {
     await brain.onStartup();
     this.logger.info("Chimp startup complete");
 
-    await this.executeInitCommands(brain);
+    await this.executeInitCommands(brain, profileStore);
     this.logger.info("Init config executed");
 
     const onActivity = () => {
@@ -161,15 +164,13 @@ export class Chimp {
     }
   }
 
-  private async executeInitCommands(brain: ChimpBrain): Promise<void> {
-    const redis = new Redis(this.config.redisUrl);
+  private async executeInitCommands(
+    brain: ChimpBrain,
+    profileStore: ProfileStore,
+  ): Promise<void> {
     try {
-      const key = Standards.Chimp.Naming.redisProfileKey(this.config.profile);
-      const data = await redis.get(key);
-      if (!data) return;
-
-      const profile = Protocol.ChimpProfileSchema.parse(JSON.parse(data));
-      if (profile.initCommands.length === 0) return;
+      const profile = await profileStore.get(this.config.profile);
+      if (!profile || profile.initCommands.length === 0) return;
 
       this.logger.info(
         { commands: profile.initCommands.length },
@@ -186,8 +187,8 @@ export class Chimp {
       }
 
       this.logger.info("Init commands complete");
-    } finally {
-      await redis.quit();
+    } catch (err) {
+      this.logger.error({ err }, "Error executing init commands");
     }
   }
 

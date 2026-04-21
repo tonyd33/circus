@@ -26,6 +26,7 @@
     "nats": "catalog:"
   },
   "dependencies": {
+    "ioredis": "catalog:",
     "pino": "^10.3.1",
     "prom-client": "^15.1.3"
   }

@@ -262,6 +262,21 @@ Ensure every resource created has a clear destruction path documented in the com
 - If slicing arrays/strings, derive indices from the data structure (e.g. `prefix.length + 1` not `6`)
 - Use named functions for non-obvious transformations
 
+## Imports
+
+**NEVER use dynamic `import()` for types.** Always use a top-level `import type` statement.
+
+```typescript
+// Bad — inline dynamic import for a type
+getPod: (id: string) => import("@kubernetes/client-node").V1Pod | undefined;
+
+// Good — import at top of file
+import type * as k8s from "@kubernetes/client-node";
+getPod: (id: string) => k8s.V1Pod | undefined;
+```
+
+Dynamic imports are for runtime module loading. Using them to avoid a top-level import is lazy and unreadable.
+
 ## Environment Configuration
 
 **Rule: All env reading at program entrypoint. Components receive config via constructor/injection.**

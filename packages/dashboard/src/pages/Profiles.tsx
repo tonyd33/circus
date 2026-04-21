@@ -1,4 +1,5 @@
-import { Loader2, Plus, Upload } from "lucide-react";
+import { ProfileCompiler } from "@mnke/circus-shared/lib";
+import { FileUp, Loader2, Plus, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +18,7 @@ export function Profiles() {
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const templateInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     try {
@@ -74,6 +76,23 @@ export function Profiles() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
+  async function handleImportTemplate(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const template: ProfileCompiler.ProfileTemplate = JSON.parse(text);
+      const compiled = ProfileCompiler.compileProfiles(template);
+      for (const [name, profile] of Object.entries(compiled)) {
+        await saveProfile(name, profile);
+      }
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Template import failed");
+    }
+    if (templateInputRef.current) templateInputRef.current.value = "";
+  }
+
   if (loading) {
     return (
       <div className="container mx-auto p-8 flex justify-center">
@@ -129,6 +148,21 @@ export function Profiles() {
           >
             <Upload className="h-4 w-4" />
             Import
+          </Button>
+          <input
+            ref={templateInputRef}
+            type="file"
+            accept=".json"
+            className="hidden"
+            onChange={handleImportTemplate}
+          />
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={() => templateInputRef.current?.click()}
+          >
+            <FileUp className="h-4 w-4" />
+            Import Template
           </Button>
         </div>
       </div>

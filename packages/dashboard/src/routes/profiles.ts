@@ -1,14 +1,12 @@
-import { type Logger, Protocol, Standards } from "@mnke/circus-shared";
-import type Redis from "ioredis";
-
-const Naming = Standards.Chimp.Naming;
+import { type Logger, Protocol } from "@mnke/circus-shared";
+import type { ProfileStore } from "@mnke/circus-shared/lib";
 
 export class ProfileRouter {
-  private redis: Redis;
+  private store: ProfileStore;
   private logger: Logger.Logger;
 
-  constructor(redis: Redis, logger: Logger.Logger) {
-    this.redis = redis;
+  constructor(store: ProfileStore, logger: Logger.Logger) {
+    this.store = store;
     this.logger = logger;
   }
 
@@ -16,35 +14,7 @@ export class ProfileRouter {
     return {
       "/api/profiles": {
         GET: async () => {
-          const keys = await this.redis.keys(Naming.redisProfilePattern());
-          const profiles: Record<string, Protocol.ChimpProfile> = {};
-
-          if (keys.length > 0) {
-            const pipeline = this.redis.pipeline();
-            for (const key of keys) {
-              pipeline.get(key);
-            }
-            const results = await pipeline.exec();
-            if (results) {
-              for (let i = 0; i < keys.length; i++) {
-                const [err, data] = results[i] ?? [];
-                if (!err && data) {
-                  const name = keys[i]?.replace("profile:", "");
-                  // IMPROVE: Better error handling
-                  if (name == null) {
-                    throw new Error("Bad key");
-                  }
-                  const parsed = Protocol.ChimpProfileSchema.safeParse(
-                    JSON.parse(data as string),
-                  );
-                  if (parsed.success) {
-                    profiles[name] = parsed.data;
-                  }
-                }
-              }
-            }
-          }
-
+          const profiles = await this.store.list();
           return Response.json({ profiles });
         },
       },
@@ -57,26 +27,12 @@ export class ProfileRouter {
             return new Response("Missing name", { status: 400 });
           }
 
-          const data = await this.redis.get(Naming.redisProfileKey(name));
-          if (!data) {
+          const profile = await this.store.get(name);
+          if (!profile) {
             return Response.json({ error: "Not found" }, { status: 404 });
           }
 
-          const parsed = Protocol.ChimpProfileSchema.safeParse(
-            JSON.parse(data),
-          );
-          if (!parsed.success) {
-            this.logger.error(
-              { name, error: parsed.error.issues },
-              "Corrupt profile in Redis",
-            );
-            return Response.json(
-              { error: "Corrupt profile data" },
-              { status: 500 },
-            );
-          }
-
-          return Response.json({ name, profile: parsed.data });
+          return Response.json({ name, profile });
         },
         PUT: async (
           req: Bun.BunRequest<"/api/profiles/:name">,
@@ -95,12 +51,8 @@ export class ProfileRouter {
             );
           }
 
-          await this.redis.set(
-            Naming.redisProfileKey(name),
-            JSON.stringify(parsed.data),
-          );
+          await this.store.save(name, parsed.data);
           this.logger.info({ name }, "Profile saved");
-
           return Response.json({ ok: true });
         },
         DELETE: async (
@@ -111,11 +63,7 @@ export class ProfileRouter {
             return new Response("Missing name", { status: 400 });
           }
 
-          const deleted = await this.redis.del(Naming.redisProfileKey(name));
-          if (deleted === 0) {
-            return Response.json({ error: "Not found" }, { status: 404 });
-          }
-
+          await this.store.delete(name);
           this.logger.info({ name }, "Profile deleted");
           return Response.json({ ok: true });
         },

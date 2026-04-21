@@ -2,26 +2,27 @@ import type * as k8s from "@kubernetes/client-node";
 import { type Protocol, Standards } from "@mnke/circus-shared";
 
 type Topic = Standards.Topic.Topic;
-type TopicSubscription = Standards.Topic.TopicSubscription;
 
 export interface CoreState {
   now: number;
   pod: k8s.V1Pod | undefined;
-  topicOwner: TopicSubscription | null;
 }
 
 export type EventPayload =
   | {
       type: "pod_event";
       chimpId: string;
+      profile: string;
       eventType: string;
       pod: k8s.V1Pod;
     }
   | {
       type: "event_received";
+      chimpId: string;
       profile: string;
       eventSubject: string;
       topic: Topic | null;
+      topicOwner: { chimpId: string } | null;
       messageSequence: number;
     }
   | {
@@ -38,7 +39,7 @@ export type Action =
       eventFilterSubjects: string[];
       startSequence: number;
     }
-  | { type: "register_topic"; topic: Topic; profile: string; force?: boolean }
+  | { type: "register_topic"; topic: Topic; force?: boolean }
   | { type: "delete_consumers" }
   | { type: "cleanup_topics" }
   | {
@@ -46,7 +47,11 @@ export type Action =
       profile: string;
       status: Standards.Chimp.ChimpStatus;
     }
-  | { type: "upsert_status"; status: Standards.Chimp.ChimpStatus }
+  | {
+      type: "upsert_status";
+      profile: string;
+      status: Standards.Chimp.ChimpStatus;
+    }
   | { type: "delete_job" }
   | { type: "delete_state" }
   | { type: "noop" };
@@ -85,17 +90,13 @@ export function deriveChimpId(
 }
 
 function decideOnPodEvent(
-  _state: CoreState,
   chimpId: string,
+  profile: string,
   eventType: string,
   pod: k8s.V1Pod,
 ): Decision {
   if (eventType === "DELETED") {
-    return {
-      chimpId,
-      actions: [],
-      reason: "Pod deleted",
-    };
+    return { chimpId, actions: [], reason: "Pod deleted" };
   }
 
   const phase = pod.status?.phase;
@@ -103,29 +104,26 @@ function decideOnPodEvent(
 
   return {
     chimpId,
-    actions: [{ type: "upsert_status", status }],
+    actions: [{ type: "upsert_status", profile, status }],
     reason: `Pod ${eventType} phase ${phase}`,
   };
 }
 
 function decideOnEventReceived(
   state: CoreState,
-  profile: string,
-  eventSubject: string,
-  topic: Topic | null,
-  messageSequence: number,
+  payload: EventPayload & { type: "event_received" },
 ): Decision {
-  if (state.topicOwner && state.pod) {
+  const { chimpId, profile, topic, topicOwner, messageSequence, eventSubject } =
+    payload;
+
+  if (topicOwner && state.pod) {
     return {
-      chimpId: state.topicOwner.chimpId,
+      chimpId,
       actions: [{ type: "noop" }],
-      reason: `Event topic already claimed by ${state.topicOwner.chimpId}`,
+      reason: `Event topic already claimed by ${chimpId}`,
     };
   }
 
-  const chimpId = state.topicOwner
-    ? state.topicOwner.chimpId
-    : deriveChimpId(topic, eventSubject);
   const topicFilter = topic
     ? Standards.Topic.topicToEventSubject(topic)
     : eventSubject;
@@ -143,9 +141,9 @@ function decideOnEventReceived(
     startSequence: messageSequence,
   });
 
-  const isReclaim = state.topicOwner != null && !state.pod;
+  const isReclaim = topicOwner != null && !state.pod;
   if (topic) {
-    actions.push({ type: "register_topic", topic, profile, force: isReclaim });
+    actions.push({ type: "register_topic", topic, force: isReclaim });
   }
 
   actions.push({ type: "create_job", profile });
@@ -191,19 +189,13 @@ export function decide(state: CoreState, payload: EventPayload): Decision {
   switch (payload.type) {
     case "pod_event":
       return decideOnPodEvent(
-        state,
         payload.chimpId,
+        payload.profile,
         payload.eventType,
         payload.pod,
       );
     case "event_received":
-      return decideOnEventReceived(
-        state,
-        payload.profile,
-        payload.eventSubject,
-        payload.topic,
-        payload.messageSequence,
-      );
+      return decideOnEventReceived(state, payload);
     case "chimp_output":
       return decideOnChimpOutput(payload.chimpId, payload.message);
   }

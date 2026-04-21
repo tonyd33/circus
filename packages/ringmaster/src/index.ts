@@ -21,6 +21,7 @@ async function main() {
   const result = ER.record({
     natsUrl: ER.str("NATS_URL").fallback("nats://localhost:4222"),
     redisUrl: ER.str("REDIS_URL").fallback("redis://localhost:6379"),
+    profileTemplatePath: ER.str("PROFILE_TEMPLATE_PATH").fallbackW(undefined),
   }).read(process.env).value;
 
   if (Either.isLeft(result)) {
@@ -34,6 +35,7 @@ async function main() {
     natsUrl: envConfig.natsUrl,
     redisUrl: envConfig.redisUrl,
     namespace: opts.namespace,
+    profileTemplatePath: envConfig.profileTemplatePath,
   };
 
   logger.info({ config }, "Ringmaster starting");

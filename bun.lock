@@ -127,6 +127,7 @@
       "name": "@mnke/circus-shared",
       "version": "0.1.0",
       "dependencies": {
+        "ioredis": "catalog:",
         "pino": "^10.3.1",
         "prom-client": "^15.1.3",
       },
