@@ -57,6 +57,7 @@ export const EventContextSchema = z.discriminatedUnion("source", [
     source: z.literal("discord"),
     interactionToken: z.string(),
     applicationId: z.string(),
+    channelId: z.string(),
   }),
   z.object({
     source: z.literal("github"),

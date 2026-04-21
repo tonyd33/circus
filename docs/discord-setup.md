@@ -22,7 +22,7 @@ curl -X POST \
   -H "Authorization: Bot <BOT_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "circus",
+    "name": "chimp",
     "description": "Send a message to a circus chimp",
     "options": [
       {

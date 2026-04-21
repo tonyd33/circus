@@ -16,6 +16,7 @@ describe("ClaudeChimpStateSchema", () => {
             source: "discord" as const,
             interactionToken: "tok",
             applicationId: "app",
+            channelId: "ch",
           },
         },
         {

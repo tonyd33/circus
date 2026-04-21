@@ -55,7 +55,8 @@ export class Ringmaster {
     this.logger.info("Connected to NATS JetStream");
 
     await this.ensureSharedStreams(this.jsm);
-    const topicRegistry = await this.ensureTopicRegistry();
+    const topicRegistry = new TopicRegistry(this.nc);
+    await topicRegistry.start();
 
     this.stateManager = new StateManager(
       this.config.redisUrl,
@@ -175,15 +176,5 @@ export class Ringmaster {
         subjects: [`${Standards.Chimp.Prefix.OUTPUTS}.>`],
       }),
     ]);
-  }
-
-  private async ensureTopicRegistry(): Promise<TopicRegistry> {
-    if (!this.nc) throw new Error("NATS not connected");
-    const js = this.nc.jetstream();
-    const kv = await js.views.kv(Standards.Topic.TOPIC_OWNERS_BUCKET, {
-      history: 1,
-    });
-    this.logger.info("Topic registry KV bucket ensured");
-    return new TopicRegistry(kv);
   }
 }

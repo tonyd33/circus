@@ -12,6 +12,7 @@ const discordCtx: Protocol.EventContext = {
   source: "discord",
   interactionToken: "tok-1",
   applicationId: "app-1",
+  channelId: "ch-1",
 };
 
 const githubIssueCommentCtx: Protocol.EventContext = {

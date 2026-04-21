@@ -12,6 +12,8 @@ usher:
       path: /api/webhooks/debug
     - adapter: github
       path: /api/webhooks/github
+    - adapter: discord
+      path: /api/webhooks/discord
   extraEnv:
     - name: GITHUB_BOT_NAME
       value: circus-chimp
@@ -29,6 +31,12 @@ usher:
         secretKeyRef:
           name: circus-secrets
           key: GITHUB_PRIVATE_KEY
+    - name: DISCORD_PROFILE
+      value: scout
+    - name: DISCORD_PUBLIC_KEY
+      value: '94f9710cabc6d6b331b92adbe21bc4e2796d331f0a754fe2ca8211bbc7db5313'
+    - name: DISCORD_APPLICATION_ID
+      value: '1495349106342887444'
 
 bullhorn:
   enabled: true

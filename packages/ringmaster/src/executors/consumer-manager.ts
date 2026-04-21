@@ -93,31 +93,6 @@ export class ConsumerManager {
     }
   }
 
-  async addEventFilter(chimpId: string, filterSubject: string): Promise<void> {
-    const streamName = Standards.Chimp.Naming.eventsStreamName();
-    const consumerName = Standards.Chimp.Naming.eventConsumerName(chimpId);
-
-    try {
-      const info = await this.jsm.consumers.info(streamName, consumerName);
-      const existing = info.config.filter_subjects ?? [];
-      if (existing.includes(filterSubject)) return;
-
-      await this.jsm.consumers.update(streamName, consumerName, {
-        filter_subjects: [...existing, filterSubject],
-      });
-      this.logger.info(
-        { consumerName, chimpId, filterSubject },
-        "Added event filter",
-      );
-    } catch (error) {
-      this.logger.error(
-        { err: error, chimpId, filterSubject },
-        "Failed to add event filter",
-      );
-      throw error;
-    }
-  }
-
   async deleteConsumers(chimpId: string): Promise<void> {
     const eventsStream = Standards.Chimp.Naming.eventsStreamName();
     const eventConsumer = Standards.Chimp.Naming.eventConsumerName(chimpId);
