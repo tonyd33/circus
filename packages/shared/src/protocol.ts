@@ -70,6 +70,12 @@ export const EventContextSchema = z.discriminatedUnion("source", [
 ]);
 export type EventContext = z.infer<typeof EventContextSchema>;
 
+export const StoredEventContextSchema = z.object({
+  seenAt: z.string(),
+  context: EventContextSchema,
+});
+export type StoredEventContext = z.infer<typeof StoredEventContextSchema>;
+
 const SendAgentMessageCommandSchema = z.object({
   command: z.literal("send-agent-message"),
   args: z.object({
@@ -138,6 +144,7 @@ const ResumeTransmogrifyCommandSchema = z.object({
     fromProfile: z.string(),
     reason: z.string(),
     summary: z.string(),
+    eventContexts: z.array(StoredEventContextSchema).default([]),
   }),
 });
 
@@ -308,9 +315,11 @@ export const GithubCommentSchema = z.object({
 
 export const TransmogrifySchema = z.object({
   type: z.literal("transmogrify"),
+  fromProfile: z.string(),
   targetProfile: z.string(),
   reason: z.string(),
   summary: z.string(),
+  eventContexts: z.array(StoredEventContextSchema).default([]),
 });
 
 export const ChimpOutputMessageSchema = z.discriminatedUnion("type", [

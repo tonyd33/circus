@@ -92,6 +92,7 @@ export class Ringmaster {
     );
 
     this.eventHandler = new EventHandler({
+      nc: this.nc,
       jobManager: this.jobManager,
       consumerManager: this.consumerManager,
       stateManager: this.stateManager,

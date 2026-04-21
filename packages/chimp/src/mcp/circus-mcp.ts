@@ -301,9 +301,11 @@ export class CircusMcp {
 
         publish({
           type: "transmogrify",
+          fromProfile: profile,
           targetProfile: args.targetProfile,
           reason: args.reason,
           summary: args.summary,
+          eventContexts: this.eventContexts,
         });
 
         return {
@@ -340,7 +342,7 @@ export class CircusMcp {
     this.httpServer = Bun.serve({
       port: 0,
       fetch: async (req) => {
-        this.config.logger.debug(
+        this.config.logger.info(
           { method: req.method, url: req.url },
           "MCP HTTP request",
         );

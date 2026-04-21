@@ -46,7 +46,7 @@ export function newCommand(type: string): ChimpCommand {
     case "resume-transmogrify":
       return {
         command: "resume-transmogrify",
-        args: { fromProfile: "", reason: "", summary: "" },
+        args: { fromProfile: "", reason: "", summary: "", eventContexts: [] },
       };
     default:
       return { command: "stop" };

@@ -180,13 +180,32 @@ export abstract class ChimpBrain {
     fromProfile: string;
     reason: string;
     summary: string;
+    eventContexts: StoredEventContext[];
   }): Promise<CommandResult> {
     this.log(
       "info",
       `Resumed after transmogrify from ${args.fromProfile}: ${args.reason}`,
     );
-    this.log("info", `Previous context: ${args.summary}`);
-    return "continue";
+
+    if (args.eventContexts.length > 0) {
+      this.restoreEventContexts(args.eventContexts);
+      this.log("info", "Restored event contexts from predecessor", {
+        count: args.eventContexts.length,
+      });
+    }
+
+    const context = [
+      `You are resuming work after a transmogrify from the "${args.fromProfile}" profile.`,
+      `Reason for transmogrify: ${args.reason}`,
+      `Summary from previous chimp: ${args.summary}`,
+      "Continue the work described above.",
+    ].join("\n");
+
+    return this.handlePrompt(context);
+  }
+
+  protected restoreEventContexts(contexts: StoredEventContext[]): void {
+    this.onEventContextsChanged?.(contexts);
   }
 
   abstract onStartup(): Promise<void>;

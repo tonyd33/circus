@@ -5,8 +5,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { S3Client } from "@aws-sdk/client-s3";
 import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import { Protocol } from "@mnke/circus-shared";
 import { z } from "zod";
-import { StoredEventContextSchema } from "@/chimp-brain/event-contexts";
 import { downloadDirFromS3, uploadDirToS3 } from "@/lib/s3-tarball";
 
 export type { StoredEventContext } from "@/chimp-brain/event-contexts";
@@ -22,7 +22,7 @@ export const ClaudeChimpStateSchema = z.object({
   messageCount: z.number(),
   model: z.string(),
   allowedTools: z.array(z.string()),
-  eventContexts: z.array(StoredEventContextSchema).default([]),
+  eventContexts: z.array(Protocol.StoredEventContextSchema).default([]),
 });
 export type ClaudeChimpState = z.infer<typeof ClaudeChimpStateSchema>;
 
