@@ -40,8 +40,6 @@ export class Ringmaster {
   private outputListener: OutputListener | null = null;
   private podWatcher: PodWatcher | null = null;
 
-  private isReady: boolean = false;
-
   constructor(config: RingmasterConfig, logger: Logger.Logger) {
     this.config = config;
     this.logger = logger;
@@ -129,28 +127,7 @@ export class Ringmaster {
       this.stateManager.start(),
       this.jobManager.start(),
     ]);
-    this.isReady = true;
     this.logger.info("Ringmaster started");
-  }
-
-  async startHealthServer(port: number = 8080): Promise<void> {
-    // Use dynamic import to avoid requiring the full dependency
-    const { serve } = await import("bun");
-    serve({
-      port,
-      fetch: async (req) => {
-        const url = new URL(req.url);
-        if (url.pathname === "/healthz") {
-          if (this.isReady) {
-            return new Response("OK", { status: 200 });
-          } else {
-            return new Response("Not Ready", { status: 503 });
-          }
-        }
-        return new Response("Not Found", { status: 404 });
-      },
-    });
-    this.logger.info({ port }, "Health server started");
   }
 
   async stop(): Promise<void> {

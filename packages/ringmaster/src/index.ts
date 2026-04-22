@@ -22,7 +22,6 @@ async function main() {
     natsUrl: ER.str("NATS_URL").fallback("nats://localhost:4222"),
     redisUrl: ER.str("REDIS_URL").fallback("redis://localhost:6379"),
     profileTemplatePath: ER.str("PROFILE_TEMPLATE_PATH").fallbackW(undefined),
-    healthPort: ER.int("HEALTH_PORT").fallback(8080),
   }).read(process.env).value;
 
   if (Either.isLeft(result)) {
@@ -55,7 +54,6 @@ async function main() {
   process.on("SIGTERM", shutdown("SIGTERM"));
 
   await ringmaster.start();
-  await ringmaster.startHealthServer(envConfig.healthPort);
 }
 
 main().catch((error) => {
