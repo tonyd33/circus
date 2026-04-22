@@ -27,7 +27,11 @@ export class HealthMonitor {
   /**
    * Register a component for health monitoring
    */
-  registerComponent(name: string, isHealthy: boolean, details?: Record<string, any>): void {
+  registerComponent(
+    name: string,
+    isHealthy: boolean,
+    details?: Record<string, any>,
+  ): void {
     this.components.set(name, {
       name,
       isHealthy,
