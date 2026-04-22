@@ -13,6 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useChimps } from "@/hooks/useChimps";
+import { useChimpTopics } from "@/hooks/useChimpTopics";
 import type { ChimpState } from "@/lib/chimp-api";
 
 const statusColors: Record<ChimpState["status"], string> = {
@@ -26,6 +27,52 @@ const statusColors: Record<ChimpState["status"], string> = {
 
 function formatTime(ts: number): string {
   return new Date(ts).toLocaleString();
+}
+
+/**
+ * Displays subscribed topics for a chimp as badges.
+ * Topics include GitHub PRs/issues and Discord channels the chimp is subscribed to.
+ */
+function ChimpTopicsBadges({ chimpId }: { chimpId: string }) {
+  const { topics } = useChimpTopics(chimpId);
+
+  if (topics.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-3">
+      {topics.map((t) => {
+        const key =
+          t.platform === "github"
+            ? `${t.platform}.${t.owner}.${t.repo}.${t.type}.${t.number}`
+            : `${t.platform}.${t.guildId}.${t.channelId}.${t.interactionId}`;
+
+        if (t.platform === "github") {
+          return (
+            <Badge
+              key={key}
+              variant="outline"
+              className="text-xs font-mono text-emerald-500 border-emerald-500/30"
+            >
+              {t.owner}/{t.repo}#{t.number}
+            </Badge>
+          );
+        }
+
+        // Discord topics - shown as simple badge
+        return (
+          <Badge
+            key={key}
+            variant="outline"
+            className="text-xs font-mono text-indigo-500 border-indigo-500/30"
+          >
+            discord
+          </Badge>
+        );
+      })}
+    </div>
+  );
 }
 
 export function ChimpsList() {
@@ -83,6 +130,7 @@ export function ChimpsList() {
                   <p className="text-sm text-muted-foreground">
                     Updated: {formatTime(chimp.updatedAt)}
                   </p>
+                  <ChimpTopicsBadges chimpId={chimp.chimpId} />
                 </CardContent>
               </Card>
             </Link>

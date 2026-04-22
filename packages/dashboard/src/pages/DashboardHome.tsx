@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useChimps } from "@/hooks/useChimps";
+import { useChimpTopics } from "@/hooks/useChimpTopics";
 import type { ChimpState } from "@/lib/chimp-api";
 
 const statusColors: Record<ChimpState["status"], string> = {
@@ -90,6 +91,52 @@ const statCards: Array<{
   },
 ];
 
+/**
+ * Displays subscribed topics for a chimp as badges.
+ * Topics include GitHub PRs/issues and Discord channels the chimp is subscribed to.
+ */
+function ChimpTopicsBadges({ chimpId }: { chimpId: string }) {
+  const { topics } = useChimpTopics(chimpId);
+
+  if (topics.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="flex items-center gap-1.5">
+      {topics.map((t) => {
+        const key =
+          t.platform === "github"
+            ? `${t.platform}.${t.owner}.${t.repo}.${t.type}.${t.number}`
+            : `${t.platform}.${t.guildId}.${t.channelId}.${t.interactionId}`;
+
+        if (t.platform === "github") {
+          return (
+            <Badge
+              key={key}
+              variant="outline"
+              className="text-xs font-mono text-emerald-500 border-emerald-500/30"
+            >
+              {t.owner}/{t.repo}#{t.number}
+            </Badge>
+          );
+        }
+
+        // Discord topics - shown as simple badge
+        return (
+          <Badge
+            key={key}
+            variant="outline"
+            className="text-xs font-mono text-indigo-500 border-indigo-500/30"
+          >
+            discord
+          </Badge>
+        );
+      })}
+    </div>
+  );
+}
+
 export function DashboardHome() {
   const { chimps, error } = useChimps();
 
@@ -156,27 +203,29 @@ export function DashboardHome() {
           ) : (
             <div className="space-y-3">
               {recentChimps.map((chimp) => (
-                <Link
-                  key={chimp.chimpId}
-                  to={`/chimps/${chimp.chimpId}/activity`}
-                  className="flex items-center gap-3 p-2 rounded-md hover:bg-muted transition-colors"
-                >
-                  <span
-                    className={`w-2.5 h-2.5 rounded-full shrink-0 ${statusColors[chimp.status]}`}
-                  />
-                  <span className="font-mono text-sm truncate flex-1">
-                    {chimp.chimpId}
-                  </span>
-                  <Badge variant="outline" className="text-xs">
-                    {chimp.profile}
-                  </Badge>
-                  <Badge variant="secondary" className="text-xs">
-                    {chimp.status}
-                  </Badge>
-                  <span className="text-xs text-muted-foreground whitespace-nowrap">
-                    {formatRelativeTime(chimp.updatedAt)}
-                  </span>
-                </Link>
+                <div key={chimp.chimpId}>
+                  <Link
+                    to={`/chimps/${chimp.chimpId}/activity`}
+                    className="flex items-center gap-3 p-2 rounded-md hover:bg-muted transition-colors"
+                  >
+                    <span
+                      className={`w-2.5 h-2.5 rounded-full shrink-0 ${statusColors[chimp.status]}`}
+                    />
+                    <span className="font-mono text-sm truncate flex-1">
+                      {chimp.chimpId}
+                    </span>
+                    <Badge variant="outline" className="text-xs">
+                      {chimp.profile}
+                    </Badge>
+                    <Badge variant="secondary" className="text-xs">
+                      {chimp.status}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                      {formatRelativeTime(chimp.updatedAt)}
+                    </span>
+                  </Link>
+                  <ChimpTopicsBadges chimpId={chimp.chimpId} />
+                </div>
               ))}
             </div>
           )}
