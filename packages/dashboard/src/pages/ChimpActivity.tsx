@@ -32,7 +32,6 @@ import {
   Terminal,
   User,
   XCircle,
-  Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Markdown from "react-markdown";
@@ -115,7 +114,7 @@ type ActivityMessage =
  * @param key - The property key to retrieve
  * @returns The string value, or an empty string if the key is missing or null
  */
-function getString(obj: Record<string, unknown>, key: string): string {
+function _getString(obj: Record<string, unknown>, key: string): string {
   const val = obj[key];
   return typeof val === "string" ? val : String(val ?? "");
 }
@@ -142,7 +141,7 @@ function getNumber(
  * @param key - The property key to retrieve
  * @returns A shallow copy of the nested object if found, or an empty object otherwise
  */
-function getRecord(
+function _getRecord(
   obj: Record<string, unknown>,
   key: string,
 ): Record<string, unknown> {
@@ -531,23 +530,67 @@ export function ChimpActivity() {
       case "assistant": {
         const message = event.message as Record<string, unknown> | undefined;
         const model = message?.model as string | undefined;
+        const stopReason = message?.stop_reason as string | undefined;
         const usage = message?.usage as Record<string, unknown> | undefined;
+        const content = message?.content as unknown[] | undefined;
+
+        // Extract token counts from usage
+        const inputTokens = getNumber(usage ?? {}, "input_tokens") ?? 0;
+        const outputTokens = getNumber(usage ?? {}, "output_tokens") ?? 0;
+        const cacheCreationTokens =
+          getNumber(usage ?? {}, "cache_creation_input_tokens") ?? 0;
+        const cacheReadTokens =
+          getNumber(usage ?? {}, "cache_read_input_tokens") ?? 0;
+
+        // Count content blocks (text, tool_use, etc.)
+        const contentBlockCount = Array.isArray(content) ? content.length : 0;
+
         return (
-          <div className="flex items-center gap-2.5">
-            <Bot className="h-4 w-4 text-circus-purple shrink-0" />
-            <span className="text-sm text-muted-foreground">
-              Assistant response
+          <div className="space-y-2">
+            <div className="flex items-center gap-2.5">
+              <Bot className="h-4 w-4 text-circus-purple shrink-0" />
+              <span className="text-sm font-medium">Assistant response</span>
               {model && (
-                <span className="font-mono text-xs ml-1.5 opacity-70">
-                  ({model})
+                <span className="font-mono text-xs bg-muted/50 px-2 py-1 rounded">
+                  {model}
                 </span>
               )}
-            </span>
+              {stopReason && (
+                <Badge variant="outline" className="text-xs font-mono">
+                  {stopReason}
+                </Badge>
+              )}
+            </div>
+
             {usage && (
-              <span className="text-xs text-muted-foreground/60 ml-auto tabular-nums">
-                {String(usage.input_tokens ?? 0)}↓{" "}
-                {String(usage.output_tokens ?? 0)}↑
-              </span>
+              <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                <div className="flex items-center gap-1">
+                  <span className="text-muted-foreground/70">Input:</span>
+                  <span className="font-mono font-medium">{inputTokens}</span>
+                  {cacheReadTokens > 0 && (
+                    <span className="text-blue-500/70">
+                      (+{cacheReadTokens} cached)
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="text-muted-foreground/70">Output:</span>
+                  <span className="font-mono font-medium">{outputTokens}</span>
+                  {cacheCreationTokens > 0 && (
+                    <span className="text-amber-500/70">
+                      (+{cacheCreationTokens} created)
+                    </span>
+                  )}
+                </div>
+                {contentBlockCount > 0 && (
+                  <div className="flex items-center gap-1">
+                    <span className="text-muted-foreground/70">Blocks:</span>
+                    <span className="font-mono font-medium">
+                      {contentBlockCount}
+                    </span>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         );
