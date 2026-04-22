@@ -152,7 +152,7 @@ describe("event_received", () => {
     expect(decision.chimpId).toBe(chimpId);
     expect(decision.actions[0]).toEqual({
       chimpId,
-      type: "upsert_state",
+      type: "upsert_status",
       profile: "fast",
       status: "scheduled",
     });
@@ -183,7 +183,7 @@ describe("event_received", () => {
     });
 
     expect(
-      decision.actions.find((a) => a.type === "upsert_state"),
+      decision.actions.find((a) => a.type === "upsert_status"),
     ).toBeUndefined();
     expect(
       decision.actions.find((a) => a.type === "create_consumers"),
@@ -226,7 +226,7 @@ describe("event_received", () => {
     });
 
     expect(
-      decision.actions.find((a) => a.type === "upsert_state"),
+      decision.actions.find((a) => a.type === "upsert_status"),
     ).toBeUndefined();
     expect(
       decision.actions.find((a) => a.type === "create_consumers"),
@@ -248,7 +248,7 @@ describe("event_received", () => {
     });
 
     expect(
-      decision.actions.find((a) => a.type === "upsert_state"),
+      decision.actions.find((a) => a.type === "upsert_status"),
     ).toBeUndefined();
     expect(
       decision.actions.find((a) => a.type === "create_consumers"),
@@ -270,7 +270,7 @@ describe("event_received", () => {
     });
 
     expect(
-      decision.actions.find((a) => a.type === "upsert_state"),
+      decision.actions.find((a) => a.type === "upsert_status"),
     ).toBeUndefined();
     expect(
       decision.actions.find((a) => a.type === "create_consumers"),
@@ -355,7 +355,7 @@ describe("chimp_output", () => {
       { chimpId: "chimp-1", type: "delete_state" },
       {
         chimpId: newChimpId,
-        type: "upsert_state",
+        type: "upsert_status",
         profile: "powerful",
         status: "scheduled",
       },

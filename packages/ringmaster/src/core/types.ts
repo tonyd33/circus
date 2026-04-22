@@ -37,5 +37,4 @@ export type Action =
   | { type: "create_job" }
   | { type: "create_consumer"; startSequence: number }
   | { type: "delete_consumer" }
-  | { type: "upsert_state"; status: ChimpStatus }
   | { type: "delete_state" };

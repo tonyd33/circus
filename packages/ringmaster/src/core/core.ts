@@ -44,12 +44,6 @@ export type Action =
   | { chimpId: string; type: "cleanup_topics" }
   | {
       chimpId: string;
-      type: "upsert_state";
-      profile: string;
-      status: Standards.Chimp.ChimpStatus;
-    }
-  | {
-      chimpId: string;
       type: "upsert_status";
       profile: string;
       status: Standards.Chimp.ChimpStatus;
@@ -148,7 +142,7 @@ function decideOnEventReceived(
   if (!state.pod) {
     actions.push({
       chimpId,
-      type: "upsert_state",
+      type: "upsert_status",
       profile,
       status: "scheduled",
     });
@@ -199,7 +193,7 @@ function decideOnChimpOutput(
           { chimpId, type: "delete_state" },
           {
             chimpId: newChimpId,
-            type: "upsert_state",
+            type: "upsert_status",
             profile: message.targetProfile,
             status: "scheduled",
           },
