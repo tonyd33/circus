@@ -36,11 +36,13 @@ export class ChimpRouter {
           const chimps = await this.statusSource.list();
           const allTopics: Record<string, Standards.Topic.Topic[]> = {};
 
-          for (const chimp of chimps) {
-            allTopics[chimp.chimpId] = await this.topicRegistry.listForChimp(
-              chimp.chimpId,
-            );
-          }
+          await Promise.all(
+            chimps.map(async (chimp) => {
+              allTopics[chimp.chimpId] = await this.topicRegistry.listForChimp(
+                chimp.chimpId,
+              );
+            }),
+          );
 
           return Response.json({ topics: allTopics });
         },
