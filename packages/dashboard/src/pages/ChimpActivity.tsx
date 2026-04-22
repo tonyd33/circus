@@ -545,6 +545,19 @@ export function ChimpActivity() {
         // Count content blocks (text, tool_use, etc.)
         const contentBlockCount = Array.isArray(content) ? content.length : 0;
 
+        // Extract text content from content blocks
+        const textContent = Array.isArray(content)
+          ? content
+              .filter(
+                (block): block is Record<string, unknown> =>
+                  typeof block === "object" && block !== null,
+              )
+              .filter((block) => block.type === "text")
+              .map((block) => block.text)
+              .filter((text): text is string => typeof text === "string")
+              .join("\n")
+          : undefined;
+
         return (
           <div className="space-y-2">
             <div className="flex items-center gap-2.5">
@@ -590,6 +603,14 @@ export function ChimpActivity() {
                     </span>
                   </div>
                 )}
+              </div>
+            )}
+
+            {textContent && (
+              <div className="bg-muted/50 rounded-lg p-3 prose prose-sm dark:prose-invert max-w-none">
+                <Markdown remarkPlugins={[remarkGfm]}>
+                  {textContent}
+                </Markdown>
               </div>
             )}
           </div>
