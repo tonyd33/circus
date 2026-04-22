@@ -51,6 +51,40 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useSSE } from "@/hooks/useSSE";
 
+/**
+ * Represents a single event message in the chimp's activity log.
+ *
+ * This is a discriminated union type that can represent three categories of messages:
+ *
+ * - **"event"**: Commands sent FROM the user TO the chimp (e.g., "send-agent-message", "clone-repo")
+ *   Payload: {@link Protocol.ChimpCommand}
+ *
+ * - **"output"**: Messages FROM the chimp TO the user/dashboard (e.g., responses, progress, logs, errors)
+ *   Payload: {@link Protocol.ChimpOutputMessage}
+ *
+ * - **"meta"**: Internal system events (e.g., "bullhorn-dispatched") used for bookkeeping.
+ *   Not displayed to users. Payload: {@link Protocol.MetaEvent}
+ *
+ * @example
+ * // Event: User sends a message to the chimp
+ * const eventMsg: ActivityMessage = {
+ *   id: "cmd-123",
+ *   type: "event",
+ *   messageType: "send-agent-message",
+ *   timestamp: "2026-04-22T03:10:00Z",
+ *   data: { command: "send-agent-message", args: { prompt: "What is x?" } }
+ * };
+ *
+ * @example
+ * // Output: Chimp sends a response
+ * const outputMsg: ActivityMessage = {
+ *   id: "out-456",
+ *   type: "output",
+ *   messageType: "agent-message-response",
+ *   timestamp: "2026-04-22T03:10:05Z",
+ *   data: { type: "agent-message-response", content: "The value of x is..." }
+ * };
+ */
 type ActivityMessage =
   | {
       id: string;
@@ -74,11 +108,25 @@ type ActivityMessage =
       data: Protocol.MetaEvent;
     };
 
+/**
+ * Safely extracts a string value from a record object, with fallback to string coercion.
+ *
+ * @param obj - The object to extract from
+ * @param key - The property key to retrieve
+ * @returns The string value, or an empty string if the key is missing or null
+ */
 function getString(obj: Record<string, unknown>, key: string): string {
   const val = obj[key];
   return typeof val === "string" ? val : String(val ?? "");
 }
 
+/**
+ * Safely extracts a numeric value from a record object, with no fallback.
+ *
+ * @param obj - The object to extract from
+ * @param key - The property key to retrieve
+ * @returns The numeric value, or undefined if the key is missing, null, or not a number
+ */
 function getNumber(
   obj: Record<string, unknown>,
   key: string,
@@ -87,6 +135,13 @@ function getNumber(
   return typeof val === "number" ? val : undefined;
 }
 
+/**
+ * Safely extracts a nested object from a record, excluding arrays.
+ *
+ * @param obj - The object to extract from
+ * @param key - The property key to retrieve
+ * @returns A shallow copy of the nested object if found, or an empty object otherwise
+ */
 function getRecord(
   obj: Record<string, unknown>,
   key: string,
@@ -103,6 +158,17 @@ function getRecord(
   return {};
 }
 
+/**
+ * Visual icons for each message type displayed in the activity log.
+ *
+ * Maps `messageType` values to lucide-react icon components. Used to provide
+ * visual context for each message category in the UI.
+ *
+ * @remarks
+ * - Output types (agent-message-response, log, error, progress): represent chimp responses
+ * - Event types (send-agent-message, clone-repo, transmogrify): represent user commands
+ * - Meta types (new-session, setup-github-auth): represent system configuration
+ */
 const messageTypeIcons: Record<string, React.ReactNode> = {
   "agent-message-response": <Brain className="h-3.5 w-3.5" />,
   "send-agent-message": <MessageSquare className="h-3.5 w-3.5" />,
@@ -127,20 +193,119 @@ const messageTypeIcons: Record<string, React.ReactNode> = {
   thought: <Brain className="h-3.5 w-3.5" />,
 };
 
+/**
+ * Visual icons for the top-level message categories.
+ *
+ * Maps {@link ActivityMessage.type} values to lucide-react icons.
+ * Provides quick visual distinction between:
+ * - "event": User-initiated commands (Radio icon)
+ * - "output": Chimp responses (Sparkles icon)
+ * - "meta": System events (not displayed, filtered out in UI)
+ */
 const typeIcons: Record<string, React.ReactNode> = {
   event: <Radio className="h-3 w-3" />,
   output: <Sparkles className="h-3 w-3" />,
 };
 
+/**
+ * Comparator function for sorting messages by timestamp (oldest first).
+ *
+ * @param a - First message to compare
+ * @param b - Second message to compare
+ * @returns Negative if a is older, positive if b is older, 0 if equal
+ */
 const sortByTimestamp = (a: ActivityMessage, b: ActivityMessage) =>
   new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
 
+/**
+ * ChimpActivity component - displays real-time activity feed for a chimp agent.
+ *
+ * ## Features
+ *
+ * - **Real-time SSE stream**: Listens to `/api/chimp/:chimpId/activity` for live updates
+ * - **Message filtering**: Users can filter by message type (event vs. output, and specific messageTypes)
+ * - **Auto-scroll**: Automatically scrolls to bottom when new messages arrive, unless user has scrolled up
+ * - **Topic display**: Shows chimp's current GitHub/Discord topic subscriptions
+ * - **Message sending**: Provides a textarea to send new messages to the chimp
+ *
+ * ## State Management
+ *
+ * | State | Type | Purpose |
+ * |-------|------|---------|
+ * | `selectedTypes` | `Set<string>` | Tracks which messageType values are enabled in the filter. Empty set = show all. |
+ * | `prompt` | `string` | User's message input in the textarea. |
+ * | `sending` | `boolean` | Loading state while POST request is in flight. |
+ * | `topics` | `Topic[]` | Array of GitHub/Discord topics the chimp is subscribed to. |
+ * | `messages` | `ActivityMessage[]` | Raw SSE stream, sorted by timestamp. |
+ * | `connected` | `boolean` | SSE connection status (from useSSE hook). |
+ * | `error` | `string \| null` | SSE connection error message (from useSSE hook). |
+ * | `showScrollButton` | `boolean` | Whether to show "scroll to bottom" button. |
+ * | `isAtBottomRef` | `boolean` | Ref tracking if user is at scroll bottom. |
+ *
+ * ## Filtering Logic
+ *
+ * **Why filter by messageType?**
+ * - The "meta" message type is excluded from UI display entirely (filtered in `visibleMessages`)
+ * - Users can toggle specific message types on/off (e.g., hide all "log" messages)
+ * - This helps focus on relevant information in a busy activity log
+ *
+ * **Filter states:**
+ * - `selectedTypes` is empty (`size === 0`): Show all messages
+ * - `selectedTypes` has items: Show only messages whose messageType is in the set
+ *
+ * ## Data Flow
+ *
+ * ```
+ * SSE → messages → visibleMessages (filter meta) → groupedTypes (build filter UI)
+ *                         ↓
+ *                   filteredMessages (apply user filters)
+ *                         ↓
+ *                      render
+ * ```
+ */
 export function ChimpActivity() {
   const { chimpId } = useParams<{ chimpId: string }>();
   const containerRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Tracks which message types are enabled in the filter.
+   *
+   * When empty, all messages are shown. When populated, only messages whose
+   * `messageType` appears in this set are displayed.
+   *
+   * @example
+   * selectedTypes = new Set(["log", "error"]) // Only show logs and errors
+   * selectedTypes = new Set() // Show all types
+   */
   const [selectedTypes, setSelectedTypes] = useState<Set<string>>(new Set());
+
+  /**
+   * The user's text input for sending a message to the chimp.
+   */
   const [prompt, setPrompt] = useState("");
+
+  /**
+   * Loading state while a message POST request is in flight.
+   * Used to disable the send button and show loading UI during submission.
+   */
   const [sending, setSending] = useState(false);
+
+  /**
+   * Topic subscription format: represents a single GitHub issue, PR, or Discord message
+   * that the chimp is actively subscribed to (will receive updates for).
+   *
+   * **Structure:**
+   * - `platform`: "github" or "discord"
+   * - `owner`: GitHub org name (GitHub only)
+   * - `repo`: GitHub repo name (GitHub only)
+   * - `type`: "pr" | "issue" (GitHub only)
+   * - `number`: PR/issue number (GitHub) or message ID (Discord)
+   *
+   * **Update flow:**
+   * - Fetched once on mount via `/api/chimp/:chimpId/topics`
+   * - Updated when chimp calls subscribe_topic() or unsubscribe
+   * - Displayed in UI as badges in the header
+   */
   const [topics, setTopics] = useState<
     {
       platform: string;
@@ -151,6 +316,10 @@ export function ChimpActivity() {
     }[]
   >([]);
 
+  /**
+   * Fetch topics on mount.
+   * Topics represent the chimp's current subscriptions (e.g., GitHub PR #78).
+   */
   useEffect(() => {
     if (!chimpId) return;
     fetch(`/api/chimp/${chimpId}/topics`)
@@ -159,15 +328,42 @@ export function ChimpActivity() {
       .catch(() => {});
   }, [chimpId]);
 
+  /**
+   * Real-time SSE stream of activity messages from the chimp.
+   *
+   * The useSSE hook:
+   * - Opens an EventSource to `/api/chimp/:chimpId/activity`
+   * - Parses each event as an {@link ActivityMessage}
+   * - Auto-sorts by timestamp to maintain chronological order
+   * - Deduplicates using getKey callback
+   * - Provides `connected` and `error` status
+   *
+   * @see useSSE hook for implementation details
+   */
   const { messages, connected, error } = useSSE<ActivityMessage>({
     url: chimpId ? `/api/chimp/${chimpId}/activity` : null,
     sortBy: sortByTimestamp,
     getKey: (msg) => `${msg.id}-${msg.type}-${msg.timestamp}`,
   });
 
+  /**
+   * Ref tracking whether user is scrolled to bottom.
+   * Used to auto-scroll new messages into view, while respecting user scroll position.
+   */
   const isAtBottomRef = useRef(true);
+
+  /**
+   * Whether to show the "scroll to bottom" button.
+   * Displayed when user scrolls up away from the latest messages.
+   */
   const [showScrollButton, setShowScrollButton] = useState(false);
 
+  /**
+   * Set of output sequence IDs that have been dispatched to external platforms.
+   *
+   * Extracted from "bullhorn-dispatched" meta events. Used to mark messages
+   * that have been sent to Discord/GitHub with visual indicators.
+   */
   const dispatchedOutputIds = useMemo(() => {
     const ids = new Set<string>();
     for (const msg of messages) {
@@ -179,11 +375,28 @@ export function ChimpActivity() {
     return ids;
   }, [messages]);
 
+  /**
+   * Messages filtered to exclude "meta" type.
+   *
+   * **Why exclude meta?**
+   * - Meta events (e.g., "bullhorn-dispatched") are bookkeeping; not user-facing
+   * - They're used internally (e.g., dispatchedOutputIds) but not displayed in the activity log
+   * - Filtering them here simplifies downstream logic and UI rendering
+   */
   const visibleMessages = useMemo(
     () => messages.filter((msg) => msg.type !== "meta"),
     [messages],
   );
 
+  /**
+   * Unique message types grouped by top-level type (event vs. output).
+   *
+   * Used to populate the filter checkboxes in the header:
+   * - event.send-agent-message, event.clone-repo, etc.
+   * - output.agent-message-response, output.log, output.error, etc.
+   *
+   * Sorted alphabetically for consistent UI ordering.
+   */
   const groupedTypes = useMemo(() => {
     const event: string[] = [];
     const output: string[] = [];
@@ -197,6 +410,14 @@ export function ChimpActivity() {
     };
   }, [visibleMessages]);
 
+  /**
+   * Toggle a message type in the filter set.
+   *
+   * - If type is already selected, remove it (unfilter)
+   * - If type is not selected, add it (filter to only this type)
+   *
+   * @param type - The messageType string to toggle
+   */
   const toggleType = (type: string) => {
     setSelectedTypes((prev) => {
       const next = new Set(prev);
@@ -206,6 +427,15 @@ export function ChimpActivity() {
     });
   };
 
+  /**
+   * Messages after applying user-selected type filters.
+   *
+   * **Filtering logic:**
+   * - If `selectedTypes` is empty: return all visible messages (no filter active)
+   * - If `selectedTypes` has items: return only messages whose messageType is in the set
+   *
+   * This allows users to focus on specific message types (e.g., "show only errors and logs").
+   */
   const filteredMessages = useMemo(
     () =>
       selectedTypes.size === 0
@@ -214,6 +444,16 @@ export function ChimpActivity() {
     [visibleMessages, selectedTypes],
   );
 
+  /**
+   * Scroll position tracking: monitors if user is at bottom of activity log.
+   *
+   * **Purpose:**
+   * - Tracks user scroll position to decide if new messages should auto-scroll into view
+   * - Shows "scroll to bottom" button when user scrolls up
+   * - Respects user intent: if they scrolled up to read history, don't force them back down
+   *
+   * **Threshold:** 100px from bottom = considered "at bottom" (accounts for scrollbar jitter)
+   */
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -229,6 +469,16 @@ export function ChimpActivity() {
     return () => el.removeEventListener("scroll", check);
   }, []);
 
+  /**
+   * Auto-scroll effect: scrolls to bottom when new messages arrive (if user is at bottom).
+   *
+   * Depends on `filteredMessages.length` instead of messages array directly,
+   * so that filtered views also trigger auto-scroll appropriately.
+   *
+   * Only scrolls if user was already at bottom (respects user scroll position).
+   *
+   * biome-ignore comment: dependency array is intentionally minimal for scroll performance.
+   */
   // biome-ignore lint/correctness/useExhaustiveDependencies: for scrolling
   useEffect(() => {
     const el = containerRef.current;
@@ -238,6 +488,18 @@ export function ChimpActivity() {
     }
   }, [filteredMessages.length]);
 
+  /**
+   * Send a message to the chimp via POST.
+   *
+   * **Flow:**
+   * 1. Validate: chimpId exists, prompt not empty, not already sending
+   * 2. Set sending = true (disables send button, shows loading UI)
+   * 3. POST to `/api/chimp/:chimpId/message` with prompt text
+   * 4. Clear prompt textarea on success
+   * 5. Always set sending = false (finally block)
+   *
+   * @async
+   */
   async function sendMessage() {
     if (!chimpId || !prompt.trim() || sending) return;
     setSending(true);
