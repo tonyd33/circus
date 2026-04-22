@@ -137,6 +137,13 @@ export class ClaudeChimp extends ChimpBrain {
     return "continue";
   }
 
+  protected override restoreEventContexts(
+    contexts: StoredEventContext[],
+  ): void {
+    this.eventContexts = contexts;
+    this.onEventContextsChanged?.(this.eventContexts);
+  }
+
   protected override recordEventContext(ctx: Protocol.EventContext): void {
     const next = appendUniqueEventContext(this.eventContexts, ctx);
     if (next === this.eventContexts) return;

@@ -56,16 +56,38 @@ const statCards: Array<{
   key: keyof StatusCounts;
   label: string;
   borderClass: string;
+  icon: string;
 }> = [
   {
     key: "total",
     label: "Total",
-    borderClass: "border-l-[color:var(--circus-gold)]",
+    borderClass: "border-l-circus-gold",
+    icon: "🎪",
   },
-  { key: "running", label: "Running", borderClass: statusBorders.running },
-  { key: "pending", label: "Pending", borderClass: statusBorders.pending },
-  { key: "stopped", label: "Stopped", borderClass: statusBorders.stopped },
-  { key: "failed", label: "Failed", borderClass: statusBorders.failed },
+  {
+    key: "running",
+    label: "Running",
+    borderClass: statusBorders.running,
+    icon: "🎭",
+  },
+  {
+    key: "pending",
+    label: "Pending",
+    borderClass: statusBorders.pending,
+    icon: "🎯",
+  },
+  {
+    key: "stopped",
+    label: "Stopped",
+    borderClass: statusBorders.stopped,
+    icon: "🎬",
+  },
+  {
+    key: "failed",
+    label: "Failed",
+    borderClass: statusBorders.failed,
+    icon: "💥",
+  },
 ];
 
 export function DashboardHome() {
@@ -89,9 +111,8 @@ export function DashboardHome() {
   return (
     <div className="container mx-auto p-8">
       <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold">
-          <span className="mr-2">🎪</span>
-          Circus Dashboard
+        <h1 className="text-3xl font-bold text-circus-crimson">
+          Ringmaster's View
         </h1>
         <span className="text-sm text-muted-foreground">Auto-refresh: 5s</span>
       </div>
@@ -103,10 +124,14 @@ export function DashboardHome() {
       )}
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
-        {statCards.map(({ key, label, borderClass }) => (
-          <Card key={key} className={`border-l-4 ${borderClass}`}>
+        {statCards.map(({ key, label, borderClass, icon }) => (
+          <Card
+            key={key}
+            className={`border-l-4 ${borderClass} hover:shadow-md transition-shadow`}
+          >
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+                <span>{icon}</span>
                 {label}
               </CardTitle>
             </CardHeader>
@@ -117,9 +142,11 @@ export function DashboardHome() {
         ))}
       </div>
 
-      <Card className="mb-8">
+      <Card className="mb-8 border-t-2 border-t-circus-crimson/30">
         <CardHeader>
-          <CardTitle>Recent Activity</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <span>🎭</span> Recent Activity
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {recentChimps.length === 0 ? (
@@ -157,7 +184,11 @@ export function DashboardHome() {
       </Card>
 
       <div className="flex gap-4">
-        <Button variant="outline" asChild>
+        <Button
+          variant="outline"
+          className="border-circus-crimson/30 hover:bg-circus-crimson/5 hover:border-circus-crimson/50"
+          asChild
+        >
           <Link to="/chimps">View All Chimps →</Link>
         </Button>
       </div>

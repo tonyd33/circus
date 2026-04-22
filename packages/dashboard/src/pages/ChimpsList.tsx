@@ -34,7 +34,7 @@ export function ChimpsList() {
   return (
     <div className="container mx-auto p-8">
       <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold">Chimps</h1>
+        <h1 className="text-3xl font-bold text-circus-crimson">🐒 Chimps</h1>
         <div className="flex items-center gap-2">
           {connected ? (
             <CircleDot className="h-3 w-3 text-emerald-500 animate-pulse" />
@@ -54,12 +54,14 @@ export function ChimpsList() {
       )}
 
       {chimps.length === 0 ? (
-        <p className="text-muted-foreground">No chimps found.</p>
+        <p className="text-muted-foreground text-center py-8">
+          🎪 The tent is empty — no chimps performing yet.
+        </p>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {chimps.map((chimp) => (
             <Link key={chimp.chimpId} to={`/chimps/${chimp.chimpId}/activity`}>
-              <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+              <Card className="hover:shadow-lg hover:border-circus-gold/30 transition-all cursor-pointer">
                 <CardHeader className="pb-2">
                   <div className="flex items-center gap-2">
                     <span

@@ -5,14 +5,9 @@
  * turn (e.g. user pings on Discord, later asks via GitHub; chimp can
  * still reach the original Discord interaction).
  */
-import { Protocol } from "@mnke/circus-shared";
-import { z } from "zod";
+import type { Protocol } from "@mnke/circus-shared";
 
-export const StoredEventContextSchema = z.object({
-  seenAt: z.string(),
-  context: Protocol.EventContextSchema,
-});
-export type StoredEventContext = z.infer<typeof StoredEventContextSchema>;
+export type StoredEventContext = Protocol.StoredEventContext;
 
 /**
  * Append `ctx` to `list` unless a structurally-equal context is already

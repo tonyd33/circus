@@ -32,28 +32,36 @@ export type EventPayload =
     };
 
 export type Action =
-  | { type: "create_job"; profile: string }
+  | { chimpId: string; type: "create_job"; profile: string }
   | {
+      chimpId: string;
       type: "create_consumers";
-      profile: string;
       eventFilterSubjects: string[];
       startSequence: number;
     }
-  | { type: "register_topic"; topic: Topic; force?: boolean }
-  | { type: "delete_consumers" }
-  | { type: "cleanup_topics" }
+  | { chimpId: string; type: "register_topic"; topic: Topic; force?: boolean }
+  | { chimpId: string; type: "delete_consumers" }
+  | { chimpId: string; type: "cleanup_topics" }
   | {
+      chimpId: string;
       type: "upsert_state";
       profile: string;
       status: Standards.Chimp.ChimpStatus;
     }
   | {
+      chimpId: string;
       type: "upsert_status";
       profile: string;
       status: Standards.Chimp.ChimpStatus;
     }
-  | { type: "delete_job" }
-  | { type: "delete_state" }
+  | { chimpId: string; type: "delete_job" }
+  | { chimpId: string; type: "delete_state" }
+  | {
+      chimpId: string;
+      type: "send_command";
+      command: Protocol.ChimpCommand;
+    }
+  | { type: "transfer_topics"; fromChimpId: string; toChimpId: string }
   | { type: "noop" };
 
 export interface Decision {
@@ -89,6 +97,13 @@ export function deriveChimpId(
   return `evt-${Bun.hash(key).toString(36)}`;
 }
 
+export function deriveTransmogrifyChimpId(
+  oldChimpId: string,
+  targetProfile: string,
+): string {
+  return `evt-${Bun.hash(`${oldChimpId}:${targetProfile}`).toString(36)}`;
+}
+
 function decideOnPodEvent(
   chimpId: string,
   profile: string,
@@ -104,7 +119,7 @@ function decideOnPodEvent(
 
   return {
     chimpId,
-    actions: [{ type: "upsert_status", profile, status }],
+    actions: [{ chimpId, type: "upsert_status", profile, status }],
     reason: `Pod ${eventType} phase ${phase}`,
   };
 }
@@ -131,22 +146,27 @@ function decideOnEventReceived(
   const actions: Action[] = [];
 
   if (!state.pod) {
-    actions.push({ type: "upsert_state", profile, status: "scheduled" });
+    actions.push({
+      chimpId,
+      type: "upsert_state",
+      profile,
+      status: "scheduled",
+    });
   }
 
   actions.push({
+    chimpId,
     type: "create_consumers",
-    profile,
     eventFilterSubjects: [topicFilter],
     startSequence: messageSequence,
   });
 
   const isReclaim = topicOwner != null && !state.pod;
   if (topic) {
-    actions.push({ type: "register_topic", topic, force: isReclaim });
+    actions.push({ chimpId, type: "register_topic", topic, force: isReclaim });
   }
 
-  actions.push({ type: "create_job", profile });
+  actions.push({ chimpId, type: "create_job", profile });
 
   return {
     chimpId,
@@ -162,20 +182,49 @@ function decideOnChimpOutput(
   message: Protocol.ChimpOutputMessage,
 ): Decision {
   switch (message.type) {
-    case "transmogrify":
+    case "transmogrify": {
+      const newChimpId = deriveTransmogrifyChimpId(
+        chimpId,
+        message.targetProfile,
+      );
       return {
         chimpId,
         actions: [
+          { chimpId, type: "delete_job" },
           {
+            type: "transfer_topics",
+            fromChimpId: chimpId,
+            toChimpId: newChimpId,
+          },
+          { chimpId, type: "delete_state" },
+          {
+            chimpId: newChimpId,
             type: "upsert_state",
             profile: message.targetProfile,
             status: "scheduled",
           },
-          { type: "delete_job" },
-          { type: "create_job", profile: message.targetProfile },
+          {
+            chimpId: newChimpId,
+            type: "send_command",
+            command: {
+              command: "resume-transmogrify",
+              args: {
+                fromProfile: message.fromProfile,
+                reason: message.reason,
+                summary: message.summary,
+                eventContexts: message.eventContexts,
+              },
+            },
+          },
+          {
+            chimpId: newChimpId,
+            type: "create_job",
+            profile: message.targetProfile,
+          },
         ],
-        reason: `Transmogrify: replacing with profile ${message.targetProfile}`,
+        reason: `Transmogrify ${chimpId} → ${newChimpId} (${message.targetProfile})`,
       };
+    }
     default:
       return {
         chimpId,

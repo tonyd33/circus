@@ -3,6 +3,7 @@ import {
   type CoreState,
   decide,
   deriveChimpId,
+  deriveTransmogrifyChimpId,
   type EventPayload,
 } from "./core.ts";
 
@@ -38,7 +39,12 @@ describe("pod_event", () => {
     });
 
     expect(decision.actions).toEqual([
-      { type: "upsert_status", profile: P, status: "running" },
+      {
+        chimpId: "chimp-1",
+        type: "upsert_status",
+        profile: P,
+        status: "running",
+      },
     ]);
   });
 
@@ -53,7 +59,12 @@ describe("pod_event", () => {
     });
 
     expect(decision.actions).toEqual([
-      { type: "upsert_status", profile: P, status: "pending" },
+      {
+        chimpId: "chimp-1",
+        type: "upsert_status",
+        profile: P,
+        status: "pending",
+      },
     ]);
   });
 
@@ -68,7 +79,12 @@ describe("pod_event", () => {
     });
 
     expect(decision.actions).toEqual([
-      { type: "upsert_status", profile: P, status: "failed" },
+      {
+        chimpId: "chimp-1",
+        type: "upsert_status",
+        profile: P,
+        status: "failed",
+      },
     ]);
   });
 });
@@ -114,6 +130,7 @@ describe("event_received", () => {
     expect(decision.chimpId).toBe("stale-chimp");
     expect(decision.actions.find((a) => a.type === "create_job")).toBeDefined();
     expect(decision.actions.find((a) => a.type === "register_topic")).toEqual({
+      chimpId: "stale-chimp",
       type: "register_topic",
       topic,
       force: true,
@@ -134,16 +151,19 @@ describe("event_received", () => {
 
     expect(decision.chimpId).toBe(chimpId);
     expect(decision.actions[0]).toEqual({
+      chimpId,
       type: "upsert_state",
       profile: "fast",
       status: "scheduled",
     });
     expect(decision.actions.find((a) => a.type === "register_topic")).toEqual({
+      chimpId,
       type: "register_topic",
       topic,
       force: false,
     });
     expect(decision.actions.find((a) => a.type === "create_job")).toEqual({
+      chimpId,
       type: "create_job",
       profile: "fast",
     });
@@ -190,24 +210,73 @@ describe("event_received", () => {
 });
 
 describe("chimp_output", () => {
-  test("transmogrify: upserts state, deletes job, creates new", () => {
+  test("transmogrify: new chimpId, transfers topics, sends resume command", () => {
+    const eventContexts = [
+      {
+        seenAt: "2026-04-20T01:00:00.000Z",
+        context: {
+          source: "discord" as const,
+          interactionToken: "tok",
+          applicationId: "app",
+          channelId: "ch",
+        },
+      },
+    ];
     const decision = decide(state(), {
       type: "chimp_output",
       chimpId: "chimp-1",
       message: {
         type: "transmogrify",
+        fromProfile: "scout",
         targetProfile: "powerful",
         reason: "need more power",
         summary: "working on X",
+        eventContexts,
       },
     });
 
+    const newChimpId = deriveTransmogrifyChimpId("chimp-1", "powerful");
+
     expect(decision.chimpId).toBe("chimp-1");
     expect(decision.actions).toEqual([
-      { type: "upsert_state", profile: "powerful", status: "scheduled" },
-      { type: "delete_job" },
-      { type: "create_job", profile: "powerful" },
+      { chimpId: "chimp-1", type: "delete_job" },
+      {
+        type: "transfer_topics",
+        fromChimpId: "chimp-1",
+        toChimpId: newChimpId,
+      },
+      { chimpId: "chimp-1", type: "delete_state" },
+      {
+        chimpId: newChimpId,
+        type: "upsert_state",
+        profile: "powerful",
+        status: "scheduled",
+      },
+      {
+        chimpId: newChimpId,
+        type: "send_command",
+        command: {
+          command: "resume-transmogrify",
+          args: {
+            fromProfile: "scout",
+            reason: "need more power",
+            summary: "working on X",
+            eventContexts,
+          },
+        },
+      },
+      { chimpId: newChimpId, type: "create_job", profile: "powerful" },
     ]);
+  });
+
+  test("transmogrify: new chimpId is deterministic", () => {
+    const id1 = deriveTransmogrifyChimpId("chimp-1", "powerful");
+    const id2 = deriveTransmogrifyChimpId("chimp-1", "powerful");
+    const id3 = deriveTransmogrifyChimpId("chimp-1", "worker");
+
+    expect(id1).toBe(id2);
+    expect(id1).not.toBe(id3);
+    expect(id1).toMatch(/^evt-/);
   });
 
   test("other output types: noop", () => {

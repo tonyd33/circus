@@ -42,7 +42,7 @@ export class MessageRouter {
           try {
             const js = this.nc.jetstream();
             await js.publish(
-              Naming.commandSubject(chimpId),
+              Naming.directSubject(chimpId),
               JSON.stringify(Protocol.createAgentCommand(parsed.data.prompt)),
             );
             return Response.json({ ok: true });
