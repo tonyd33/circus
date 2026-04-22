@@ -1,6 +1,6 @@
 import path from "node:path";
 import { type Logger, Protocol } from "@mnke/circus-shared";
-import { Typing } from "@mnke/circus-shared/lib";
+import { type ProfileStore, Typing } from "@mnke/circus-shared/lib";
 import type { StoredEventContext } from "@/chimp-brain/event-contexts";
 import { setupGithubAuth } from "@/lib/github-auth";
 import { cloneRepo, ghCloneRepo } from "@/lib/tooling";
@@ -17,6 +17,7 @@ export abstract class ChimpBrain {
   protected publish: PublishFn;
   protected logger: Logger.Logger;
   protected mcpUrl: string;
+  protected profileStore: ProfileStore | null = null;
 
   /**
    * Fires whenever the brain's recorded event-context list changes
@@ -46,6 +47,10 @@ export abstract class ChimpBrain {
     this.publish = publish;
     this.logger = logger;
     this.mcpUrl = mcpUrl;
+  }
+
+  setProfileStore(profileStore: ProfileStore): void {
+    this.profileStore = profileStore;
   }
 
   protected log(
@@ -182,6 +187,22 @@ export abstract class ChimpBrain {
     summary: string;
     eventContexts: StoredEventContext[];
   }): Promise<CommandResult> {
+    // Validate that fromProfile exists in the ProfileStore
+    if (this.profileStore) {
+      const profile = await this.profileStore.get(args.fromProfile);
+      if (!profile) {
+        this.log(
+          "warn",
+          `Profile "${args.fromProfile}" does not exist in ProfileStore`,
+        );
+      }
+    } else {
+      this.log(
+        "warn",
+        "ProfileStore not available for validation of fromProfile",
+      );
+    }
+
     this.log(
       "info",
       `Resumed after transmogrify from ${args.fromProfile}: ${args.reason}`,
