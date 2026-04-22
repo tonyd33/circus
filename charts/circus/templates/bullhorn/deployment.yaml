@@ -29,9 +29,38 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: METRICS_PORT
+              value: "9090"
             {{- with .Values.bullhorn.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+          ports:
+            - containerPort: 9090
+              protocol: TCP
           resources:
             {{- toYaml .Values.bullhorn.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 9090
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 9090
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 9090
+            initialDelaySeconds: 0
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
 {{- end }}
