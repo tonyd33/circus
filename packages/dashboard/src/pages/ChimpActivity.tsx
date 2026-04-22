@@ -542,21 +542,21 @@ export function ChimpActivity() {
         const cacheReadTokens =
           getNumber(usage ?? {}, "cache_read_input_tokens") ?? 0;
 
-        // Count content blocks (text, tool_use, etc.)
-        const contentBlockCount = Array.isArray(content) ? content.length : 0;
+        // Parse and categorize content blocks
+        const blocks = Array.isArray(content)
+          ? content.filter(
+              (block): block is Record<string, unknown> =>
+                typeof block === "object" && block !== null,
+            )
+          : [];
 
-        // Extract text content from content blocks
-        const textContent = Array.isArray(content)
-          ? content
-              .filter(
-                (block): block is Record<string, unknown> =>
-                  typeof block === "object" && block !== null,
-              )
-              .filter((block) => block.type === "text")
-              .map((block) => block.text)
-              .filter((text): text is string => typeof text === "string")
-              .join("\n")
-          : undefined;
+        const textBlocks = blocks.filter((block) => block.type === "text");
+        const toolUseBlocks = blocks.filter(
+          (block) => block.type === "tool_use",
+        );
+        const thinkingBlocks = blocks.filter(
+          (block) => block.type === "thinking",
+        );
 
         return (
           <div className="space-y-2">
@@ -595,21 +595,87 @@ export function ChimpActivity() {
                     </span>
                   )}
                 </div>
-                {contentBlockCount > 0 && (
+                {blocks.length > 0 && (
                   <div className="flex items-center gap-1">
                     <span className="text-muted-foreground/70">Blocks:</span>
                     <span className="font-mono font-medium">
-                      {contentBlockCount}
+                      {blocks.length}
                     </span>
+                    {textBlocks.length > 0 && (
+                      <span className="text-green-500/70">
+                        {textBlocks.length}t
+                      </span>
+                    )}
+                    {toolUseBlocks.length > 0 && (
+                      <span className="text-purple-500/70">
+                        {toolUseBlocks.length}⚙
+                      </span>
+                    )}
+                    {thinkingBlocks.length > 0 && (
+                      <span className="text-orange-500/70">
+                        {thinkingBlocks.length}🧠
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
             )}
 
-            {textContent && (
+            {thinkingBlocks.length > 0 && (
+              <div className="space-y-2">
+                {thinkingBlocks.map((block, idx) => {
+                  const thinkingText = block.thinking as string | undefined;
+                  return thinkingText ? (
+                    <details
+                      key={idx}
+                      className="group cursor-pointer bg-orange-500/10 rounded-lg p-3 border border-orange-500/20"
+                    >
+                      <summary className="text-xs font-medium text-orange-700 dark:text-orange-400 cursor-pointer">
+                        🧠 Thinking ({thinkingText.length} chars)
+                      </summary>
+                      <div className="mt-2 text-xs bg-muted/50 rounded p-2 font-mono whitespace-pre-wrap break-words max-h-48 overflow-y-auto">
+                        {thinkingText}
+                      </div>
+                    </details>
+                  ) : null;
+                })}
+              </div>
+            )}
+
+            {toolUseBlocks.length > 0 && (
+              <div className="space-y-2">
+                {toolUseBlocks.map((block, idx) => {
+                  const toolId = block.id as string | undefined;
+                  const toolName = block.name as string | undefined;
+                  const toolInput = block.input as
+                    | Record<string, unknown>
+                    | undefined;
+                  return (
+                    <details
+                      key={idx}
+                      className="group cursor-pointer bg-purple-500/10 rounded-lg p-3 border border-purple-500/20"
+                    >
+                      <summary className="text-xs font-medium text-purple-700 dark:text-purple-400 cursor-pointer">
+                        ⚙️ Tool Use: {toolName} {toolId && `[${toolId}]`}
+                      </summary>
+                      {toolInput && (
+                        <div className="mt-2">
+                          <ExpandableJSON data={toolInput} label="Tool Input" />
+                        </div>
+                      )}
+                    </details>
+                  );
+                })}
+              </div>
+            )}
+
+            {textBlocks.length > 0 && (
               <div className="bg-muted/50 rounded-lg p-3 prose prose-sm dark:prose-invert max-w-none">
                 <Markdown remarkPlugins={[remarkGfm]}>
-                  {textContent}
+                  {textBlocks
+                    .map((block) => block.text)
+                    .filter((text): text is string => typeof text === "string")
+                    .join("\n")}
                 </Markdown>
               </div>
             )}
