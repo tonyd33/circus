@@ -557,6 +557,15 @@ export function ChimpActivity() {
         const thinkingBlocks = blocks.filter(
           (block) => block.type === "thinking",
         );
+        const toolResultBlocks = blocks.filter(
+          (block) => block.type === "tool_result",
+        );
+        const otherBlocks = blocks.filter(
+          (block) =>
+            !["text", "tool_use", "thinking", "tool_result"].includes(
+              block.type as string,
+            ),
+        );
 
         return (
           <div className="space-y-2">
@@ -616,6 +625,16 @@ export function ChimpActivity() {
                         {thinkingBlocks.length}🧠
                       </span>
                     )}
+                    {toolResultBlocks.length > 0 && (
+                      <span className="text-blue-500/70">
+                        {toolResultBlocks.length}📋
+                      </span>
+                    )}
+                    {otherBlocks.length > 0 && (
+                      <span className="text-gray-500/70">
+                        {otherBlocks.length}?
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
@@ -663,6 +682,65 @@ export function ChimpActivity() {
                           <ExpandableJSON data={toolInput} label="Tool Input" />
                         </div>
                       )}
+                    </details>
+                  );
+                })}
+              </div>
+            )}
+
+            {toolResultBlocks.length > 0 && (
+              <div className="space-y-2">
+                {toolResultBlocks.map((block, idx) => {
+                  const toolUseId = block.tool_use_id as string | undefined;
+                  const resultContent = block.content as
+                    | unknown[]
+                    | Record<string, unknown>
+                    | string
+                    | undefined;
+                  const resultType = block.type;
+                  return (
+                    <details
+                      key={idx}
+                      className="group cursor-pointer bg-blue-500/10 rounded-lg p-3 border border-blue-500/20"
+                    >
+                      <summary className="text-xs font-medium text-blue-700 dark:text-blue-400 cursor-pointer">
+                        📋 Tool Result {toolUseId && `[${toolUseId}]`}
+                      </summary>
+                      {resultContent && (
+                        <div className="mt-2">
+                          {typeof resultContent === "string" ? (
+                            <div className="text-xs bg-muted/50 rounded p-2 font-mono whitespace-pre-wrap break-words">
+                              {resultContent}
+                            </div>
+                          ) : (
+                            <ExpandableJSON
+                              data={resultContent}
+                              label="Tool Result"
+                            />
+                          )}
+                        </div>
+                      )}
+                    </details>
+                  );
+                })}
+              </div>
+            )}
+
+            {otherBlocks.length > 0 && (
+              <div className="space-y-2">
+                {otherBlocks.map((block, idx) => {
+                  const blockType = block.type as string | undefined;
+                  return (
+                    <details
+                      key={idx}
+                      className="group cursor-pointer bg-gray-500/10 rounded-lg p-3 border border-gray-500/20"
+                    >
+                      <summary className="text-xs font-medium text-gray-700 dark:text-gray-400 cursor-pointer">
+                        ❓ Unknown Block Type: {blockType}
+                      </summary>
+                      <div className="mt-2">
+                        <ExpandableJSON data={block} label="Block Data" />
+                      </div>
                     </details>
                   );
                 })}
