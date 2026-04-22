@@ -190,6 +190,113 @@ describe("event_received", () => {
     ).toBeDefined();
   });
 
+  test("unclaimed, pod exists → create_job + create_consumers", () => {
+    const pod: any = { status: { phase: "Running" } };
+    const chimpId = deriveChimpId(topic, eventSubject);
+    const decision = decide(state({ pod }), {
+      type: "event_received",
+      chimpId,
+      profile: P,
+      eventSubject,
+      topic,
+      topicOwner: null,
+      messageSequence: 42,
+    });
+
+    expect(decision.actions.find((a) => a.type === "create_job")).toBeDefined();
+    expect(
+      decision.actions.find((a) => a.type === "create_consumers"),
+    ).toBeDefined();
+    expect(
+      decision.actions.find((a) => a.type === "register_topic"),
+    ).toBeDefined();
+  });
+
+  test("pod in Pending phase during event_received → creates consumers", () => {
+    const pod: any = { status: { phase: "Pending" } };
+    const chimpId = deriveChimpId(topic, eventSubject);
+    const decision = decide(state({ pod }), {
+      type: "event_received",
+      chimpId,
+      profile: P,
+      eventSubject,
+      topic,
+      topicOwner: null,
+      messageSequence: 42,
+    });
+
+    expect(
+      decision.actions.find((a) => a.type === "upsert_state"),
+    ).toBeUndefined();
+    expect(
+      decision.actions.find((a) => a.type === "create_consumers"),
+    ).toBeDefined();
+    expect(decision.actions.find((a) => a.type === "create_job")).toBeDefined();
+  });
+
+  test("pod in Failed phase during event_received → creates consumers", () => {
+    const pod: any = { status: { phase: "Failed" } };
+    const chimpId = deriveChimpId(topic, eventSubject);
+    const decision = decide(state({ pod }), {
+      type: "event_received",
+      chimpId,
+      profile: P,
+      eventSubject,
+      topic,
+      topicOwner: null,
+      messageSequence: 42,
+    });
+
+    expect(
+      decision.actions.find((a) => a.type === "upsert_state"),
+    ).toBeUndefined();
+    expect(
+      decision.actions.find((a) => a.type === "create_consumers"),
+    ).toBeDefined();
+    expect(decision.actions.find((a) => a.type === "create_job")).toBeDefined();
+  });
+
+  test("pod in Succeeded phase during event_received → creates consumers", () => {
+    const pod: any = { status: { phase: "Succeeded" } };
+    const chimpId = deriveChimpId(topic, eventSubject);
+    const decision = decide(state({ pod }), {
+      type: "event_received",
+      chimpId,
+      profile: P,
+      eventSubject,
+      topic,
+      topicOwner: null,
+      messageSequence: 42,
+    });
+
+    expect(
+      decision.actions.find((a) => a.type === "upsert_state"),
+    ).toBeUndefined();
+    expect(
+      decision.actions.find((a) => a.type === "create_consumers"),
+    ).toBeDefined();
+    expect(decision.actions.find((a) => a.type === "create_job")).toBeDefined();
+  });
+
+  test("forceClaimTopic: topic claimed by stale chimp, no pod → force claim with reclaim", () => {
+    const staleChimpId = "stale-chimp";
+    const decision = decide(state(), {
+      type: "event_received",
+      chimpId: staleChimpId,
+      profile: P,
+      eventSubject,
+      topic,
+      topicOwner: { chimpId: staleChimpId },
+      messageSequence: 42,
+    });
+
+    const registerTopicAction = decision.actions.find(
+      (a) => a.type === "register_topic",
+    );
+    expect(registerTopicAction).toBeDefined();
+    expect(registerTopicAction?.force).toBe(true);
+  });
+
   test("debug event (null topic) → no register_topic", () => {
     const chimpId = deriveChimpId(null, "events.debug.abc123");
     const decision = decide(state(), {
@@ -291,5 +398,85 @@ describe("chimp_output", () => {
     });
 
     expect(decision.actions).toEqual([{ type: "noop" }]);
+  });
+
+  test("chimp_output: agent-message-response type → noop", () => {
+    const decision = decide(state(), {
+      type: "chimp_output",
+      chimpId: "chimp-1",
+      message: {
+        type: "agent-message-response",
+        content: "task completed",
+        sessionId: "session-123",
+      },
+    });
+
+    expect(decision.chimpId).toBe("chimp-1");
+    expect(decision.actions).toEqual([{ type: "noop" }]);
+    expect(decision.reason).toBe("Output: agent-message-response");
+  });
+
+  test("chimp_output: dashboard-response type → noop", () => {
+    const decision = decide(state(), {
+      type: "chimp_output",
+      chimpId: "chimp-2",
+      message: {
+        type: "agent-message-response",
+        content: "status update",
+        sessionId: "dashboard-session",
+      },
+    });
+
+    expect(decision.actions).toEqual([{ type: "noop" }]);
+  });
+
+  test("transmogrify with stored event contexts → transfers all contexts", () => {
+    const eventContexts = [
+      {
+        seenAt: "2026-04-20T01:00:00.000Z",
+        context: {
+          source: "discord" as const,
+          interactionToken: "tok-1",
+          applicationId: "app-1",
+          channelId: "ch-1",
+        },
+      },
+      {
+        seenAt: "2026-04-20T02:00:00.000Z",
+        context: {
+          source: "github" as const,
+          repo: "owner/repo",
+          installationId: 123,
+          event: {
+            name: "issue_comment.created" as const,
+            issueNumber: 42,
+            isPR: false,
+            commentId: 456,
+            author: "user123",
+          },
+        },
+      },
+    ];
+    const decision = decide(state(), {
+      type: "chimp_output",
+      chimpId: "chimp-1",
+      message: {
+        type: "transmogrify",
+        fromProfile: "scout",
+        targetProfile: "powerful",
+        reason: "need more power",
+        summary: "working on X",
+        eventContexts,
+      },
+    });
+
+    const newChimpId = deriveTransmogrifyChimpId("chimp-1", "powerful");
+    const sendCommandAction = decision.actions.find(
+      (a) => a.type === "send_command",
+    ) as any;
+
+    expect(sendCommandAction).toBeDefined();
+    expect(sendCommandAction.command.args.eventContexts).toEqual(eventContexts);
+    expect(sendCommandAction.command.args.eventContexts.length).toBe(2);
   });
 });
