@@ -132,6 +132,10 @@ export class CircusMcp {
           .number()
           .describe("GitHub App installation id from the event context"),
         content: z.string().describe("Comment body"),
+        replyToCommentId: z
+          .number()
+          .optional()
+          .describe("Comment ID to reply to (creates a threaded reply)"),
       },
       async (args) => {
         this.config.logger.info(
@@ -139,10 +143,19 @@ export class CircusMcp {
             tool: "github_respond",
             repo: args.repo,
             issueNumber: args.issueNumber,
+            replyToCommentId: args.replyToCommentId,
           },
           "MCP tool called: github_respond",
         );
-        publish(Protocol.createGithubComment(args));
+        publish(
+          Protocol.createGithubComment({
+            installationId: args.installationId,
+            repo: args.repo,
+            issueNumber: args.issueNumber,
+            content: args.content,
+            in_reply_to_id: args.replyToCommentId,
+          }),
+        );
         return {
           content: [
             {

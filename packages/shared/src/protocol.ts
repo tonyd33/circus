@@ -323,6 +323,7 @@ export const GithubCommentSchema = z.object({
   repo: z.string(),
   issueNumber: z.number(),
   content: z.string(),
+  in_reply_to_id: z.number().optional(),
 });
 
 export const TransmogrifySchema = z.object({
@@ -642,6 +643,7 @@ export function createGithubComment(args: {
   repo: string;
   issueNumber: number;
   content: string;
+  in_reply_to_id?: number;
 }): GithubComment {
   return {
     type: "github-comment",
@@ -649,5 +651,8 @@ export function createGithubComment(args: {
     repo: args.repo,
     issueNumber: args.issueNumber,
     content: args.content,
+    ...(args.in_reply_to_id !== undefined && {
+      in_reply_to_id: args.in_reply_to_id,
+    }),
   };
 }

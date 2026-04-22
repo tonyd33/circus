@@ -242,6 +242,9 @@ export class Bullhorn {
           repo,
           issue_number: msg.issueNumber,
           body: msg.content,
+          ...(msg.in_reply_to_id !== undefined && {
+            in_reply_to_id: msg.in_reply_to_id,
+          }),
         },
       );
       this.logger.info(
@@ -249,6 +252,7 @@ export class Bullhorn {
           repo: msg.repo,
           issueNumber: msg.issueNumber,
           commentId: res.data.id,
+          inReplyToId: msg.in_reply_to_id,
         },
         "Posted GitHub comment",
       );
