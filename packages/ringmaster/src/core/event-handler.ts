@@ -96,19 +96,6 @@ export class EventHandler {
         await this.deps.jobManager.deleteJob(action.chimpId);
         break;
 
-      case "upsert_state":
-        await this.deps.stateManager.upsert(
-          action.chimpId,
-          action.profile,
-          action.status,
-        );
-        await this.deps.metaPublisher.publishStatus(
-          action.profile,
-          action.chimpId,
-          action.status,
-        );
-        break;
-
       case "upsert_status":
         await this.deps.stateManager.upsert(
           action.chimpId,
