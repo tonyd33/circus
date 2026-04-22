@@ -89,6 +89,7 @@ async function main() {
 
   const server = serve({
     routes: {
+      "/healthz": new Response("OK", { status: 200 }),
       "/*": index,
       ...activityRouter.routes,
       ...chimpRouter.routes,
