@@ -12,12 +12,15 @@ import { ProfileLoader } from "@/config";
 import { EventHandler, type RingmasterConfig } from "@/core";
 import {
   ConsumerManager,
+  HealthMonitor,
   JobManager,
   MetaPublisher,
   StateManager,
 } from "@/executors";
 import { EventListener, OutputListener, PodWatcher } from "@/listeners";
 import { PodCache } from "@/state";
+
+const HEALTH_CHECK_INTERVAL_MS = 30000; // Check health every 30 seconds
 
 export class Ringmaster {
   private config: RingmasterConfig;
@@ -39,6 +42,8 @@ export class Ringmaster {
   private eventListener: EventListener | null = null;
   private outputListener: OutputListener | null = null;
   private podWatcher: PodWatcher | null = null;
+  private healthMonitor: HealthMonitor | null = null;
+  private healthCheckTimer: NodeJS.Timeout | null = null;
 
   constructor(config: RingmasterConfig, logger: Logger.Logger) {
     this.config = config;
@@ -102,6 +107,10 @@ export class Ringmaster {
       logger: this.logger.child({ component: "EventHandler" }),
     });
 
+    this.healthMonitor = new HealthMonitor(
+      this.logger.child({ component: "HealthMonitor" }),
+    );
+
     this.podWatcher = new PodWatcher(
       this.config.namespace,
       this.eventHandler,
@@ -127,10 +136,20 @@ export class Ringmaster {
       this.stateManager.start(),
       this.jobManager.start(),
     ]);
+
+    // Start periodic health checks
+    this.startHealthChecks();
+
     this.logger.info("Ringmaster started");
   }
 
   async stop(): Promise<void> {
+    // Stop health checks
+    if (this.healthCheckTimer) {
+      clearInterval(this.healthCheckTimer);
+      this.healthCheckTimer = null;
+    }
+
     await Promise.all([
       this.podCache?.stop(),
       this.podWatcher?.stop(),
@@ -146,6 +165,7 @@ export class Ringmaster {
     this.stateManager = null;
     this.jobManager = null;
     this.profileLoader = null;
+    this.healthMonitor = null;
 
     if (this.nc) {
       await this.nc.drain();
@@ -155,6 +175,30 @@ export class Ringmaster {
     }
 
     this.logger.info("Ringmaster stopped");
+  }
+
+  /**
+   * Start periodic health checks of critical components
+   */
+  private startHealthChecks(): void {
+    if (!this.healthMonitor || !this.podWatcher) {
+      return;
+    }
+
+    // Perform initial health check
+    this.healthMonitor.checkPodWatcherHealth(this.podWatcher);
+
+    // Set up periodic health checks
+    this.healthCheckTimer = setInterval(() => {
+      if (this.healthMonitor && this.podWatcher) {
+        this.healthMonitor.checkPodWatcherHealth(this.podWatcher);
+      }
+    }, HEALTH_CHECK_INTERVAL_MS);
+
+    this.logger.debug(
+      { intervalMs: HEALTH_CHECK_INTERVAL_MS },
+      "Health checks started",
+    );
   }
 
   private async ensureSharedStreams(jsm: JetStreamManager): Promise<void> {
