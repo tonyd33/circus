@@ -105,7 +105,7 @@ export class PodWatcher {
 
       // Calculate exponential backoff
       const delayMs = Math.min(
-        INITIAL_RETRY_DELAY_MS * Math.pow(2, this.consecutiveFailures - 1),
+        INITIAL_RETRY_DELAY_MS * 2 ** (this.consecutiveFailures - 1),
         MAX_RETRY_DELAY_MS,
       );
 
@@ -160,7 +160,10 @@ export class PodWatcher {
       );
 
       // Record successful connection
-      if (this.consecutiveFailures === 0 || this.lastSuccessfulConnection === null) {
+      if (
+        this.consecutiveFailures === 0 ||
+        this.lastSuccessfulConnection === null
+      ) {
         this.lastSuccessfulConnection = Date.now();
         this.consecutiveFailures = 0;
         this.logger.info("Watch connection established successfully");
