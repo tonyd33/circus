@@ -13,7 +13,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useChimps } from "@/hooks/useChimps";
+import { useChimpTopics } from "@/hooks/useChimpTopics";
 import type { ChimpState } from "@/lib/chimp-api";
+import type { Standards } from "@mnke/circus-shared";
 
 const statusColors: Record<ChimpState["status"], string> = {
   scheduled: "bg-blue-400",
@@ -28,8 +30,60 @@ function formatTime(ts: number): string {
   return new Date(ts).toLocaleString();
 }
 
+/**
+ * Displays subscribed topics for a chimp as badges.
+ * Topics include GitHub PRs/issues and Discord channels the chimp is subscribed to.
+ */
+function ChimpTopicsBadges({
+  chimpId,
+  chimpTopics,
+}: {
+  chimpId: string;
+  chimpTopics: Standards.Topic.Topic[];
+}) {
+  if (chimpTopics.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-3">
+      {chimpTopics.map((t) => {
+        const key =
+          t.platform === "github"
+            ? `${t.platform}.${t.owner}.${t.repo}.${t.type}.${t.number}`
+            : `${t.platform}.${t.guildId}.${t.channelId}.${t.interactionId}`;
+
+        if (t.platform === "github") {
+          return (
+            <Badge
+              key={key}
+              variant="outline"
+              className="text-xs font-mono text-emerald-500 border-emerald-500/30"
+            >
+              {t.owner}/{t.repo}#{t.number}
+            </Badge>
+          );
+        }
+
+        // Discord topics - shown as simple badge
+        return (
+          <Badge
+            key={key}
+            variant="outline"
+            className="text-xs font-mono text-indigo-500 border-indigo-500/30"
+          >
+            discord
+          </Badge>
+        );
+      })}
+    </div>
+  );
+}
+
 export function ChimpsList() {
   const { chimps, connected, error } = useChimps();
+  // Fetch topics for all chimps in a single API call
+  const { topicsByChimp, loading: topicsLoading } = useChimpTopics();
 
   return (
     <div className="container mx-auto p-8">
@@ -83,6 +137,12 @@ export function ChimpsList() {
                   <p className="text-sm text-muted-foreground">
                     Updated: {formatTime(chimp.updatedAt)}
                   </p>
+                  {!topicsLoading && topicsByChimp && (
+                    <ChimpTopicsBadges
+                      chimpId={chimp.chimpId}
+                      chimpTopics={topicsByChimp[chimp.chimpId] ?? []}
+                    />
+                  )}
                 </CardContent>
               </Card>
             </Link>

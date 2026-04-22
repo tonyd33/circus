@@ -31,6 +31,22 @@ export class ChimpRouter {
           return Response.json({ chimps });
         },
       },
+      "/api/topics": {
+        GET: async () => {
+          const chimps = await this.statusSource.list();
+          const allTopics: Record<string, Standards.Topic.Topic[]> = {};
+
+          await Promise.all(
+            chimps.map(async (chimp) => {
+              allTopics[chimp.chimpId] = await this.topicRegistry.listForChimp(
+                chimp.chimpId,
+              );
+            }),
+          );
+
+          return Response.json({ topics: allTopics });
+        },
+      },
       "/api/chimp/:chimpId/topics": {
         GET: async (req: Bun.BunRequest<"/api/chimp/:chimpId/topics">) => {
           const chimpId = req.params.chimpId;
