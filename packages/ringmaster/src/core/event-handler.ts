@@ -123,6 +123,17 @@ export class EventHandler {
         const topics = await this.deps.topicRegistry.listForChimp(
           action.fromChimpId,
         );
+        const topicFilters = topics.map(Standards.Topic.topicToEventSubject);
+
+        // Create consumer for new chimpId with topic filters before
+        // updating KV — ensures consumer exists when subscribe() tries
+        // to update filter_subjects
+        await this.deps.consumerManager.ensureConsumer(
+          action.toChimpId,
+          topicFilters,
+          1,
+        );
+
         for (const topic of topics) {
           await this.deps.topicRegistry.subscribe(topic, action.toChimpId, {
             force: true,
