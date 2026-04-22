@@ -15,23 +15,29 @@ import {
   Cog,
   Eye,
   FileBox,
+  FileText,
   Filter,
   FolderSync,
   GitBranch,
   GitPullRequestArrow,
   Hash,
+  Image,
+  ListChecks,
   Loader2,
   Megaphone,
   MessageCircle,
   MessageSquare,
   OctagonX,
+  Play,
   Radio,
   RefreshCw,
   ScrollText,
   Send,
+  Server,
   Sparkles,
   Terminal,
   User,
+  Webhook,
   XCircle,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -691,37 +697,189 @@ export function ChimpActivity() {
         const cost = event.total_cost_usd as number | undefined;
         const turns = event.num_turns as number | undefined;
         const durationMs = event.duration_ms as number | undefined;
+        // SDKResultSuccess has `result: string` (final text output)
+        const resultText = event.result as string | undefined;
+        // SDKResultError has `errors: string[]`
+        const errors = Array.isArray(event.errors)
+          ? (event.errors as string[])
+          : undefined;
         return (
           <div
-            className={`flex items-center gap-2.5 rounded-lg p-2.5 ${isError ? "bg-red-500/10" : "bg-emerald-500/10"}`}
+            className={`rounded-lg p-2.5 space-y-2 ${isError ? "bg-red-500/10" : "bg-emerald-500/10"}`}
           >
-            {isError ? (
-              <XCircle className="h-4 w-4 text-red-500 shrink-0" />
-            ) : (
-              <CheckCircle className="h-4 w-4 text-emerald-500 shrink-0" />
-            )}
-            <span
-              className={`text-sm font-medium ${isError ? "text-red-500" : "text-emerald-500"}`}
-            >
-              {isError ? `Error: ${subtype}` : "Completed"}
-            </span>
-            <div className="flex items-center gap-3 ml-auto text-xs text-muted-foreground tabular-nums">
-              {turns !== undefined && <span>{turns} turns</span>}
-              {durationMs !== undefined && (
-                <span>{(durationMs / 1000).toFixed(1)}s</span>
+            <div className="flex items-center gap-2.5">
+              {isError ? (
+                <XCircle className="h-4 w-4 text-red-500 shrink-0" />
+              ) : (
+                <CheckCircle className="h-4 w-4 text-emerald-500 shrink-0" />
               )}
-              {cost !== undefined && <span>${cost.toFixed(4)}</span>}
+              <span
+                className={`text-sm font-medium ${isError ? "text-red-500" : "text-emerald-500"}`}
+              >
+                {isError ? `Error: ${subtype}` : "Completed"}
+              </span>
+              <div className="flex items-center gap-3 ml-auto text-xs text-muted-foreground tabular-nums">
+                {turns !== undefined && <span>{turns} turns</span>}
+                {durationMs !== undefined && (
+                  <span>{(durationMs / 1000).toFixed(1)}s</span>
+                )}
+                {cost !== undefined && <span>${cost.toFixed(4)}</span>}
+              </div>
             </div>
+            {resultText && (
+              <div className="bg-muted/50 rounded-lg p-3 prose prose-sm dark:prose-invert max-w-none">
+                <Markdown remarkPlugins={[remarkGfm]}>{resultText}</Markdown>
+              </div>
+            )}
+            {errors && errors.length > 0 && (
+              <div className="space-y-1">
+                {errors.map((err, i) => (
+                  <p
+                    key={i}
+                    className="text-xs text-red-400 font-mono bg-red-500/10 rounded px-2 py-1"
+                  >
+                    {err}
+                  </p>
+                ))}
+              </div>
+            )}
           </div>
         );
       }
       case "user": {
-        const content = event.content as string | undefined;
+        // SDK: SDKUserMessage = { type: 'user', message: MessageParam, ... }
+        // MessageParam.content = string | Array<text|image|tool_result|document>
+        const msgParam = event.message as Record<string, unknown> | undefined;
+        const rawContent = msgParam?.content;
+
+        /** Render a single content block from a user message */
+        const renderUserBlock = (
+          block: Record<string, unknown>,
+          key: number,
+        ) => {
+          const bt = block.type as string | undefined;
+          if (bt === "text") {
+            const text = block.text as string | undefined;
+            return text ? (
+              <p key={key} className="text-sm whitespace-pre-wrap">
+                {text}
+              </p>
+            ) : null;
+          }
+          if (bt === "tool_result") {
+            const toolUseId = block.tool_use_id as string | undefined;
+            const isError = block.is_error as boolean | undefined;
+            const resultContent = block.content;
+            const resultText =
+              typeof resultContent === "string"
+                ? resultContent
+                : Array.isArray(resultContent)
+                  ? resultContent
+                      .filter(
+                        (b): b is Record<string, unknown> =>
+                          typeof b === "object" && b !== null,
+                      )
+                      .filter((b) => b.type === "text")
+                      .map((b) => b.text as string)
+                      .filter(Boolean)
+                      .join("\n")
+                  : undefined;
+            return (
+              <div
+                key={key}
+                className={`rounded-lg p-2.5 space-y-1.5 ${isError ? "bg-red-500/10 border border-red-500/20" : "bg-emerald-500/10 border border-emerald-500/20"}`}
+              >
+                <div className="flex items-center gap-2">
+                  <Terminal
+                    className={`h-3.5 w-3.5 shrink-0 ${isError ? "text-red-400" : "text-emerald-400"}`}
+                  />
+                  <span className="text-xs font-medium text-muted-foreground">
+                    tool result
+                  </span>
+                  {toolUseId && (
+                    <code className="text-xs font-mono text-muted-foreground/70">
+                      {toolUseId}
+                    </code>
+                  )}
+                  {isError && (
+                    <Badge
+                      variant="outline"
+                      className="text-xs border-red-500/40 text-red-400"
+                    >
+                      error
+                    </Badge>
+                  )}
+                </div>
+                {resultText && (
+                  <pre className="text-xs font-mono bg-muted/30 rounded p-2 whitespace-pre-wrap break-all max-h-48 overflow-y-auto">
+                    {resultText}
+                  </pre>
+                )}
+              </div>
+            );
+          }
+          if (bt === "image") {
+            return (
+              <div
+                key={key}
+                className="flex items-center gap-2 text-xs text-muted-foreground"
+              >
+                <Image className="h-3.5 w-3.5 shrink-0" />
+                <span>[Image attachment]</span>
+              </div>
+            );
+          }
+          if (bt === "document") {
+            const title = block.title as string | undefined;
+            return (
+              <div
+                key={key}
+                className="flex items-center gap-2 text-xs text-muted-foreground"
+              >
+                <FileText className="h-3.5 w-3.5 shrink-0" />
+                <span>{title ? `Document: ${title}` : "[Document]"}</span>
+              </div>
+            );
+          }
+          return (
+            <ExpandableJSON key={key} data={block} label={bt ?? "block"} />
+          );
+        };
+
+        if (typeof rawContent === "string") {
+          return (
+            <div className="flex items-start gap-2.5">
+              <User className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+              <p className="text-sm whitespace-pre-wrap">
+                {rawContent || "(empty)"}
+              </p>
+            </div>
+          );
+        }
+        if (Array.isArray(rawContent)) {
+          const blocks = rawContent.filter(
+            (b): b is Record<string, unknown> =>
+              typeof b === "object" && b !== null,
+          );
+          return (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <User className="h-4 w-4 text-amber-500 shrink-0" />
+                <span className="text-xs text-muted-foreground font-medium">
+                  User message
+                </span>
+              </div>
+              <div className="space-y-1.5 pl-6">
+                {blocks.map((b, i) => renderUserBlock(b, i))}
+              </div>
+            </div>
+          );
+        }
         return (
           <div className="flex items-start gap-2.5">
             <User className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
-            <p className="text-sm whitespace-pre-wrap">
-              {content || "(user message)"}
+            <p className="text-sm text-muted-foreground italic">
+              (user message)
             </p>
           </div>
         );
@@ -760,15 +918,267 @@ export function ChimpActivity() {
               </div>
             );
           }
-          case "memory_recall":
+          case "memory_recall": {
+            const mode = event.mode as string | undefined;
+            const memories = Array.isArray(event.memories)
+              ? event.memories
+              : [];
             return (
-              <div className="flex items-center gap-2.5">
-                <BookOpen className="h-4 w-4 text-purple-400 shrink-0" />
-                <span className="text-sm text-muted-foreground">
-                  Memory recalled
-                </span>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <BookOpen className="h-4 w-4 text-purple-400 shrink-0" />
+                  <span className="text-sm text-muted-foreground">
+                    Memory recalled
+                  </span>
+                  {mode && (
+                    <Badge variant="outline" className="text-xs font-mono">
+                      {mode}
+                    </Badge>
+                  )}
+                  {memories.length > 0 && (
+                    <span className="text-xs text-muted-foreground/70">
+                      {memories.length} file{memories.length !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                </div>
+                {memories.length > 0 && (
+                  <div className="pl-6 space-y-0.5">
+                    {(memories as Record<string, unknown>[]).map(
+                      (m, i) =>
+                        typeof m.path === "string" && (
+                          <p
+                            key={i}
+                            className="text-xs font-mono text-muted-foreground/70 truncate"
+                          >
+                            {m.path}
+                          </p>
+                        ),
+                    )}
+                  </div>
+                )}
               </div>
             );
+          }
+          case "init": {
+            // SDKSystemMessage: init event with model, tools, mcp_servers, cwd
+            const model = event.model as string | undefined;
+            const tools = Array.isArray(event.tools)
+              ? (event.tools as string[])
+              : [];
+            const mcpServers = Array.isArray(event.mcp_servers)
+              ? (event.mcp_servers as Record<string, unknown>[])
+              : [];
+            const cwd = event.cwd as string | undefined;
+            return (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Server className="h-4 w-4 text-blue-400 shrink-0" />
+                  <span className="text-sm font-medium">
+                    Claude initialized
+                  </span>
+                  {model && (
+                    <span className="font-mono text-xs bg-muted/50 px-2 py-1 rounded">
+                      {model}
+                    </span>
+                  )}
+                </div>
+                <div className="pl-6 space-y-1 text-xs text-muted-foreground">
+                  {cwd && (
+                    <div className="flex items-center gap-1.5">
+                      <FolderSync className="h-3 w-3 shrink-0" />
+                      <code className="font-mono">{cwd}</code>
+                    </div>
+                  )}
+                  {tools.length > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <Cog className="h-3 w-3 shrink-0" />
+                      <span>{tools.length} tools</span>
+                    </div>
+                  )}
+                  {mcpServers.length > 0 && (
+                    <div className="space-y-0.5">
+                      {mcpServers.map((srv, i) => (
+                        <div key={i} className="flex items-center gap-1.5">
+                          <Webhook className="h-3 w-3 shrink-0" />
+                          <span className="font-mono">
+                            {String(srv.name ?? "")}
+                          </span>
+                          <Badge variant="outline" className="text-xs py-0">
+                            {String(srv.status ?? "")}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          }
+          case "local_command_output": {
+            // Slash command output (e.g. /cost, /voice)
+            const content = event.content as string | undefined;
+            return (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <Terminal className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-xs text-muted-foreground font-medium">
+                    Command output
+                  </span>
+                </div>
+                {content && (
+                  <pre className="text-xs font-mono bg-muted/30 rounded p-2 whitespace-pre-wrap break-all max-h-48 overflow-y-auto">
+                    {content}
+                  </pre>
+                )}
+              </div>
+            );
+          }
+          case "task_started": {
+            const desc = event.description as string | undefined;
+            const taskType = event.task_type as string | undefined;
+            return (
+              <div className="flex items-center gap-2.5">
+                <Play className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                <span className="text-sm text-muted-foreground">
+                  {desc || "Task started"}
+                </span>
+                {taskType && (
+                  <Badge variant="outline" className="text-xs font-mono">
+                    {taskType}
+                  </Badge>
+                )}
+              </div>
+            );
+          }
+          case "task_progress": {
+            const desc = event.description as string | undefined;
+            const usage = event.usage as Record<string, unknown> | undefined;
+            const totalTokens = getNumber(usage ?? {}, "total_tokens");
+            const toolUses = getNumber(usage ?? {}, "tool_uses");
+            const lastTool = event.last_tool_name as string | undefined;
+            return (
+              <div className="space-y-1">
+                <div className="flex items-center gap-2.5">
+                  <ListChecks className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                  <span className="text-sm text-muted-foreground">
+                    {desc || "Task in progress"}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-3 pl-6 text-xs text-muted-foreground/70">
+                  {lastTool && (
+                    <span>
+                      last: <code className="font-mono">{lastTool}</code>
+                    </span>
+                  )}
+                  {toolUses !== undefined && <span>{toolUses} tools</span>}
+                  {totalTokens !== undefined && (
+                    <span>{totalTokens.toLocaleString()} tokens</span>
+                  )}
+                </div>
+              </div>
+            );
+          }
+          case "task_notification": {
+            const status = event.status as string | undefined;
+            const summary = event.summary as string | undefined;
+            const isOk = status === "completed";
+            return (
+              <div
+                className={`rounded-lg p-2.5 space-y-1 ${isOk ? "bg-emerald-500/10" : "bg-red-500/10"}`}
+              >
+                <div className="flex items-center gap-2">
+                  {isOk ? (
+                    <CheckCircle className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                  ) : (
+                    <XCircle className="h-3.5 w-3.5 text-red-400 shrink-0" />
+                  )}
+                  <span
+                    className={`text-sm font-medium ${isOk ? "text-emerald-400" : "text-red-400"}`}
+                  >
+                    Task {status ?? "done"}
+                  </span>
+                </div>
+                {summary && (
+                  <p className="text-xs text-muted-foreground pl-5">
+                    {summary}
+                  </p>
+                )}
+              </div>
+            );
+          }
+          case "hook_started": {
+            const hookName = event.hook_name as string | undefined;
+            const hookEvent = event.hook_event as string | undefined;
+            return (
+              <div className="flex items-center gap-2">
+                <Webhook className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <span className="text-xs text-muted-foreground">
+                  Hook:{" "}
+                  <code className="font-mono">{hookName || "unknown"}</code>
+                </span>
+                {hookEvent && (
+                  <Badge variant="outline" className="text-xs font-mono">
+                    {hookEvent}
+                  </Badge>
+                )}
+              </div>
+            );
+          }
+          case "hook_progress": {
+            const hookName = event.hook_name as string | undefined;
+            const stdout = event.stdout as string | undefined;
+            const stderr = event.stderr as string | undefined;
+            return (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <Webhook className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-xs text-muted-foreground font-medium">
+                    {hookName || "hook"} running
+                  </span>
+                </div>
+                {(stdout || stderr) && (
+                  <pre className="text-xs font-mono bg-muted/30 rounded p-2 whitespace-pre-wrap break-all max-h-32 overflow-y-auto">
+                    {[stdout, stderr].filter(Boolean).join("\n")}
+                  </pre>
+                )}
+              </div>
+            );
+          }
+          case "hook_response": {
+            const hookName = event.hook_name as string | undefined;
+            const outcome = event.outcome as string | undefined;
+            const exitCode = event.exit_code as number | undefined;
+            const stdout = event.stdout as string | undefined;
+            const stderr = event.stderr as string | undefined;
+            const isOk = outcome === "success";
+            return (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <Webhook
+                    className={`h-3.5 w-3.5 shrink-0 ${isOk ? "text-emerald-400" : "text-red-400"}`}
+                  />
+                  <span className="text-xs text-muted-foreground font-medium">
+                    {hookName || "hook"}{" "}
+                    <span
+                      className={isOk ? "text-emerald-400" : "text-red-400"}
+                    >
+                      {outcome ?? "done"}
+                    </span>
+                  </span>
+                  {exitCode !== undefined && (
+                    <code className="text-xs font-mono text-muted-foreground/70">
+                      exit {exitCode}
+                    </code>
+                  )}
+                </div>
+                {(stdout || stderr) && (
+                  <pre className="text-xs font-mono bg-muted/30 rounded p-2 whitespace-pre-wrap break-all max-h-32 overflow-y-auto">
+                    {[stdout, stderr].filter(Boolean).join("\n")}
+                  </pre>
+                )}
+              </div>
+            );
+          }
           default:
             return (
               <div className="space-y-1">
@@ -786,13 +1196,27 @@ export function ChimpActivity() {
         }
       }
       case "tool_use_summary": {
-        const toolName = event.tool_name as string | undefined;
+        // SDKToolUseSummaryMessage: { summary: string, preceding_tool_use_ids: string[] }
+        const summary = event.summary as string | undefined;
+        const ids = Array.isArray(event.preceding_tool_use_ids)
+          ? (event.preceding_tool_use_ids as string[])
+          : [];
         return (
-          <div className="flex items-center gap-2.5">
-            <Terminal className="h-4 w-4 text-circus-gold shrink-0" />
-            <code className="text-xs font-mono bg-muted/30 rounded px-2 py-1">
-              {toolName || "tool"}
-            </code>
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2">
+              <Terminal className="h-4 w-4 text-circus-gold shrink-0" />
+              <span className="text-xs text-muted-foreground font-medium">
+                Tool use summary
+              </span>
+              {ids.length > 0 && (
+                <span className="text-xs text-muted-foreground/60">
+                  ({ids.length} tool{ids.length !== 1 ? "s" : ""})
+                </span>
+              )}
+            </div>
+            {summary && (
+              <p className="text-sm text-muted-foreground pl-6">{summary}</p>
+            )}
           </div>
         );
       }
