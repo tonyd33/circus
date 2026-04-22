@@ -790,13 +790,87 @@ export function ChimpActivity() {
         );
       }
       case "user": {
-        const content = event.content as string | undefined;
+        const simpleContent = event.content as string | undefined;
+        const message = event.message as Record<string, unknown> | undefined;
+        const messageContent = message?.content as unknown[] | undefined;
+
+        // Parse content blocks if message has structured content
+        const blocks = Array.isArray(messageContent)
+          ? messageContent.filter(
+              (block): block is Record<string, unknown> =>
+                typeof block === "object" && block !== null,
+            )
+          : [];
+
+        const toolResultBlocks = blocks.filter(
+          (block) => block.type === "tool_result",
+        );
+        const textBlocks = blocks.filter((block) => block.type === "text");
+
         return (
-          <div className="flex items-start gap-2.5">
-            <User className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
-            <p className="text-sm whitespace-pre-wrap">
-              {content || "(user message)"}
-            </p>
+          <div className="space-y-2">
+            <div className="flex items-start gap-2.5">
+              <User className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+              {simpleContent ? (
+                <p className="text-sm whitespace-pre-wrap">{simpleContent}</p>
+              ) : textBlocks.length > 0 ? (
+                <div className="text-sm">
+                  {textBlocks
+                    .map((block) => block.text)
+                    .filter((text): text is string => typeof text === "string")
+                    .map((text, idx) => (
+                      <p key={idx} className="whitespace-pre-wrap">
+                        {text}
+                      </p>
+                    ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">(user message)</p>
+              )}
+            </div>
+
+            {toolResultBlocks.length > 0 && (
+              <div className="space-y-2 ml-6">
+                {toolResultBlocks.map((block, idx) => {
+                  const toolUseId = block.tool_use_id as string | undefined;
+                  const resultContent = block.content as string | undefined;
+                  const isError = block.is_error as boolean | undefined;
+
+                  return (
+                    <div
+                      key={idx}
+                      className={`rounded-lg p-3 border text-xs ${
+                        isError
+                          ? "bg-red-500/10 border-red-500/20"
+                          : "bg-blue-500/10 border-blue-500/20"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <span
+                          className={`font-medium ${
+                            isError
+                              ? "text-red-700 dark:text-red-400"
+                              : "text-blue-700 dark:text-blue-400"
+                          }`}
+                        >
+                          {isError ? "❌ Error" : "✓ Tool Result"}
+                        </span>
+                        {toolUseId && (
+                          <span className="text-muted-foreground font-mono">
+                            [{toolUseId}]
+                          </span>
+                        )}
+                      </div>
+                      {resultContent && (
+                        <div className="bg-muted/50 rounded p-2 font-mono whitespace-pre-wrap break-words max-h-64 overflow-y-auto">
+                          {resultContent}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         );
       }
