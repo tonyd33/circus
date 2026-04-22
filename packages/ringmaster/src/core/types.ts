@@ -12,6 +12,7 @@ export interface RingmasterConfig {
   natsUrl: string;
   redisUrl: string;
   namespace: string;
+  profileTemplatePath?: string;
 }
 
 /**

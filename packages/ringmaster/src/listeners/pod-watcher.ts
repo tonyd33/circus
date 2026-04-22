@@ -90,21 +90,23 @@ export class PodWatcher {
    */
   private async handlePodEvent(type: string, pod: k8s.V1Pod): Promise<void> {
     const chimpId = pod.metadata?.labels?.[Labels.CHIMP_ID];
+    const profile = pod.metadata?.labels?.[Labels.CHIMP_PROFILE];
 
-    if (!chimpId) {
+    if (!chimpId || !profile) {
       this.logger.warn(
         { podName: pod.metadata?.name },
-        "Pod missing chimp-id label, skipping",
+        "Pod missing chimp-id or chimp-profile label, skipping",
       );
       return;
     }
 
-    this.logger.info({ eventType: type, chimpId }, "Pod event");
+    this.logger.info({ eventType: type, chimpId, profile }, "Pod event");
 
     try {
       await this.eventHandler.handleEvent({
         type: "pod_event",
         chimpId,
+        profile,
         eventType: type,
         pod,
       });

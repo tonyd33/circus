@@ -17,6 +17,7 @@ const COMMAND_TYPES: ChimpCommand["command"][] = [
   "gh-clone-repo",
   "set-working-dir",
   "set-system-prompt",
+  "append-system-prompt",
   "set-allowed-tools",
   "send-agent-message",
   "setup-github-auth",
@@ -34,6 +35,8 @@ export function newCommand(type: string): ChimpCommand {
       return { command: "set-working-dir", args: { path: "" } };
     case "set-system-prompt":
       return { command: "set-system-prompt", args: { prompt: "" } };
+    case "append-system-prompt":
+      return { command: "append-system-prompt", args: { prompt: "" } };
     case "set-allowed-tools":
       return { command: "set-allowed-tools", args: { tools: [] } };
     case "send-agent-message":
@@ -200,9 +203,14 @@ export function CommandEditor({
           />
         )}
 
-        {command.command === "set-system-prompt" && (
+        {(command.command === "set-system-prompt" ||
+          command.command === "append-system-prompt") && (
           <Textarea
-            placeholder="System prompt"
+            placeholder={
+              command.command === "set-system-prompt"
+                ? "System prompt"
+                : "Text to append to system prompt"
+            }
             value={command.args.prompt}
             onChange={(e) =>
               onChange({ ...command, args: { prompt: e.target.value } })

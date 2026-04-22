@@ -105,6 +105,13 @@ const SetSystemPromptCommandSchema = z.object({
   }),
 });
 
+const AppendSystemPromptCommandSchema = z.object({
+  command: z.literal("append-system-prompt"),
+  args: z.object({
+    prompt: z.string(),
+  }),
+});
+
 const SetAllowedToolsCommandSchema = z.object({
   command: z.literal("set-allowed-tools"),
   args: z.object({
@@ -141,6 +148,7 @@ const ChimpCommandSchema = z.discriminatedUnion("command", [
   GhCloneRepoCommandSchema,
   SetWorkingDirCommandSchema,
   SetSystemPromptCommandSchema,
+  AppendSystemPromptCommandSchema,
   SetAllowedToolsCommandSchema,
   SetupGithubAuthCommandSchema,
   ResumeTransmogrifyCommandSchema,

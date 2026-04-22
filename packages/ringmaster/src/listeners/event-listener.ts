@@ -1,10 +1,12 @@
 import { type Logger, Standards } from "@mnke/circus-shared";
+import type { TopicRegistry } from "@mnke/circus-shared/lib";
 import {
   AckPolicy,
   type Consumer,
   DeliverPolicy,
   type NatsConnection,
 } from "nats";
+import { deriveChimpId } from "../core/core.ts";
 import type { EventHandler } from "../core/event-handler.ts";
 
 const EVENT_LISTENER_CONSUMER_NAME = "event-listener";
@@ -12,16 +14,19 @@ const EVENT_LISTENER_CONSUMER_NAME = "event-listener";
 export class EventListener {
   private nc: NatsConnection;
   private consumer: Consumer | null = null;
+  private topicRegistry: TopicRegistry;
   private eventHandler: EventHandler;
   private stopConsumer: (() => void) | null = null;
   private logger: Logger.Logger;
 
   constructor(
     nc: NatsConnection,
+    topicRegistry: TopicRegistry,
     eventHandler: EventHandler,
     logger: Logger.Logger,
   ) {
     this.nc = nc;
+    this.topicRegistry = topicRegistry;
     this.eventHandler = eventHandler;
     this.logger = logger;
   }
@@ -52,11 +57,20 @@ export class EventListener {
           const profile =
             msg.headers?.get("profile") ?? Standards.Chimp.DEFAULT_PROFILE;
 
+          const topicOwner = topic
+            ? await this.topicRegistry.lookup(topic)
+            : null;
+          const chimpId = topicOwner
+            ? topicOwner.chimpId
+            : deriveChimpId(topic, subject);
+
           await this.eventHandler.handleEvent({
             type: "event_received",
+            chimpId,
             profile,
             eventSubject: subject,
             topic,
+            topicOwner,
             messageSequence: msg.seq,
           });
 

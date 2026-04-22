@@ -1,7 +1,11 @@
 #!/usr/bin/env bun
 
 import { Logger } from "@mnke/circus-shared";
-import { EnvReader as ER, TopicRegistry } from "@mnke/circus-shared/lib";
+import {
+  EnvReader as ER,
+  ProfileStore,
+  TopicRegistry,
+} from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
 import { serve } from "bun";
 import Redis from "ioredis";
@@ -52,8 +56,9 @@ async function main() {
     topicRegistry,
     logger.child({ component: "ChimpRouter" }),
   );
+  const profileStore = new ProfileStore(redis);
   const profileRouter = new ProfileRouter(
-    redis,
+    profileStore,
     logger.child({ component: "ProfileRouter" }),
   );
   const messageRouter = new MessageRouter(

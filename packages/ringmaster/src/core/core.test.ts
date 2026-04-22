@@ -1,10 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { type CoreState, decide, type EventPayload } from "./core.ts";
+import {
+  type CoreState,
+  decide,
+  deriveChimpId,
+  type EventPayload,
+} from "./core.ts";
 
 const P = "default";
 
 function state(overrides: Partial<CoreState> = {}): CoreState {
-  return { now: Date.now(), pod: undefined, topicOwner: null, ...overrides };
+  return { now: Date.now(), pod: undefined, ...overrides };
 }
 
 describe("pod_event", () => {
@@ -13,6 +18,7 @@ describe("pod_event", () => {
     const decision = decide(state(), {
       type: "pod_event",
       chimpId: "chimp-1",
+      profile: P,
       eventType: "DELETED",
       pod,
     });
@@ -26,40 +32,43 @@ describe("pod_event", () => {
     const decision = decide(state(), {
       type: "pod_event",
       chimpId: "chimp-1",
+      profile: P,
       eventType: "ADDED",
       pod,
     });
 
     expect(decision.actions).toEqual([
-      { type: "upsert_status", status: "running" },
+      { type: "upsert_status", profile: P, status: "running" },
     ]);
   });
 
-  test("Pending phase maps to pending status", () => {
+  test("Pending phase maps to pending", () => {
     const pod: any = { status: { phase: "Pending" } };
     const decision = decide(state(), {
       type: "pod_event",
       chimpId: "chimp-1",
+      profile: P,
       eventType: "ADDED",
       pod,
     });
 
     expect(decision.actions).toEqual([
-      { type: "upsert_status", status: "pending" },
+      { type: "upsert_status", profile: P, status: "pending" },
     ]);
   });
 
-  test("Failed phase maps to failed status", () => {
+  test("Failed phase maps to failed", () => {
     const pod: any = { status: { phase: "Failed" } };
     const decision = decide(state(), {
       type: "pod_event",
       chimpId: "chimp-1",
+      profile: P,
       eventType: "MODIFIED",
       pod,
     });
 
     expect(decision.actions).toEqual([
-      { type: "upsert_status", status: "failed" },
+      { type: "upsert_status", profile: P, status: "failed" },
     ]);
   });
 });
@@ -76,18 +85,13 @@ describe("event_received", () => {
 
   test("topic claimed + pod alive → noop", () => {
     const pod: any = { status: { phase: "Running" } };
-    const s = state({
-      pod,
-      topicOwner: {
-        chimpId: "existing-chimp",
-        subscribedAt: new Date().toISOString(),
-      },
-    });
-    const decision = decide(s, {
+    const decision = decide(state({ pod }), {
       type: "event_received",
+      chimpId: "existing-chimp",
       profile: P,
       eventSubject,
       topic,
+      topicOwner: { chimpId: "existing-chimp" },
       messageSequence: 42,
     });
 
@@ -96,18 +100,14 @@ describe("event_received", () => {
     expect(decision.reason).toContain("already claimed");
   });
 
-  test("topic claimed + no pod → reclaim with same chimpId", () => {
-    const s = state({
-      topicOwner: {
-        chimpId: "stale-chimp",
-        subscribedAt: new Date().toISOString(),
-      },
-    });
-    const decision = decide(s, {
+  test("topic claimed + no pod → reclaim", () => {
+    const decision = decide(state(), {
       type: "event_received",
+      chimpId: "stale-chimp",
       profile: P,
       eventSubject,
       topic,
+      topicOwner: { chimpId: "stale-chimp" },
       messageSequence: 42,
     });
 
@@ -116,22 +116,23 @@ describe("event_received", () => {
     expect(decision.actions.find((a) => a.type === "register_topic")).toEqual({
       type: "register_topic",
       topic,
-      profile: P,
       force: true,
     });
-    expect(decision.reason).toContain("no pod");
   });
 
-  test("unclaimed, no pod → schedules chimp with topic registration", () => {
+  test("unclaimed, no pod → schedules chimp", () => {
+    const chimpId = deriveChimpId(topic, eventSubject);
     const decision = decide(state(), {
       type: "event_received",
+      chimpId,
       profile: "fast",
       eventSubject,
       topic,
+      topicOwner: null,
       messageSequence: 42,
     });
 
-    expect(decision.chimpId).toMatch(/^evt-/);
+    expect(decision.chimpId).toBe(chimpId);
     expect(decision.actions[0]).toEqual({
       type: "upsert_state",
       profile: "fast",
@@ -140,7 +141,6 @@ describe("event_received", () => {
     expect(decision.actions.find((a) => a.type === "register_topic")).toEqual({
       type: "register_topic",
       topic,
-      profile: "fast",
       force: false,
     });
     expect(decision.actions.find((a) => a.type === "create_job")).toEqual({
@@ -151,12 +151,14 @@ describe("event_received", () => {
 
   test("unclaimed, pod exists → no scheduled state", () => {
     const pod: any = { status: { phase: "Running" } };
-    const s = state({ pod });
-    const decision = decide(s, {
+    const chimpId = deriveChimpId(topic, eventSubject);
+    const decision = decide(state({ pod }), {
       type: "event_received",
+      chimpId,
       profile: P,
       eventSubject,
       topic,
+      topicOwner: null,
       messageSequence: 42,
     });
 
@@ -169,15 +171,17 @@ describe("event_received", () => {
   });
 
   test("debug event (null topic) → no register_topic", () => {
+    const chimpId = deriveChimpId(null, "events.debug.abc123");
     const decision = decide(state(), {
       type: "event_received",
+      chimpId,
       profile: P,
       eventSubject: "events.debug.abc123",
       topic: null,
+      topicOwner: null,
       messageSequence: 10,
     });
 
-    expect(decision.chimpId).toMatch(/^evt-/);
     expect(
       decision.actions.find((a) => a.type === "register_topic"),
     ).toBeUndefined();
@@ -204,7 +208,6 @@ describe("chimp_output", () => {
       { type: "delete_job" },
       { type: "create_job", profile: "powerful" },
     ]);
-    expect(decision.reason).toContain("Transmogrify");
   });
 
   test("other output types: noop", () => {

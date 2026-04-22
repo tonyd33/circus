@@ -1,89 +1,74 @@
-import { type Logger, Protocol, Standards } from "@mnke/circus-shared";
-import Redis from "ioredis";
-
-const Naming = Standards.Chimp.Naming;
-
-const DEFAULT_PROFILES: Record<string, Protocol.ChimpProfile> = {
-  scout: {
-    brain: "claude",
-    model: "claude-haiku-4-5-20251001",
-    image: "chimp",
-    description:
-      "Fast triage and simple tasks. Good for initial assessment, small fixes, and deciding if work needs a more powerful profile.",
-    extraEnv: [],
-    volumeMounts: [],
-    volumes: [],
-    initCommands: [],
-  },
-  worker: {
-    brain: "claude",
-    model: "claude-sonnet-4-20250514",
-    image: "chimp",
-    description:
-      "General-purpose coding agent. Handles most tasks — bug fixes, feature implementation, code review.",
-    extraEnv: [],
-    volumeMounts: [],
-    volumes: [],
-    initCommands: [],
-  },
-  architect: {
-    brain: "claude",
-    model: "claude-opus-4-20250514",
-    image: "chimp",
-    description:
-      "Deep reasoning and complex refactors. Use for architectural changes, multi-file rewrites, or when worker gets stuck.",
-    extraEnv: [],
-    volumeMounts: [],
-    volumes: [],
-    initCommands: [],
-  },
-  "opencode-worker": {
-    brain: "opencode",
-    model: "anthropic:claude-sonnet-4-20250514",
-    image: "chimp",
-    description:
-      "General-purpose via OpenCode. Alternative runtime for tasks that benefit from OpenCode's tooling.",
-    extraEnv: [],
-    volumeMounts: [],
-    volumes: [],
-    initCommands: [],
-  },
-};
+import { access, readFile } from "node:fs/promises";
+import type { Logger, Protocol } from "@mnke/circus-shared";
+import { ProfileCompiler, type ProfileStore } from "@mnke/circus-shared/lib";
 
 export class ProfileLoader {
-  private redis: Redis;
+  private store: ProfileStore;
   private logger: Logger.Logger;
+  private templatePath: string | undefined;
 
-  constructor(redisUrl: string, logger: Logger.Logger) {
-    this.redis = new Redis(redisUrl);
+  constructor(
+    store: ProfileStore,
+    logger: Logger.Logger,
+    templatePath?: string,
+  ) {
+    this.store = store;
     this.logger = logger;
+    this.templatePath = templatePath;
   }
 
   async seedDefaults(): Promise<void> {
-    const keys = await this.redis.keys(Naming.redisProfilePattern());
-    if (keys.length > 0) return;
-
-    const pipeline = this.redis.pipeline();
-    for (const [name, profile] of Object.entries(DEFAULT_PROFILES)) {
-      pipeline.set(Naming.redisProfileKey(name), JSON.stringify(profile));
+    const profiles = await this.loadFromTemplate();
+    if (!profiles || Object.keys(profiles).length === 0) {
+      this.logger.warn("No profiles to seed");
+      return;
     }
-    await pipeline.exec();
-    this.logger.info(
-      { profiles: Object.keys(DEFAULT_PROFILES) },
-      "Seeded default profiles",
-    );
+
+    const seeded = await this.store.seedDefaults(profiles);
+    if (seeded) {
+      this.logger.info(
+        { profiles: Object.keys(profiles) },
+        "Seeded profiles from template",
+      );
+    }
+  }
+
+  private async loadFromTemplate(): Promise<Record<
+    string,
+    Protocol.ChimpProfile
+  > | null> {
+    if (!this.templatePath) return null;
+
+    try {
+      await access(this.templatePath);
+    } catch {
+      this.logger.warn(
+        { path: this.templatePath },
+        "Profile template file not found",
+      );
+      return null;
+    }
+
+    try {
+      const raw = await readFile(this.templatePath, "utf-8");
+      const template: ProfileCompiler.ProfileTemplate = JSON.parse(raw);
+      return ProfileCompiler.compileProfiles(template);
+    } catch (err) {
+      this.logger.error(
+        { err, path: this.templatePath },
+        "Failed to compile profile template",
+      );
+      return null;
+    }
   }
 
   async getProfile(name: string): Promise<Protocol.ChimpProfile> {
-    const key = Naming.redisProfileKey(name);
-    const data = await this.redis.get(key);
-    if (!data) {
+    const profile = await this.store.get(name);
+    if (!profile) {
       throw new Error(`Profile "${name}" not found`);
     }
-    return Protocol.ChimpProfileSchema.parse(JSON.parse(data));
+    return profile;
   }
 
-  async stop(): Promise<void> {
-    await this.redis.quit();
-  }
+  async stop(): Promise<void> {}
 }

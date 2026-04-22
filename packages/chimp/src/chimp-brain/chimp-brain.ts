@@ -86,6 +86,8 @@ export abstract class ChimpBrain {
         return this.handleSetWorkingDir(command.args.path);
       case "set-system-prompt":
         return this.handleSetSystemPrompt(command.args.prompt);
+      case "append-system-prompt":
+        return this.handleAppendSystemPrompt(command.args.prompt);
       case "set-allowed-tools":
         return this.handleSetAllowedTools(command.args.tools);
       case "setup-github-auth":
@@ -154,6 +156,12 @@ export abstract class ChimpBrain {
   protected handleSetSystemPrompt(prompt: string): CommandResult {
     this.systemPrompt = prompt;
     this.log("info", "System prompt set");
+    return "continue";
+  }
+
+  protected handleAppendSystemPrompt(prompt: string): CommandResult {
+    this.systemPrompt = `${this.systemPrompt ?? ""}\n\n${prompt}`.trim();
+    this.log("info", "System prompt appended");
     return "continue";
   }
 

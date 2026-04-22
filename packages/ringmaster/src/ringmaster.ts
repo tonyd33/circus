@@ -1,5 +1,6 @@
 import { type Logger, Standards } from "@mnke/circus-shared";
-import { NatsLib, TopicRegistry } from "@mnke/circus-shared/lib";
+import { NatsLib, ProfileStore, TopicRegistry } from "@mnke/circus-shared/lib";
+import Redis from "ioredis";
 import {
   connect,
   type JetStreamManager,
@@ -16,7 +17,7 @@ import {
   StateManager,
 } from "@/executors";
 import { EventListener, OutputListener, PodWatcher } from "@/listeners";
-import { PodCache } from "@/state/pod-cache";
+import { PodCache } from "@/state";
 
 export class Ringmaster {
   private config: RingmasterConfig;
@@ -70,9 +71,12 @@ export class Ringmaster {
       this.nc,
       this.logger.child({ component: "MetaPublisher" }),
     );
+    const profileRedis = new Redis(this.config.redisUrl);
+    const profileStore = new ProfileStore(profileRedis);
     this.profileLoader = new ProfileLoader(
-      this.config.redisUrl,
+      profileStore,
       this.logger.child({ component: "ProfileLoader" }),
+      this.config.profileTemplatePath,
     );
     await this.profileLoader.seedDefaults();
 
@@ -93,7 +97,7 @@ export class Ringmaster {
       stateManager: this.stateManager,
       metaPublisher: this.metaPublisher,
       topicRegistry,
-      getPod: (chimpId) => this.podCache?.getPod(chimpId),
+      podCache: this.podCache!,
       logger: this.logger.child({ component: "EventHandler" }),
     });
 
@@ -104,6 +108,7 @@ export class Ringmaster {
     );
     this.eventListener = new EventListener(
       this.nc,
+      topicRegistry,
       this.eventHandler,
       this.logger.child({ component: "EventListener" }),
     );

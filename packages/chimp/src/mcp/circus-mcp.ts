@@ -1,8 +1,7 @@
 import { type Logger, Protocol, Standards } from "@mnke/circus-shared";
-import type { TopicRegistry } from "@mnke/circus-shared/lib";
+import type { ProfileStore, TopicRegistry } from "@mnke/circus-shared/lib";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import Redis from "ioredis";
 import type { NatsConnection } from "nats";
 import { z } from "zod";
 import type { StoredEventContext } from "@/chimp-brain/event-contexts";
@@ -13,7 +12,7 @@ export interface CircusMcpConfig {
   publish: PublishFn;
   chimpId: string;
   profile: string;
-  redisUrl: string;
+  profileStore: ProfileStore;
   topicRegistry: TopicRegistry | null;
   nc: NatsConnection | null;
   logger: Logger.Logger;
@@ -26,12 +25,10 @@ export class CircusMcp {
   > = new Map();
   private eventContexts: StoredEventContext[] = [];
   private httpServer: ReturnType<typeof Bun.serve> | null = null;
-  private redis: Redis;
   private config: CircusMcpConfig;
 
   constructor(config: CircusMcpConfig) {
     this.config = config;
-    this.redis = new Redis(config.redisUrl);
   }
 
   setEventContexts(list: StoredEventContext[]): void {
@@ -325,30 +322,13 @@ export class CircusMcp {
       "List available chimp profiles with descriptions, brain type, and model. Use to decide which profile to transmogrify into.",
       {},
       async () => {
-        const keys = await this.redis.keys(
-          Standards.Chimp.Naming.redisProfilePattern(),
-        );
-        const profiles: {
-          name: string;
-          description?: string;
-          brain: string;
-          model: string;
-        }[] = [];
-        for (const key of keys) {
-          const data = await this.redis.get(key);
-          if (!data) continue;
-          const parsed = Protocol.ChimpProfileSchema.safeParse(
-            JSON.parse(data),
-          );
-          if (!parsed.success) continue;
-          const name = key.replace("profile:", "");
-          profiles.push({
-            name,
-            description: parsed.data.description,
-            brain: parsed.data.brain,
-            model: parsed.data.model,
-          });
-        }
+        const allProfiles = await this.config.profileStore.list();
+        const profiles = Object.entries(allProfiles).map(([name, p]) => ({
+          name,
+          description: p.description,
+          brain: p.brain,
+          model: p.model,
+        }));
         return {
           content: [{ type: "text" as const, text: JSON.stringify(profiles) }],
         };
@@ -391,7 +371,6 @@ export class CircusMcp {
 
   async stop(): Promise<void> {
     this.httpServer?.stop();
-    await this.redis.quit();
     this.config.logger.info("MCP server stopped");
   }
 }
