@@ -98,7 +98,7 @@ export class Ringmaster {
       stateManager: this.stateManager,
       metaPublisher: this.metaPublisher,
       topicRegistry,
-      podCache: this.podCache!,
+      podCache: this.podCache,
       logger: this.logger.child({ component: "EventHandler" }),
     });
 
@@ -170,11 +170,6 @@ export class Ringmaster {
         ...streamDefaults,
         name: Standards.Chimp.Naming.eventsStreamName(),
         subjects: [`${Standards.Chimp.Prefix.EVENTS}.>`],
-      }),
-      NatsLib.ensureStream(jsm, {
-        ...streamDefaults,
-        name: Standards.Chimp.Naming.commandsStreamName(),
-        subjects: [`${Standards.Chimp.Prefix.COMMANDS}.>`],
       }),
       NatsLib.ensureStream(jsm, {
         ...streamDefaults,

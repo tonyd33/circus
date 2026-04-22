@@ -14,7 +14,7 @@ export const DEFAULT_PROFILE = "scout";
 
 export const Prefix = {
   EVENTS: "events",
-  COMMANDS: "commands",
+  DIRECT: "events.direct",
   OUTPUTS: "outputs",
   META: "meta",
 };
@@ -39,15 +39,12 @@ export const Naming = {
   eventsStreamName(): string {
     return "events";
   },
-  commandsStreamName(): string {
-    return "commands";
-  },
   outputsStreamName(): string {
     return "outputs";
   },
 
-  commandSubject(chimpId: string): string {
-    return `${Prefix.COMMANDS}.${chimpId}`;
+  directSubject(chimpId: string): string {
+    return `${Prefix.DIRECT}.${chimpId}`;
   },
   outputSubject(chimpId: string): string {
     return `${Prefix.OUTPUTS}.${chimpId}`;
@@ -59,10 +56,6 @@ export const Naming = {
   eventConsumerName(chimpId: string): string {
     return `chimp-${chimpId}`;
   },
-  commandConsumerName(chimpId: string): string {
-    return `chimp-${chimpId}-commands`;
-  },
-
   podName(chimpId: string): string {
     const hash = Bun.hash(chimpId).toString(36);
     return `chimp-${hash}`;

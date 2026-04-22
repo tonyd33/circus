@@ -7,16 +7,21 @@ import {
   DeliverPolicy,
   millis,
   type NatsConnection,
+  type Subscription,
 } from "nats";
 
 const PING_INTERVAL_MS = 3_000;
 
 interface ActivityEvent {
   id: string;
-  type: "command" | "output" | "event";
+  type: "event" | "output" | "meta";
   messageType: string;
   timestamp: string;
-  data: Protocol.ChimpCommand | Protocol.ChimpOutputMessage | unknown;
+  data:
+    | Protocol.ChimpCommand
+    | Protocol.ChimpOutputMessage
+    | Protocol.MetaEvent
+    | unknown;
 }
 
 export async function createActivityStream(
@@ -32,6 +37,7 @@ export async function createActivityStream(
   let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
   const allMessages: ConsumerMessages[] = [];
   const allConsumers: Consumer[] = [];
+  const allSubscriptions: Subscription[] = [];
   let pingInterval: ReturnType<typeof setInterval>;
 
   const stream = new ReadableStream<Uint8Array>({
@@ -54,6 +60,7 @@ export async function createActivityStream(
             logger.error({ err: e }, "Failed to delete activity consumer"),
           );
       }
+      for (const sub of allSubscriptions) sub.unsubscribe();
     },
   });
 
@@ -67,18 +74,18 @@ export async function createActivityStream(
           const raw: unknown = msg.json();
           let event: ActivityEvent;
 
-          if (type === "command") {
+          if (type === "event") {
             const parsed = Protocol.safeParseChimpCommand(raw);
             event = {
               id: `${type}-${msg.seq}`,
               type,
-              messageType: parsed.success ? parsed.data.command : "unknown",
+              messageType: parsed.success ? parsed.data.command : "event",
               timestamp: new Date(
                 millis(msg.info.timestampNanos),
               ).toISOString(),
               data: parsed.success ? parsed.data : raw,
             };
-          } else if (type === "output") {
+          } else {
             const parsed = Protocol.safeParseChimpOutputMessage(raw);
             event = {
               id: `${type}-${msg.seq}`,
@@ -88,16 +95,6 @@ export async function createActivityStream(
                 millis(msg.info.timestampNanos),
               ).toISOString(),
               data: parsed.success ? parsed.data : raw,
-            };
-          } else {
-            event = {
-              id: `${type}-${msg.seq}`,
-              type,
-              messageType: "event",
-              timestamp: new Date(
-                millis(msg.info.timestampNanos),
-              ).toISOString(),
-              data: raw,
             };
           }
 
@@ -111,6 +108,10 @@ export async function createActivityStream(
         controller?.error(e);
       }
     })();
+  }
+
+  function emitEvent(event: ActivityEvent): void {
+    controller?.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
   }
 
   async function addConsumer(
@@ -136,11 +137,16 @@ export async function createActivityStream(
   }
 
   try {
-    // Commands (direct commands to this chimp)
+    // Events + direct commands (single stream)
+    const topics = await topicRegistry.listForChimp(chimpId);
+    const eventFilters = [
+      Standards.Chimp.Naming.directSubject(chimpId),
+      ...topics.map(Standards.Topic.topicToEventSubject),
+    ];
     await addConsumer(
-      Standards.Chimp.Naming.commandsStreamName(),
-      Standards.Chimp.Naming.commandSubject(chimpId),
-      "command",
+      Standards.Chimp.Naming.eventsStreamName(),
+      eventFilters,
+      "event",
     );
 
     // Outputs (messages from this chimp)
@@ -150,16 +156,27 @@ export async function createActivityStream(
       "output",
     );
 
-    // Events (topics this chimp subscribes to)
-    const topics = await topicRegistry.listForChimp(chimpId);
-    if (topics.length > 0) {
-      const eventFilters = topics.map(Standards.Topic.topicToEventSubject);
-      await addConsumer(
-        Standards.Chimp.Naming.eventsStreamName(),
-        eventFilters,
-        "event",
-      );
-    }
+    // Meta events (plain NATS — no stream, live only)
+    const metaSub = nc.subscribe(Standards.Chimp.Naming.metaSubject(chimpId));
+    allSubscriptions.push(metaSub);
+    (async () => {
+      for await (const msg of metaSub) {
+        try {
+          const raw = msg.json() as unknown;
+          const parsed = Protocol.MetaEventSchema.safeParse(raw);
+          if (!parsed.success) continue;
+          emitEvent({
+            id: `meta-${parsed.data.timestamp}`,
+            type: "meta",
+            messageType: parsed.data.type,
+            timestamp: parsed.data.timestamp,
+            data: parsed.data,
+          });
+        } catch {
+          // best-effort
+        }
+      }
+    })();
   } catch (e) {
     logger.error({ err: e }, "Failed to subscribe to activity");
     controller?.error(e instanceof Error ? e : new Error(String(e)));

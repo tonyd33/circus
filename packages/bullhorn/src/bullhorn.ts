@@ -5,7 +5,7 @@ import {
   type ServiceMetrics,
 } from "@mnke/circus-shared/metrics";
 import { App } from "@octokit/app";
-import { connect, type NatsConnection } from "nats";
+import { AckPolicy, connect, DeliverPolicy, type NatsConnection } from "nats";
 
 export interface BullhornConfig {
   logger: Logger.Logger;
@@ -50,34 +50,48 @@ export class Bullhorn {
       throw new Error("Bullhorn not initialized");
     }
 
-    const sub = this.nc.subscribe(`${Standards.Chimp.Prefix.OUTPUTS}.>`);
-    this.logger.info("Subscribed to outputs.>");
+    const js = this.nc.jetstream();
+    const jsm = await this.nc.jetstreamManager();
+    const streamName = Standards.Chimp.Naming.outputsStreamName();
+
+    const consumerInfo = await jsm.consumers.add(streamName, {
+      ack_policy: AckPolicy.Explicit,
+      deliver_policy: DeliverPolicy.New,
+      filter_subject: `${Standards.Chimp.Prefix.OUTPUTS}.>`,
+    });
+    const consumer = await js.consumers.get(streamName, consumerInfo.name);
+    const messages = await consumer.consume();
+    this.logger.info("Consuming outputs via JetStream");
 
     (async () => {
-      for await (const msg of sub) {
+      for await (const msg of messages) {
         const startTime = Date.now();
         try {
           const subject = msg.subject;
           this.metrics.recordNatsReceived(subject);
 
-          // outputs.{chimpId}
-          const chimpId = subject.split(".").slice(1).join(".");
+          const chimpId = subject.slice(
+            Standards.Chimp.Prefix.OUTPUTS.length + 1,
+          );
           if (!chimpId) {
             this.logger.warn({ subject }, "Invalid output subject");
             this.metrics.recordError("invalid_subject", "warning");
+            msg.ack();
             continue;
           }
 
           const rawMessage = msg.json();
 
           await this.handleMessage(chimpId, rawMessage);
-          this.publishMetaEvent(chimpId);
+          this.publishMetaEvent(chimpId, msg.seq);
+          msg.ack();
 
           const duration = (Date.now() - startTime) / 1000;
           this.metrics.recordNatsProcessed(subject, true, duration);
         } catch (error) {
           this.logger.error({ err: error }, "Error processing output message");
           this.metrics.recordError("message_processing", "error");
+          msg.ack();
           const duration = (Date.now() - startTime) / 1000;
           this.metrics.recordNatsProcessed(msg.subject, false, duration);
         }
@@ -145,7 +159,7 @@ export class Bullhorn {
 
       case "chimp-request":
         if (this.nc) {
-          const subject = Standards.Chimp.Naming.commandSubject(msg.chimpId);
+          const subject = Standards.Chimp.Naming.directSubject(msg.chimpId);
           this.nc.publish(
             subject,
             JSON.stringify(Protocol.createAgentCommand(msg.message)),
@@ -246,14 +260,14 @@ export class Bullhorn {
     }
   }
 
-  private publishMetaEvent(chimpId: string): void {
+  private publishMetaEvent(chimpId: string, outputSequence: number): void {
     if (!this.nc) return;
 
     const metaEvent: Protocol.MetaEvent = {
       type: "bullhorn-dispatched",
-      profile: "",
       chimpId,
       timestamp: new Date().toISOString(),
+      outputSequence,
     };
 
     const subject = Standards.Chimp.Naming.metaSubject(chimpId);

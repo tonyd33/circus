@@ -34,45 +34,17 @@ export class NatsInput extends ChimpInput {
 
   async start(): Promise<void> {
     const js = this.nc.jetstream();
+    const streamName = Standards.Chimp.Naming.eventsStreamName();
+    const consumerName = Standards.Chimp.Naming.eventConsumerName(this.chimpId);
 
-    // Events consumer — subscribed topics
-    const eventsStream = Standards.Chimp.Naming.eventsStreamName();
-    const eventsConsumerName = Standards.Chimp.Naming.eventConsumerName(
-      this.chimpId,
-    );
     try {
-      const eventsConsumer = await js.consumers.get(
-        eventsStream,
-        eventsConsumerName,
-      );
-      this.logger.info(
-        { consumerName: eventsConsumerName },
-        "Connected to events consumer",
-      );
-      this.consumeFrom(eventsConsumer);
+      const consumer = await js.consumers.get(streamName, consumerName);
+      this.logger.info({ consumerName }, "Connected to consumer");
+      this.consumeFrom(consumer);
     } catch {
       this.logger.info(
-        "No events consumer yet — will receive events once subscribed to topics",
+        "No consumer yet — will receive messages once subscribed to topics",
       );
-    }
-
-    // Commands consumer — direct addressing
-    const commandsStream = Standards.Chimp.Naming.commandsStreamName();
-    const commandsConsumerName = Standards.Chimp.Naming.commandConsumerName(
-      this.chimpId,
-    );
-    try {
-      const commandsConsumer = await js.consumers.get(
-        commandsStream,
-        commandsConsumerName,
-      );
-      this.logger.info(
-        { consumerName: commandsConsumerName },
-        "Connected to commands consumer",
-      );
-      this.consumeFrom(commandsConsumer);
-    } catch {
-      this.logger.info("No commands consumer yet");
     }
   }
 

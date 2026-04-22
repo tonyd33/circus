@@ -71,13 +71,9 @@ export class EventHandler {
         break;
 
       case "create_consumers":
-        await this.deps.consumerManager.ensureEventConsumer(
+        await this.deps.consumerManager.ensureConsumer(
           action.chimpId,
           action.eventFilterSubjects,
-          action.startSequence,
-        );
-        await this.deps.consumerManager.ensureCommandConsumer(
-          action.chimpId,
           action.startSequence,
         );
         break;
@@ -89,7 +85,7 @@ export class EventHandler {
         break;
 
       case "delete_consumers":
-        await this.deps.consumerManager.deleteConsumers(action.chimpId);
+        await this.deps.consumerManager.deleteConsumer(action.chimpId);
         break;
 
       case "cleanup_topics":
@@ -131,7 +127,7 @@ export class EventHandler {
         break;
 
       case "send_command": {
-        const subject = Standards.Chimp.Naming.commandSubject(action.chimpId);
+        const subject = Standards.Chimp.Naming.directSubject(action.chimpId);
         this.deps.nc.publish(subject, JSON.stringify(action.command));
         break;
       }
@@ -146,7 +142,7 @@ export class EventHandler {
           });
         }
         await this.deps.topicRegistry.unsubscribeAll(action.fromChimpId);
-        await this.deps.consumerManager.deleteConsumers(action.fromChimpId);
+        await this.deps.consumerManager.deleteConsumer(action.fromChimpId);
         break;
       }
 

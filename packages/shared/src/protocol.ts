@@ -351,13 +351,13 @@ export const InitConfigSchema = z.object({
 // ============================================================================
 
 const MetaEventBase = z.object({
-  profile: z.string(),
   chimpId: z.string(),
   timestamp: z.string(),
 });
 
 export const StatusMetaEventSchema = MetaEventBase.extend({
   type: z.literal("status"),
+  profile: z.string(),
   status: z.enum([
     "scheduled",
     "pending",
@@ -370,6 +370,7 @@ export const StatusMetaEventSchema = MetaEventBase.extend({
 
 export const BullhornDispatchedMetaEventSchema = MetaEventBase.extend({
   type: z.literal("bullhorn-dispatched"),
+  outputSequence: z.number(),
 });
 
 export const MetaEventSchema = z.discriminatedUnion("type", [

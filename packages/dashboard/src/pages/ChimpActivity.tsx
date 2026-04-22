@@ -1,3 +1,5 @@
+import type { Protocol } from "@mnke/circus-shared";
+import { Typing } from "@mnke/circus-shared/lib";
 import {
   AlertTriangle,
   ArrowDown,
@@ -18,6 +20,7 @@ import {
   GitPullRequestArrow,
   Hash,
   Loader2,
+  Megaphone,
   MessageCircle,
   MessageSquare,
   OctagonX,
@@ -48,13 +51,28 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useSSE } from "@/hooks/useSSE";
 
-interface ActivityMessage {
-  id: string;
-  type: "command" | "output" | "event";
-  messageType: string;
-  timestamp: string;
-  data: Record<string, unknown>;
-}
+type ActivityMessage =
+  | {
+      id: string;
+      type: "event";
+      messageType: string;
+      timestamp: string;
+      data: Protocol.ChimpCommand;
+    }
+  | {
+      id: string;
+      type: "output";
+      messageType: string;
+      timestamp: string;
+      data: Protocol.ChimpOutputMessage;
+    }
+  | {
+      id: string;
+      type: "meta";
+      messageType: string;
+      timestamp: string;
+      data: Protocol.MetaEvent;
+    };
 
 function getString(obj: Record<string, unknown>, key: string): string {
   const val = obj[key];
@@ -110,9 +128,8 @@ const messageTypeIcons: Record<string, React.ReactNode> = {
 };
 
 const typeIcons: Record<string, React.ReactNode> = {
-  command: <Radio className="h-3 w-3" />,
+  event: <Radio className="h-3 w-3" />,
   output: <Sparkles className="h-3 w-3" />,
-  event: <Zap className="h-3 w-3" />,
 };
 
 const sortByTimestamp = (a: ActivityMessage, b: ActivityMessage) =>
@@ -151,25 +168,34 @@ export function ChimpActivity() {
   const isAtBottomRef = useRef(true);
   const [showScrollButton, setShowScrollButton] = useState(false);
 
-  const groupedTypes = useMemo(() => {
-    const command: string[] = [];
-    const output: string[] = [];
-    const event: string[] = [];
+  const dispatchedOutputIds = useMemo(() => {
+    const ids = new Set<string>();
     for (const msg of messages) {
-      const list =
-        msg.type === "command"
-          ? command
-          : msg.type === "event"
-            ? event
-            : output;
+      if (msg.type === "meta" && msg.messageType === "bullhorn-dispatched") {
+        const seq = (msg.data as Record<string, unknown>).outputSequence;
+        if (typeof seq === "number") ids.add(`output-${seq}`);
+      }
+    }
+    return ids;
+  }, [messages]);
+
+  const visibleMessages = useMemo(
+    () => messages.filter((msg) => msg.type !== "meta"),
+    [messages],
+  );
+
+  const groupedTypes = useMemo(() => {
+    const event: string[] = [];
+    const output: string[] = [];
+    for (const msg of visibleMessages) {
+      const list = msg.type === "event" ? event : output;
       if (!list.includes(msg.messageType)) list.push(msg.messageType);
     }
     return {
-      command: command.sort(),
-      output: output.sort(),
       event: event.sort(),
+      output: output.sort(),
     };
-  }, [messages]);
+  }, [visibleMessages]);
 
   const toggleType = (type: string) => {
     setSelectedTypes((prev) => {
@@ -183,9 +209,9 @@ export function ChimpActivity() {
   const filteredMessages = useMemo(
     () =>
       selectedTypes.size === 0
-        ? messages
-        : messages.filter((msg) => selectedTypes.has(msg.messageType)),
-    [messages, selectedTypes],
+        ? visibleMessages
+        : visibleMessages.filter((msg) => selectedTypes.has(msg.messageType)),
+    [visibleMessages, selectedTypes],
   );
 
   useEffect(() => {
@@ -404,59 +430,176 @@ export function ChimpActivity() {
     }
   };
 
-  const renderMessageContent = (msg: ActivityMessage) => {
-    const { data } = msg;
+  const renderEventContent = (data: Protocol.ChimpCommand) => {
+    switch (data.command) {
+      case "send-agent-message":
+        return (
+          <div className="flex items-start gap-2.5">
+            <MessageSquare className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+            <p className="text-sm whitespace-pre-wrap leading-relaxed">
+              {data.args.prompt || "(empty prompt)"}
+            </p>
+          </div>
+        );
+      case "stop":
+        return (
+          <div className="flex items-center gap-2.5">
+            <OctagonX className="h-4 w-4 text-red-400 shrink-0" />
+            <span className="text-sm text-muted-foreground">
+              Stop requested
+            </span>
+          </div>
+        );
+      case "clone-repo":
+        return (
+          <div className="flex items-center gap-2.5">
+            <GitBranch className="h-4 w-4 text-emerald-400 shrink-0" />
+            <code className="text-sm font-mono bg-muted/30 rounded px-2 py-1">
+              {data.args.url}
+              {data.args.branch ? ` @ ${data.args.branch}` : ""}
+            </code>
+          </div>
+        );
+      case "gh-clone-repo":
+        return (
+          <div className="flex items-center gap-2.5">
+            <GitBranch className="h-4 w-4 text-emerald-400 shrink-0" />
+            <code className="text-sm font-mono bg-muted/30 rounded px-2 py-1">
+              {data.args.repo}
+              {data.args.branch ? ` @ ${data.args.branch}` : ""}
+            </code>
+          </div>
+        );
+      case "set-working-dir":
+        return (
+          <div className="flex items-center gap-2.5">
+            <FolderSync className="h-4 w-4 text-blue-400 shrink-0" />
+            <code className="text-sm font-mono bg-muted/30 rounded px-2 py-1">
+              {data.args.path}
+            </code>
+          </div>
+        );
+      case "set-system-prompt":
+        return (
+          <div className="flex items-center gap-2.5">
+            <BookOpen className="h-4 w-4 text-blue-400 shrink-0" />
+            <span className="text-sm text-muted-foreground">
+              System prompt set
+            </span>
+          </div>
+        );
+      case "append-system-prompt":
+        return (
+          <div className="flex items-center gap-2.5">
+            <BookOpen className="h-4 w-4 text-blue-400 shrink-0" />
+            <span className="text-sm text-muted-foreground">
+              System prompt appended
+            </span>
+          </div>
+        );
+      case "set-allowed-tools":
+        return (
+          <div className="flex items-center gap-2.5">
+            <Cog className="h-4 w-4 text-blue-400 shrink-0" />
+            <span className="text-sm text-muted-foreground">
+              Allowed tools: {data.args.tools.length}
+            </span>
+          </div>
+        );
+      case "setup-github-auth":
+        return (
+          <div className="flex items-center gap-2.5">
+            <Terminal className="h-4 w-4 text-emerald-400 shrink-0" />
+            <span className="text-sm text-muted-foreground">
+              GitHub auth configured
+            </span>
+          </div>
+        );
+      case "resume-transmogrify":
+        return (
+          <div className="flex items-start gap-2.5 bg-gradient-to-r from-purple-500/10 to-circus-gold/10 rounded-lg p-3 border border-purple-500/20">
+            <Sparkles className="h-4 w-4 text-circus-gold shrink-0 mt-0.5" />
+            <div className="space-y-2 flex-1">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-circus-gold">
+                  Transmogrify resumed
+                </span>
+                <Badge variant="outline" className="text-xs">
+                  from {data.args.fromProfile}
+                </Badge>
+              </div>
+              <p className="text-sm">{data.args.reason}</p>
+              {data.args.summary && (
+                <div className="bg-muted/30 rounded p-2 text-sm">
+                  <span className="text-xs font-medium text-muted-foreground block mb-1">
+                    Predecessor's summary:
+                  </span>
+                  <p className="whitespace-pre-wrap">{data.args.summary}</p>
+                </div>
+              )}
+              {data.args.eventContexts.length > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  {data.args.eventContexts.length} event context
+                  {data.args.eventContexts.length > 1 ? "s" : ""} transferred
+                </span>
+              )}
+            </div>
+          </div>
+        );
+      default:
+        return <ExpandableJSON data={data} label="Payload" />;
+    }
+  };
 
-    switch (msg.messageType) {
+  const renderOutputContent = (data: Protocol.ChimpOutputMessage) => {
+    switch (data.type) {
       case "agent-message-response":
         return (
           <div className="bg-muted/50 rounded-lg p-3 prose prose-sm dark:prose-invert max-w-none">
             <Markdown remarkPlugins={[remarkGfm]}>
-              {getString(data, "content") || "(empty response)"}
+              {data.content || "(empty response)"}
             </Markdown>
           </div>
         );
-      case "progress": {
-        const pct = getNumber(data, "percentage");
+      case "progress":
         return (
           <div className="space-y-1.5">
-            <span className="text-sm">{getString(data, "message")}</span>
-            {pct !== undefined && (
+            <span className="text-sm">{data.message}</span>
+            {data.percentage !== undefined && (
               <div className="flex items-center gap-2">
                 <div className="h-1.5 flex-1 rounded-full bg-muted overflow-hidden">
                   <div
                     className="h-full rounded-full bg-amber-500 transition-all duration-300"
                     style={{
-                      width: `${Math.min(Math.max(pct, 0), 100)}%`,
+                      width: `${Math.min(Math.max(data.percentage, 0), 100)}%`,
                     }}
                   />
                 </div>
                 <span className="text-xs text-muted-foreground tabular-nums w-8 text-right">
-                  {String(pct)}%
+                  {data.percentage}%
                 </span>
               </div>
             )}
           </div>
         );
-      }
       case "log":
         return (
           <div className="flex items-start gap-2">
             <Badge
               variant="outline"
               className={`text-xs shrink-0 ${
-                getString(data, "level") === "error"
+                data.level === "error"
                   ? "border-red-500 text-red-500"
-                  : getString(data, "level") === "warn"
+                  : data.level === "warn"
                     ? "border-amber-500 text-amber-500"
                     : "border-muted-foreground"
               }`}
             >
-              {getString(data, "level")}
+              {data.level}
             </Badge>
             <div className="flex-1 space-y-1">
               <code className="text-xs font-mono bg-muted/30 rounded px-2 py-1 block break-all">
-                {getString(data, "message")}
+                {data.message}
               </code>
               {data.data !== undefined && (
                 <ExpandableJSON data={data.data} label="Log data" />
@@ -470,10 +613,10 @@ export function ChimpActivity() {
             <FileBox className="h-5 w-5 text-ring shrink-0" />
             <div>
               <span className="text-sm font-medium">
-                {getString(data, "name") || "Untitled"}
+                {data.name || "Untitled"}
               </span>
               <span className="text-xs text-muted-foreground ml-2">
-                {getString(data, "artifactType")}
+                {data.artifactType}
               </span>
             </div>
           </div>
@@ -483,80 +626,20 @@ export function ChimpActivity() {
           <div className="flex items-start gap-2 bg-red-500/10 rounded-lg p-2.5">
             <AlertTriangle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
             <div className="text-sm">
-              <span className="font-medium text-red-500">
-                {getString(data, "error")}
-              </span>
-              {data.command ? (
+              <span className="font-medium text-red-500">{data.error}</span>
+              {data.command && (
                 <span className="text-muted-foreground ml-1">
-                  in{" "}
-                  <code className="font-mono text-xs">
-                    {getString(data, "command")}
-                  </code>
+                  in <code className="font-mono text-xs">{data.command}</code>
                 </span>
-              ) : null}
+              )}
             </div>
           </div>
         );
-      case "send-agent-message": {
-        const args = getRecord(data, "args");
-        return (
-          <div className="flex items-start gap-2.5">
-            <MessageSquare className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
-            <p className="text-sm whitespace-pre-wrap leading-relaxed">
-              {getString(args, "prompt") || "(empty prompt)"}
-            </p>
-          </div>
-        );
-      }
-      case "stop":
-        return (
-          <div className="flex items-center gap-2.5">
-            <OctagonX className="h-4 w-4 text-red-400 shrink-0" />
-            <span className="text-sm text-muted-foreground">
-              Stop requested
-            </span>
-          </div>
-        );
-      case "new-session":
-        return (
-          <div className="flex items-center gap-2.5">
-            <RefreshCw className="h-4 w-4 text-blue-400 shrink-0" />
-            <span className="text-sm text-muted-foreground">
-              New session started
-            </span>
-          </div>
-        );
-      case "clone-repo": {
-        const args = getRecord(data, "args");
-        return (
-          <div className="flex items-center gap-2.5">
-            <GitBranch className="h-4 w-4 text-emerald-400 shrink-0" />
-            <code className="text-sm font-mono bg-muted/30 rounded px-2 py-1">
-              {getString(args, "url")}
-              {getString(args, "branch")
-                ? ` @ ${getString(args, "branch")}`
-                : ""}
-            </code>
-          </div>
-        );
-      }
-      case "set-working-dir": {
-        const args = getRecord(data, "args");
-        return (
-          <div className="flex items-center gap-2.5">
-            <FolderSync className="h-4 w-4 text-blue-400 shrink-0" />
-            <code className="text-sm font-mono bg-muted/30 rounded px-2 py-1">
-              {getString(args, "path")}
-            </code>
-          </div>
-        );
-      }
       case "thought": {
-        const brain = getString(data, "brain");
         const event = data.event as Record<string, unknown> | undefined;
         const eventType = event?.type as string | undefined;
 
-        if (brain === "claude" && event) {
+        if (data.brain === "claude" && event) {
           return renderClaudeThought(event, eventType);
         }
 
@@ -564,7 +647,7 @@ export function ChimpActivity() {
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <Badge variant="secondary" className="text-xs">
-                {brain}
+                {data.brain}
               </Badge>
               <Badge variant="outline" className="text-xs font-mono">
                 {eventType || "unknown"}
@@ -581,62 +664,22 @@ export function ChimpActivity() {
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <Badge variant="outline" className="text-xs">
-                  {getString(data, "fromProfile")}
+                  {data.fromProfile}
                 </Badge>
                 <span className="text-muted-foreground">→</span>
                 <Badge className="text-xs bg-purple-500/20 text-purple-500">
-                  {getString(data, "targetProfile")}
+                  {data.targetProfile}
                 </Badge>
               </div>
-              <p className="text-sm text-muted-foreground">
-                {getString(data, "reason")}
-              </p>
-              {getString(data, "summary") && (
+              <p className="text-sm text-muted-foreground">{data.reason}</p>
+              {data.summary && (
                 <p className="text-xs text-muted-foreground/70 italic">
-                  {getString(data, "summary")}
+                  {data.summary}
                 </p>
               )}
             </div>
           </div>
         );
-      case "resume-transmogrify": {
-        const args = getRecord(data, "args");
-        const eventContexts = args.eventContexts as unknown[] | undefined;
-        return (
-          <div className="flex items-start gap-2.5 bg-gradient-to-r from-purple-500/10 to-circus-gold/10 rounded-lg p-3 border border-purple-500/20">
-            <Sparkles className="h-4 w-4 text-circus-gold shrink-0 mt-0.5" />
-            <div className="space-y-2 flex-1">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-circus-gold">
-                  Transmogrify resumed
-                </span>
-                <Badge variant="outline" className="text-xs">
-                  from {getString(args, "fromProfile")}
-                </Badge>
-              </div>
-              <p className="text-sm">{getString(args, "reason")}</p>
-              {getString(args, "summary") && (
-                <div className="bg-muted/30 rounded p-2 text-sm">
-                  <span className="text-xs font-medium text-muted-foreground block mb-1">
-                    Predecessor's summary:
-                  </span>
-                  <p className="whitespace-pre-wrap">
-                    {getString(args, "summary")}
-                  </p>
-                </div>
-              )}
-              {eventContexts && eventContexts.length > 0 && (
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs text-muted-foreground">
-                    {eventContexts.length} event context
-                    {eventContexts.length > 1 ? "s" : ""} transferred
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      }
       case "chimp-request":
         return (
           <div className="flex items-start gap-2.5 bg-blue-500/10 rounded-lg p-3">
@@ -645,13 +688,13 @@ export function ChimpActivity() {
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">→</span>
                 <Badge variant="outline" className="text-xs font-mono">
-                  {getString(data, "chimpId")}
+                  {data.chimpId}
                 </Badge>
                 <Badge variant="secondary" className="text-xs">
-                  {getString(data, "profile")}
+                  {data.profile}
                 </Badge>
               </div>
-              <p className="text-sm">{getString(data, "message")}</p>
+              <p className="text-sm">{data.message}</p>
             </div>
           </div>
         );
@@ -663,9 +706,7 @@ export function ChimpActivity() {
               <span className="text-xs text-muted-foreground">
                 Discord reply
               </span>
-              <p className="text-sm whitespace-pre-wrap">
-                {getString(data, "content")}
-              </p>
+              <p className="text-sm whitespace-pre-wrap">{data.content}</p>
             </div>
           </div>
         );
@@ -674,24 +715,33 @@ export function ChimpActivity() {
           <div className="flex items-start gap-2.5 bg-emerald-500/10 rounded-lg p-3">
             <GitPullRequestArrow className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
             <div className="space-y-1 flex-1">
-              <div className="flex items-center gap-2">
-                <Badge
-                  variant="outline"
-                  className="text-xs font-mono text-emerald-500 border-emerald-500/30"
-                >
-                  {getString(data, "repo")}#{String(data.issueNumber ?? "")}
-                </Badge>
-              </div>
+              <Badge
+                variant="outline"
+                className="text-xs font-mono text-emerald-500 border-emerald-500/30"
+              >
+                {data.repo}#{data.issueNumber}
+              </Badge>
               <div className="prose prose-sm dark:prose-invert max-w-none">
-                <Markdown remarkPlugins={[remarkGfm]}>
-                  {getString(data, "content")}
-                </Markdown>
+                <Markdown remarkPlugins={[remarkGfm]}>{data.content}</Markdown>
               </div>
             </div>
           </div>
         );
       default:
         return <ExpandableJSON data={data} label="Payload" />;
+    }
+  };
+
+  const renderMessageContent = (msg: ActivityMessage) => {
+    switch (msg.type) {
+      case "event":
+        return renderEventContent(msg.data);
+      case "output":
+        return renderOutputContent(msg.data);
+      case "meta":
+        return null;
+      default:
+        return Typing.unreachable(msg);
     }
   };
 
@@ -778,19 +828,14 @@ export function ChimpActivity() {
               {(
                 [
                   {
-                    label: "Commands",
+                    label: "Events",
                     color: "text-amber-500",
-                    items: groupedTypes.command,
+                    items: groupedTypes.event,
                   },
                   {
                     label: "Output",
                     color: "text-ring",
                     items: groupedTypes.output,
-                  },
-                  {
-                    label: "Events",
-                    color: "text-emerald-500",
-                    items: groupedTypes.event,
                   },
                 ] as const
               ).map(
@@ -853,26 +898,20 @@ export function ChimpActivity() {
                 <Card
                   key={`${msg.id}-${msg.type}-${msg.timestamp}`}
                   className={`transition-all duration-200 hover:shadow-md border-l-4 ${
-                    msg.type === "command"
+                    msg.type === "event"
                       ? "border-l-amber-500"
-                      : msg.type === "event"
-                        ? "border-l-emerald-500"
-                        : "border-l-ring"
+                      : "border-l-ring"
                   }`}
                 >
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
                         <Badge
-                          variant={
-                            msg.type === "command" ? "default" : "secondary"
-                          }
+                          variant="secondary"
                           className={`gap-1 ${
-                            msg.type === "command"
+                            msg.type === "event"
                               ? "bg-amber-500/20 text-amber-500"
-                              : msg.type === "event"
-                                ? "bg-emerald-500/20 text-emerald-500"
-                                : ""
+                              : ""
                           }`}
                         >
                           {typeIcons[msg.type]}
@@ -888,9 +927,14 @@ export function ChimpActivity() {
                           {msg.messageType}
                         </Badge>
                       </div>
-                      <span className="text-xs text-muted-foreground">
-                        {new Date(msg.timestamp).toLocaleTimeString()}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        {dispatchedOutputIds.has(msg.id) && (
+                          <Megaphone className="h-3.5 w-3.5 text-circus-gold" />
+                        )}
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(msg.timestamp).toLocaleTimeString()}
+                        </span>
+                      </div>
                     </div>
                     <div className="text-foreground">
                       {renderMessageContent(msg)}

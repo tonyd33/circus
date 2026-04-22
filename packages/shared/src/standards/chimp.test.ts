@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { Naming } from "./chimp.ts";
 
-describe("Naming.commandSubject", () => {
-  test("builds command subject", () => {
-    expect(Naming.commandSubject("chimp-123")).toBe("commands.chimp-123");
+describe("Naming.directSubject", () => {
+  test("builds direct subject", () => {
+    expect(Naming.directSubject("chimp-123")).toBe("events.direct.chimp-123");
   });
 });
 
@@ -23,16 +23,11 @@ describe("Naming.consumerNames", () => {
   test("event consumer name", () => {
     expect(Naming.eventConsumerName("abc")).toBe("chimp-abc");
   });
-
-  test("command consumer name", () => {
-    expect(Naming.commandConsumerName("abc")).toBe("chimp-abc-commands");
-  });
 });
 
 describe("Naming.streamNames", () => {
   test("stream names", () => {
     expect(Naming.eventsStreamName()).toBe("events");
-    expect(Naming.commandsStreamName()).toBe("commands");
     expect(Naming.outputsStreamName()).toBe("outputs");
   });
 });
