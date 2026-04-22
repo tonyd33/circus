@@ -189,17 +189,14 @@ export class PodWatcher {
     const profile = pod.metadata?.labels?.[Labels.CHIMP_PROFILE];
 
     if (!chimpId || !profile) {
-      this.logger.debug(
+      this.logger.warn(
         { podName: pod.metadata?.name },
         "Pod missing chimp-id or chimp-profile label, skipping",
       );
       return;
     }
 
-    this.logger.debug(
-      { eventType: type, chimpId, profile, podName: pod.metadata?.name },
-      "Pod event received",
-    );
+    this.logger.info({ eventType: type, chimpId, profile }, "Pod event");
 
     await this.eventHandler.handleEvent({
       type: "pod_event",
@@ -222,20 +219,5 @@ export class PodWatcher {
     }
 
     this.logger.info("Stopped");
-  }
-
-  /**
-   * Get health status of the watcher
-   */
-  getHealthStatus(): {
-    isRunning: boolean;
-    lastSuccessfulConnection: number | null;
-    consecutiveFailures: number;
-  } {
-    return {
-      isRunning: this.isStarted && !this.abortController?.signal.aborted,
-      lastSuccessfulConnection: this.lastSuccessfulConnection,
-      consecutiveFailures: this.consecutiveFailures,
-    };
   }
 }
