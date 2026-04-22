@@ -651,6 +651,8 @@ export function createGithubComment(args: {
     repo: args.repo,
     issueNumber: args.issueNumber,
     content: args.content,
-    ...(args.in_reply_to_id !== undefined && { in_reply_to_id: args.in_reply_to_id }),
+    ...(args.in_reply_to_id !== undefined && {
+      in_reply_to_id: args.in_reply_to_id,
+    }),
   };
 }
