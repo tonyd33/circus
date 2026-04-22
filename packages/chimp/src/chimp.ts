@@ -100,6 +100,7 @@ export class Chimp {
       mcpUrl,
     );
     const brain = this.brain;
+    brain.setProfileStore(profileStore);
     brain.onEventContextsChanged = (list) => this.mcp?.setEventContexts(list);
 
     await brain.onStartup();
