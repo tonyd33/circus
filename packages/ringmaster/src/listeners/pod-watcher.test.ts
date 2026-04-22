@@ -70,3 +70,16 @@ test("Health status reflects watcher state", async () => {
   await watcher.stop();
   expect(watcher.getHealthStatus().isRunning).toBe(false);
 });
+
+test("Health status tracks consecutive failures", () => {
+  const logger = createMockLogger();
+  const watcher = new PodWatcher(
+    "default",
+    mockEventHandler as any,
+    logger as any,
+  );
+
+  const health = watcher.getHealthStatus();
+  expect(health.consecutiveFailures).toBe(0);
+  expect(health.lastSuccessfulConnection).toBe(null);
+});
