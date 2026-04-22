@@ -476,8 +476,6 @@ export function ChimpActivity() {
    * so that filtered views also trigger auto-scroll appropriately.
    *
    * Only scrolls if user was already at bottom (respects user scroll position).
-   *
-   * biome-ignore comment: dependency array is intentionally minimal for scroll performance.
    */
   // biome-ignore lint/correctness/useExhaustiveDependencies: for scrolling
   useEffect(() => {
