@@ -10,6 +10,8 @@ type IssueCommentCreated = EmitterWebhookEvent<"issue_comment.created">;
 type PRReviewCommentCreated =
   EmitterWebhookEvent<"pull_request_review_comment.created">;
 type IssuesOpened = EmitterWebhookEvent<"issues.opened">;
+type IssuesLabeled = EmitterWebhookEvent<"issues.labeled">;
+type PullRequestLabeled = EmitterWebhookEvent<"pull_request.labeled">;
 
 const OK: AdapterResponse = {
   result: null,
@@ -80,7 +82,11 @@ export class GitHubAdapter implements Adapter {
           body as PRReviewCommentCreated["payload"],
         );
       case "issues":
-        return this.handleIssues(body as IssuesOpened["payload"]);
+        return this.handleIssues(
+          body as (IssuesOpened | IssuesLabeled)["payload"],
+        );
+      case "pull_request":
+        return this.handlePullRequest(body as PullRequestLabeled["payload"]);
       default:
         return OK;
     }
@@ -193,9 +199,18 @@ export class GitHubAdapter implements Adapter {
     );
   }
 
-  private handleIssues(payload: IssuesOpened["payload"]): AdapterResponse {
-    if (payload.action !== "opened") return OK;
+  private handleIssues(
+    payload: IssuesOpened["payload"] | IssuesLabeled["payload"],
+  ): AdapterResponse {
+    if (payload.action === "opened") {
+      return this.handleIssueOpened(payload as IssuesOpened["payload"]);
+    } else if (payload.action === "labeled") {
+      return this.handleIssueLabeled(payload as IssuesLabeled["payload"]);
+    }
+    return OK;
+  }
 
+  private handleIssueOpened(payload: IssuesOpened["payload"]): AdapterResponse {
     const mention = `@${this.botName}`;
     const body = payload.issue.body ?? "";
     if (!body.includes(mention)) return OK;
@@ -236,6 +251,95 @@ export class GitHubAdapter implements Adapter {
         `GitHub issue #${issueNumber} on ${repo}`,
         `Opened by @${author}: ${title}`,
         prompt,
+      ],
+    );
+  }
+
+  private handleIssueLabeled(
+    payload: IssuesLabeled["payload"],
+  ): AdapterResponse {
+    const repo = payload.repository.full_name;
+    const issueNumber = payload.issue.number;
+    const author = payload.sender?.login ?? "unknown";
+    const labelName = payload.label?.name ?? "unknown";
+    const installationId = payload.installation?.id;
+
+    const [owner, repoName] = this.splitRepo(repo);
+    const topic: Standards.Topic.Topic = {
+      platform: "github",
+      owner,
+      repo: repoName,
+      type: "issue",
+      number: issueNumber,
+    };
+
+    this.logger.info(
+      { repo, issueNumber, labelName, author },
+      "GitHub issue labeled",
+    );
+
+    return this.buildResult(
+      Standards.Topic.buildEventSubject(topic, "labeled"),
+      repo,
+      installationId,
+      {
+        name: "issues.labeled",
+        issueNumber,
+        labelName,
+        author,
+      },
+      [
+        `GitHub issue #${issueNumber} on ${repo}`,
+        `Labeled with '${labelName}' by @${author}`,
+      ],
+    );
+  }
+
+  private handlePullRequest(
+    payload: PullRequestLabeled["payload"],
+  ): AdapterResponse {
+    if (payload.action === "labeled") {
+      return this.handlePullRequestLabeled(payload);
+    }
+    return OK;
+  }
+
+  private handlePullRequestLabeled(
+    payload: PullRequestLabeled["payload"],
+  ): AdapterResponse {
+    const repo = payload.repository.full_name;
+    const prNumber = payload.pull_request.number;
+    const author = payload.sender?.login ?? "unknown";
+    const labelName = payload.label?.name ?? "unknown";
+    const installationId = payload.installation?.id;
+
+    const [owner, repoName] = this.splitRepo(repo);
+    const topic: Standards.Topic.Topic = {
+      platform: "github",
+      owner,
+      repo: repoName,
+      type: "pr",
+      number: prNumber,
+    };
+
+    this.logger.info(
+      { repo, prNumber, labelName, author },
+      "GitHub PR labeled",
+    );
+
+    return this.buildResult(
+      Standards.Topic.buildEventSubject(topic, "labeled"),
+      repo,
+      installationId,
+      {
+        name: "pull_request.labeled",
+        prNumber,
+        labelName,
+        author,
+      },
+      [
+        `GitHub PR #${prNumber} on ${repo}`,
+        `Labeled with '${labelName}' by @${author}`,
       ],
     );
   }

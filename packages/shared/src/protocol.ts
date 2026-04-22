@@ -49,6 +49,18 @@ export const GithubEventSchema = z.discriminatedUnion("name", [
     author: z.string(),
     title: z.string(),
   }),
+  z.object({
+    name: z.literal("issues.labeled"),
+    issueNumber: z.number(),
+    labelName: z.string(),
+    author: z.string(),
+  }),
+  z.object({
+    name: z.literal("pull_request.labeled"),
+    prNumber: z.number(),
+    labelName: z.string(),
+    author: z.string(),
+  }),
 ]);
 export type GithubEvent = z.infer<typeof GithubEventSchema>;
 
