@@ -20,7 +20,6 @@ import {
   GitBranch,
   GitPullRequestArrow,
   Hash,
-  Lightbulb,
   Loader2,
   Megaphone,
   MessageCircle,
@@ -630,21 +629,25 @@ export function ChimpActivity() {
                     );
                   }
                   if (blockType === "thinking") {
-                    const thinkingText = block.thinking as string | undefined;
+                    const thinking = block.thinking as string | undefined;
                     return (
                       <div
                         key={i}
-                        className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-3 space-y-1.5"
+                        className="bg-purple-500/10 border border-purple-500/20 rounded-lg p-3 space-y-1.5"
                       >
                         <div className="flex items-center gap-2">
-                          <Lightbulb className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                          <code className="text-xs font-mono font-medium text-blue-500">
-                            thinking
-                          </code>
+                          <Brain className="h-3.5 w-3.5 text-purple-400 shrink-0" />
+                          <span className="text-xs font-medium text-purple-400">
+                            Thinking
+                          </span>
                         </div>
-                        {thinkingText && (
-                          <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                            {thinkingText}
+                        {thinking ? (
+                          <p className="text-sm whitespace-pre-wrap text-muted-foreground leading-relaxed">
+                            {thinking}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground/60 italic">
+                            (empty)
                           </p>
                         )}
                       </div>
