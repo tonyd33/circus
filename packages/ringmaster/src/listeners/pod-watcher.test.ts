@@ -1,4 +1,4 @@
-import { test, expect, mock, spyOn } from "bun:test";
+import { expect, mock, spyOn, test } from "bun:test";
 import type * as k8s from "@kubernetes/client-node";
 import type { Logger } from "@mnke/circus-shared";
 import { PodWatcher } from "./pod-watcher";
@@ -13,18 +13,23 @@ const mockWatch = {
 };
 
 // Mock logger
-const createMockLogger = (): Logger.Logger => ({
-  info: mock(() => {}),
-  warn: mock(() => {}),
-  error: mock(() => {}),
-  debug: mock(() => {}),
-  child: mock(() => ({
+const createMockLogger = (): Logger.Logger => {
+  const childLogger = {
     info: mock(() => {}),
     warn: mock(() => {}),
     error: mock(() => {}),
     debug: mock(() => {}),
-  })),
-});
+    child: mock(() => childLogger),
+  } as any;
+
+  return {
+    info: mock(() => {}),
+    warn: mock(() => {}),
+    error: mock(() => {}),
+    debug: mock(() => {}),
+    child: mock(() => childLogger),
+  } as any;
+};
 
 // Mock event handler
 const mockEventHandler = {
@@ -43,11 +48,11 @@ test("PodWatcher exposes health status", () => {
   );
 
   const health = watcher.getHealthStatus();
-  expect(health).toMatchObject({
-    isRunning: expect.any(Boolean),
-    lastSuccessfulConnection: expect.any([Number, null]),
-    consecutiveFailures: expect.any(Number),
-  });
+  expect(health).toHaveProperty("isRunning");
+  expect(health).toHaveProperty("lastSuccessfulConnection");
+  expect(health).toHaveProperty("consecutiveFailures");
+  expect(typeof health.isRunning).toBe("boolean");
+  expect(typeof health.consecutiveFailures).toBe("number");
 });
 
 test("Health status reflects watcher state", async () => {
