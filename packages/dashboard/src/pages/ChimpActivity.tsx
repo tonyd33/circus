@@ -13,12 +13,14 @@ import {
   CircleDot,
   Clock,
   Cog,
+  Eye,
   FileBox,
   Filter,
   FolderSync,
   GitBranch,
   GitPullRequestArrow,
   Hash,
+  Lightbulb,
   Loader2,
   Megaphone,
   MessageCircle,
@@ -624,6 +626,42 @@ export function ChimpActivity() {
                         {toolInput && (
                           <ExpandableJSON data={toolInput} label="Input" />
                         )}
+                      </div>
+                    );
+                  }
+                  if (blockType === "thinking") {
+                    const thinkingText = block.thinking as string | undefined;
+                    return (
+                      <div
+                        key={i}
+                        className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-3 space-y-1.5"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Lightbulb className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                          <code className="text-xs font-mono font-medium text-blue-500">
+                            thinking
+                          </code>
+                        </div>
+                        {thinkingText && (
+                          <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                            {thinkingText}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  }
+                  if (blockType === "redacted_thinking") {
+                    return (
+                      <div
+                        key={i}
+                        className="bg-slate-500/5 border border-slate-500/20 rounded-lg p-2.5"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Eye className="h-3.5 w-3.5 text-slate-500 shrink-0" />
+                          <code className="text-xs font-mono font-medium text-slate-500">
+                            redacted_thinking
+                          </code>
+                        </div>
                       </div>
                     );
                   }
