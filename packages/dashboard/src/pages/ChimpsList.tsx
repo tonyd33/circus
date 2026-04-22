@@ -15,6 +15,7 @@ import {
 import { useChimps } from "@/hooks/useChimps";
 import { useChimpTopics } from "@/hooks/useChimpTopics";
 import type { ChimpState } from "@/lib/chimp-api";
+import type { Standards } from "@mnke/circus-shared";
 
 const statusColors: Record<ChimpState["status"], string> = {
   scheduled: "bg-blue-400",
@@ -33,16 +34,20 @@ function formatTime(ts: number): string {
  * Displays subscribed topics for a chimp as badges.
  * Topics include GitHub PRs/issues and Discord channels the chimp is subscribed to.
  */
-function ChimpTopicsBadges({ chimpId }: { chimpId: string }) {
-  const { topics } = useChimpTopics(chimpId);
-
-  if (topics.length === 0) {
+function ChimpTopicsBadges({
+  chimpId,
+  chimpTopics,
+}: {
+  chimpId: string;
+  chimpTopics: Standards.Topic.Topic[];
+}) {
+  if (chimpTopics.length === 0) {
     return null;
   }
 
   return (
     <div className="flex flex-wrap gap-1.5 mt-3">
-      {topics.map((t) => {
+      {chimpTopics.map((t) => {
         const key =
           t.platform === "github"
             ? `${t.platform}.${t.owner}.${t.repo}.${t.type}.${t.number}`
@@ -77,6 +82,8 @@ function ChimpTopicsBadges({ chimpId }: { chimpId: string }) {
 
 export function ChimpsList() {
   const { chimps, connected, error } = useChimps();
+  // Fetch topics for all chimps in a single API call
+  const { topicsByChimp, loading: topicsLoading } = useChimpTopics(null);
 
   return (
     <div className="container mx-auto p-8">
@@ -130,7 +137,12 @@ export function ChimpsList() {
                   <p className="text-sm text-muted-foreground">
                     Updated: {formatTime(chimp.updatedAt)}
                   </p>
-                  <ChimpTopicsBadges chimpId={chimp.chimpId} />
+                  {!topicsLoading && topicsByChimp && (
+                    <ChimpTopicsBadges
+                      chimpId={chimp.chimpId}
+                      chimpTopics={topicsByChimp[chimp.chimpId] ?? []}
+                    />
+                  )}
                 </CardContent>
               </Card>
             </Link>
