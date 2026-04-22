@@ -542,21 +542,13 @@ export function ChimpActivity() {
         const cacheReadTokens =
           getNumber(usage ?? {}, "cache_read_input_tokens") ?? 0;
 
-        // Count content blocks (text, tool_use, etc.)
-        const contentBlockCount = Array.isArray(content) ? content.length : 0;
-
-        // Extract text content from content blocks
-        const textContent = Array.isArray(content)
-          ? content
-              .filter(
-                (block): block is Record<string, unknown> =>
-                  typeof block === "object" && block !== null,
-              )
-              .filter((block) => block.type === "text")
-              .map((block) => block.text)
-              .filter((text): text is string => typeof text === "string")
-              .join("\n")
-          : undefined;
+        // Parse content blocks (text, tool_use, etc.)
+        const contentBlocks = Array.isArray(content)
+          ? content.filter(
+              (block): block is Record<string, unknown> =>
+                typeof block === "object" && block !== null,
+            )
+          : [];
 
         return (
           <div className="space-y-2">
@@ -595,22 +587,59 @@ export function ChimpActivity() {
                     </span>
                   )}
                 </div>
-                {contentBlockCount > 0 && (
-                  <div className="flex items-center gap-1">
-                    <span className="text-muted-foreground/70">Blocks:</span>
-                    <span className="font-mono font-medium">
-                      {contentBlockCount}
-                    </span>
-                  </div>
-                )}
               </div>
             )}
 
-            {textContent && (
-              <div className="bg-muted/50 rounded-lg p-3 prose prose-sm dark:prose-invert max-w-none">
-                <Markdown remarkPlugins={[remarkGfm]}>
-                  {textContent}
-                </Markdown>
+            {contentBlocks.length > 0 && (
+              <div className="space-y-2">
+                {contentBlocks.map((block, i) => {
+                  const blockType = block.type as string | undefined;
+                  if (blockType === "text") {
+                    const text = block.text as string | undefined;
+                    return text ? (
+                      <div
+                        key={i}
+                        className="bg-muted/50 rounded-lg p-3 prose prose-sm dark:prose-invert max-w-none"
+                      >
+                        <Markdown remarkPlugins={[remarkGfm]}>{text}</Markdown>
+                      </div>
+                    ) : null;
+                  }
+                  if (blockType === "tool_use") {
+                    const toolName = block.name as string | undefined;
+                    const toolInput = block.input as
+                      | Record<string, unknown>
+                      | undefined;
+                    return (
+                      <div
+                        key={i}
+                        className="bg-muted/30 rounded-lg p-2.5 space-y-1.5"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Terminal className="h-3.5 w-3.5 text-circus-gold shrink-0" />
+                          <code className="text-xs font-mono font-medium text-circus-gold">
+                            {toolName || "tool_use"}
+                          </code>
+                        </div>
+                        {toolInput && (
+                          <ExpandableJSON data={toolInput} label="Input" />
+                        )}
+                      </div>
+                    );
+                  }
+                  // Fallback: show block type and raw JSON
+                  return (
+                    <div
+                      key={i}
+                      className="bg-muted/30 rounded-lg p-2.5 space-y-1"
+                    >
+                      <Badge variant="outline" className="text-xs font-mono">
+                        {blockType || "unknown"}
+                      </Badge>
+                      <ExpandableJSON data={block} label="Block details" />
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
