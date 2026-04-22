@@ -37,7 +37,7 @@ jobs:
         run: bun run biome format .
 
       - name: Run typecheck
-        run: bun ci
+        run: bun run typecheck
 
   build:
     runs-on: ubuntu-latest

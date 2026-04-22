@@ -1,3 +1,4 @@
+import type { Standards } from "@mnke/circus-shared";
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
@@ -96,7 +97,8 @@ const statCards: Array<{
  * Topics include GitHub PRs/issues and Discord channels the chimp is subscribed to.
  */
 function ChimpTopicsBadges({ chimpId }: { chimpId: string }) {
-  const { topics } = useChimpTopics(chimpId);
+  const { topicsByChimp } = useChimpTopics();
+  const topics = topicsByChimp[chimpId] ?? [];
 
   if (topics.length === 0) {
     return null;
@@ -104,7 +106,7 @@ function ChimpTopicsBadges({ chimpId }: { chimpId: string }) {
 
   return (
     <div className="flex items-center gap-1.5">
-      {topics.map((t) => {
+      {topics.map((t: Standards.Topic.Topic) => {
         const key =
           t.platform === "github"
             ? `${t.platform}.${t.owner}.${t.repo}.${t.type}.${t.number}`
