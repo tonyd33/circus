@@ -144,6 +144,57 @@ export class EventHandler {
         break;
       }
 
+      case "handoff": {
+        // Create consumer for new chimp with subscribed topic filters
+        const topicFilters = action.subscriptions.map(
+          Standards.Topic.topicToEventSubject,
+        );
+        if (topicFilters.length > 0) {
+          await this.deps.consumerManager.ensureConsumer(
+            action.toChimpId,
+            topicFilters,
+            1,
+          );
+        }
+
+        // Update new chimp status and send resume command
+        await this.deps.stateManager.upsert(
+          action.toChimpId,
+          action.targetProfile,
+          "scheduled",
+        );
+        await this.deps.metaPublisher.publishStatus(
+          action.targetProfile,
+          action.toChimpId,
+          "scheduled",
+        );
+
+        const resumeCommand: Protocol.ChimpCommand = {
+          command: "resume-handoff",
+          args: {
+            fromProfile: action.fromProfile,
+            reason: action.reason,
+            summary: action.summary,
+            subscriptions: action.subscriptions,
+            eventContexts: action.eventContexts,
+          },
+        };
+        const subject = Standards.Chimp.Naming.directSubject(action.toChimpId);
+        this.deps.nc.publish(subject, JSON.stringify(resumeCommand));
+
+        // Create job for new chimp
+        await this.deps.jobManager.createJob(action.toChimpId, action.targetProfile);
+
+        // Register topics for new chimp
+        for (const topic of action.subscriptions) {
+          await this.deps.topicRegistry.subscribe(topic, action.toChimpId, {
+            force: true,
+          });
+        }
+
+        break;
+      }
+
       default:
         Typing.unreachable(action);
     }

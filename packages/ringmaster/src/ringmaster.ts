@@ -116,6 +116,7 @@ export class Ringmaster {
     this.outputListener = new OutputListener(
       this.nc,
       this.eventHandler,
+      this.stateManager,
       this.logger.child({ component: "OutputListener" }),
     );
 
