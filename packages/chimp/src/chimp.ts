@@ -218,25 +218,24 @@ export class Chimp {
 
     this.logger.info({ reason }, "Shutting down");
 
+    this.logger.info("Clearing idle checks");
     if (this.idleCheckTimer) {
       clearInterval(this.idleCheckTimer);
     }
 
+    this.logger.info("Shutting down input");
     if (this.input) {
       await this.input.stop();
     }
 
+    this.logger.info("Shutting down brain");
     if (this.brain) {
       await this.brain.onShutdown();
     }
 
+    this.logger.info("Stopping mcp");
     if (this.mcp) {
       await this.mcp.stop();
-    }
-
-    if (this.topicRegistry) {
-      await this.topicRegistry.unsubscribeAll(this.config.chimpId);
-      this.logger.info("Cleaned up topic subscriptions");
     }
 
     // Chimp owns NATS connection — drain and close last
