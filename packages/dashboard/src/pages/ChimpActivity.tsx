@@ -118,18 +118,6 @@ type ActivityMessage =
     };
 
 /**
- * Safely extracts a string value from a record object, with fallback to string coercion.
- *
- * @param obj - The object to extract from
- * @param key - The property key to retrieve
- * @returns The string value, or an empty string if the key is missing or null
- */
-function _getString(obj: Record<string, unknown>, key: string): string {
-  const val = obj[key];
-  return typeof val === "string" ? val : String(val ?? "");
-}
-
-/**
  * Safely extracts a numeric value from a record object, with no fallback.
  *
  * @param obj - The object to extract from
@@ -142,29 +130,6 @@ function getNumber(
 ): number | undefined {
   const val = obj[key];
   return typeof val === "number" ? val : undefined;
-}
-
-/**
- * Safely extracts a nested object from a record, excluding arrays.
- *
- * @param obj - The object to extract from
- * @param key - The property key to retrieve
- * @returns A shallow copy of the nested object if found, or an empty object otherwise
- */
-function _getRecord(
-  obj: Record<string, unknown>,
-  key: string,
-): Record<string, unknown> {
-  const val = obj[key];
-  if (typeof val === "object" && val !== null && !Array.isArray(val)) {
-    // Safe: we've verified it's a non-null, non-array object
-    const record: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(val)) {
-      record[k] = v;
-    }
-    return record;
-  }
-  return {};
 }
 
 /**
