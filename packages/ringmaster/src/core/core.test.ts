@@ -332,6 +332,7 @@ describe("chimp_output", () => {
     const decision = decide(state(), {
       type: "chimp_output",
       chimpId: "chimp-1",
+      profile: "scout",
       message: {
         type: "transmogrify",
         fromProfile: "scout",
@@ -390,6 +391,7 @@ describe("chimp_output", () => {
     const decision = decide(state(), {
       type: "chimp_output",
       chimpId: "chimp-1",
+      profile: "scout",
       message: {
         type: "agent-message-response",
         content: "hello",
@@ -404,6 +406,7 @@ describe("chimp_output", () => {
     const decision = decide(state(), {
       type: "chimp_output",
       chimpId: "chimp-1",
+      profile: "scout",
       message: {
         type: "agent-message-response",
         content: "task completed",
@@ -460,6 +463,7 @@ describe("chimp_output", () => {
     const decision = decide(state(), {
       type: "chimp_output",
       chimpId: "chimp-1",
+      profile: "scout",
       message: {
         type: "transmogrify",
         fromProfile: "scout",
@@ -478,5 +482,121 @@ describe("chimp_output", () => {
     expect(sendCommandAction).toBeDefined();
     expect(sendCommandAction.command.args.eventContexts).toEqual(eventContexts);
     expect(sendCommandAction.command.args.eventContexts.length).toBe(2);
+  });
+
+  test("chimp-handoff: creates new chimp with handoff action", () => {
+    const subscriptions = [
+      {
+        platform: "github" as const,
+        owner: "tonyd33",
+        repo: "circus",
+        type: "pr" as const,
+        number: 100,
+      },
+    ];
+    const eventContexts: any[] = [];
+
+    const decision = decide(state(), {
+      type: "chimp_output",
+      chimpId: "chimp-scout",
+      profile: "scout",
+      message: {
+        type: "chimp-handoff",
+        targetProfile: "worker",
+        reason: "need to implement feature",
+        summary: "analyzed design",
+        subscriptions,
+        eventContexts,
+      },
+    });
+
+    expect(decision.chimpId).toBe("chimp-scout");
+    expect(decision.actions).toHaveLength(1);
+    expect(decision.actions[0]).toEqual({
+      type: "handoff",
+      fromChimpId: "chimp-scout",
+      toChimpId: deriveTransmogrifyChimpId("chimp-scout", "worker"),
+      targetProfile: "worker",
+      fromProfile: "scout",
+      reason: "need to implement feature",
+      summary: "analyzed design",
+      subscriptions,
+      eventContexts,
+    });
+  });
+
+  test("chimp-handoff: transfers subscriptions to new chimp", () => {
+    const subscriptions = [
+      {
+        platform: "github" as const,
+        owner: "owner1",
+        repo: "repo1",
+        type: "issue" as const,
+        number: 42,
+      },
+      {
+        platform: "github" as const,
+        owner: "owner2",
+        repo: "repo2",
+        type: "pr" as const,
+        number: 99,
+      },
+    ];
+
+    const decision = decide(state(), {
+      type: "chimp_output",
+      chimpId: "old-chimp",
+      profile: "scout",
+      message: {
+        type: "chimp-handoff",
+        targetProfile: "powerful",
+        reason: "upgrade needed",
+        summary: "work in progress",
+        subscriptions,
+        eventContexts: [],
+      },
+    });
+
+    const handoffAction = decision.actions[0] as any;
+    expect(handoffAction.type).toBe("handoff");
+    expect(handoffAction.subscriptions).toEqual(subscriptions);
+    expect(handoffAction.subscriptions.length).toBe(2);
+  });
+
+  test("chimp-handoff with event contexts → preserves contexts", () => {
+    const subscriptions: any[] = [];
+    const eventContexts = [
+      {
+        seenAt: "2026-04-23T06:39:00.000Z",
+        context: {
+          source: "github" as const,
+          repo: "owner/repo",
+          installationId: 123,
+          event: {
+            name: "issues.opened" as const,
+            issueNumber: 100,
+            author: "tonyd33",
+            title: "Test issue",
+          },
+        },
+      },
+    ];
+
+    const decision = decide(state(), {
+      type: "chimp_output",
+      chimpId: "chimp-scout",
+      profile: "scout",
+      message: {
+        type: "chimp-handoff",
+        targetProfile: "worker",
+        reason: "continuing work",
+        summary: "previous context preserved",
+        subscriptions,
+        eventContexts,
+      },
+    });
+
+    const handoffAction = decision.actions[0] as any;
+    expect(handoffAction.eventContexts).toEqual(eventContexts);
   });
 });
