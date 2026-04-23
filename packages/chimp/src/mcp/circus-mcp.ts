@@ -56,13 +56,17 @@ export class CircusMcp {
 
     server.tool(
       "chimp_request",
-      "Request creation of a new chimp agent with a specific profile and initial message",
+      "Spawn a new chimp agent with a specific profile and initial message. " +
+        "The ringmaster will create a K8s job for the new chimp. Event " +
+        "contexts are automatically passed so the new chimp can respond on " +
+        "the same channels. Use this to delegate work to a more capable " +
+        "profile or to spawn helper chimps.",
       {
         profile: z.string().describe("Profile name for the new chimp"),
         chimpId: z.string().describe("Unique ID for the new chimp"),
         message: z
           .string()
-          .describe("Initial message to send to the new chimp"),
+          .describe("Initial message/context to send to the new chimp"),
       },
       async (args) => {
         this.config.logger.info(
@@ -78,12 +82,13 @@ export class CircusMcp {
           profile: args.profile,
           chimpId: args.chimpId,
           message: args.message,
+          eventContexts: this.eventContexts,
         });
         return {
           content: [
             {
               type: "text" as const,
-              text: `Chimp requested: ${args.chimpId} (profile: ${args.profile})`,
+              text: `Chimp requested: ${args.chimpId} (profile: ${args.profile}). The ringmaster will create a new pod.`,
             },
           ],
         };
@@ -284,48 +289,29 @@ export class CircusMcp {
     );
 
     server.tool(
-      "transmogrify",
-      "Transform this chimp into a more powerful profile. Queues a handoff message for the new incarnation, then signals the platform to replace this pod. Use when the current profile is insufficient for the task.",
-      {
-        targetProfile: z.string().describe("Profile to transform into"),
-        reason: z.string().describe("Why the transformation is needed"),
-        summary: z
-          .string()
-          .describe("Summary of work done so far for the new incarnation"),
-      },
-      async (args) => {
-        const { nc, chimpId, profile, logger } = this.config;
-
-        if (!nc) {
+      "unsubscribe_all_topics",
+      "Unsubscribe from all topics this chimp is subscribed to. Use before " +
+        "stopping when handing off work to another chimp via chimp_request.",
+      {},
+      async () => {
+        const { topicRegistry, chimpId, logger } = this.config;
+        if (!topicRegistry) {
           return {
             content: [
               {
                 type: "text" as const,
-                text: "Transmogrify unavailable (no NATS)",
+                text: "Topic registry unavailable (no NATS)",
               },
             ],
           };
         }
-
-        logger.info(
-          { chimpId, targetProfile: args.targetProfile, reason: args.reason },
-          "Transmogrify initiated",
-        );
-
-        publish({
-          type: "transmogrify",
-          fromProfile: profile,
-          targetProfile: args.targetProfile,
-          reason: args.reason,
-          summary: args.summary,
-          eventContexts: this.eventContexts,
-        });
-
+        await topicRegistry.unsubscribeAll(chimpId);
+        logger.info({ chimpId }, "Unsubscribed from all topics");
         return {
           content: [
             {
               type: "text" as const,
-              text: `Transmogrify initiated: ${profile} → ${args.targetProfile}. This pod will be replaced.`,
+              text: "Unsubscribed from all topics",
             },
           ],
         };
@@ -334,7 +320,7 @@ export class CircusMcp {
 
     server.tool(
       "list_profiles",
-      "List available chimp profiles with descriptions, brain type, and model. Use to decide which profile to transmogrify into.",
+      "List available chimp profiles with descriptions, brain type, and model. Use to decide which profile to use for chimp_request.",
       {},
       async () => {
         const allProfiles = await this.config.profileStore.list();

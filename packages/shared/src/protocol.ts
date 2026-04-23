@@ -150,12 +150,11 @@ const GhCloneRepoCommandSchema = z.object({
   }),
 });
 
-const ResumeTransmogrifyCommandSchema = z.object({
-  command: z.literal("resume-transmogrify"),
+const ResumeTransferCommandSchema = z.object({
+  command: z.literal("resume-transfer"),
   args: z.object({
-    fromProfile: z.string(),
-    reason: z.string(),
-    summary: z.string(),
+    fromChimpId: z.string(),
+    message: z.string(),
     eventContexts: z.array(StoredEventContextSchema).default([]),
   }),
 });
@@ -170,7 +169,7 @@ const ChimpCommandSchema = z.discriminatedUnion("command", [
   AppendSystemPromptCommandSchema,
   SetAllowedToolsCommandSchema,
   SetupGithubAuthCommandSchema,
-  ResumeTransmogrifyCommandSchema,
+  ResumeTransferCommandSchema,
 ]);
 
 // ============================================================================
@@ -308,6 +307,7 @@ export const ChimpRequestSchema = z.object({
   profile: z.string(),
   chimpId: z.string(),
   message: z.string(),
+  eventContexts: z.array(StoredEventContextSchema).default([]),
 });
 
 export const DiscordResponseSchema = z.object({
@@ -326,15 +326,6 @@ export const GithubCommentSchema = z.object({
   in_reply_to_id: z.number().optional(),
 });
 
-export const TransmogrifySchema = z.object({
-  type: z.literal("transmogrify"),
-  fromProfile: z.string(),
-  targetProfile: z.string(),
-  reason: z.string(),
-  summary: z.string(),
-  eventContexts: z.array(StoredEventContextSchema).default([]),
-});
-
 export const ChimpOutputMessageSchema = z.discriminatedUnion("type", [
   AgentMessageResponseSchema,
   ArtifactMessageSchema,
@@ -345,7 +336,6 @@ export const ChimpOutputMessageSchema = z.discriminatedUnion("type", [
   ChimpRequestSchema,
   DiscordResponseSchema,
   GithubCommentSchema,
-  TransmogrifySchema,
 ]);
 
 /**

@@ -4,7 +4,6 @@ import {
   AlertTriangle,
   ArrowDown,
   ArrowLeft,
-  ArrowRightLeft,
   BookOpen,
   Bot,
   Brain,
@@ -166,7 +165,7 @@ function getRecord(
  *
  * @remarks
  * - Output types (agent-message-response, log, error, progress): represent chimp responses
- * - Event types (send-agent-message, clone-repo, transmogrify): represent user commands
+ * - Event types (send-agent-message, clone-repo, chimp-request): represent user commands
  * - Meta types (new-session, setup-github-auth): represent system configuration
  */
 const messageTypeIcons: Record<string, React.ReactNode> = {
@@ -185,8 +184,7 @@ const messageTypeIcons: Record<string, React.ReactNode> = {
   "append-system-prompt": <BookOpen className="h-3.5 w-3.5" />,
   "set-allowed-tools": <Cog className="h-3.5 w-3.5" />,
   "setup-github-auth": <Terminal className="h-3.5 w-3.5" />,
-  "resume-transmogrify": <Sparkles className="h-3.5 w-3.5" />,
-  transmogrify: <ArrowRightLeft className="h-3.5 w-3.5" />,
+  "resume-transfer": <Sparkles className="h-3.5 w-3.5" />,
   "chimp-request": <MessageCircle className="h-3.5 w-3.5" />,
   "discord-response": <Hash className="h-3.5 w-3.5" />,
   "github-comment": <GitPullRequestArrow className="h-3.5 w-3.5" />,
@@ -775,28 +773,19 @@ export function ChimpActivity() {
             </span>
           </div>
         );
-      case "resume-transmogrify":
+      case "resume-transfer":
         return (
           <div className="flex items-start gap-2.5 bg-gradient-to-r from-purple-500/10 to-circus-gold/10 rounded-lg p-3 border border-purple-500/20">
             <Sparkles className="h-4 w-4 text-circus-gold shrink-0 mt-0.5" />
             <div className="space-y-2 flex-1">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-circus-gold">
-                  Transmogrify resumed
+                  Transfer resumed
                 </span>
                 <Badge variant="outline" className="text-xs">
-                  from {data.args.fromProfile}
+                  from {data.args.fromChimpId}
                 </Badge>
               </div>
-              <p className="text-sm">{data.args.reason}</p>
-              {data.args.summary && (
-                <div className="bg-muted/30 rounded p-2 text-sm">
-                  <span className="text-xs font-medium text-muted-foreground block mb-1">
-                    Predecessor's summary:
-                  </span>
-                  <p className="whitespace-pre-wrap">{data.args.summary}</p>
-                </div>
-              )}
               {data.args.eventContexts.length > 0 && (
                 <span className="text-xs text-muted-foreground">
                   {data.args.eventContexts.length} event context
@@ -917,29 +906,6 @@ export function ChimpActivity() {
           </div>
         );
       }
-      case "transmogrify":
-        return (
-          <div className="flex items-start gap-2.5 bg-purple-500/10 rounded-lg p-3">
-            <ArrowRightLeft className="h-4 w-4 text-purple-500 shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="text-xs">
-                  {data.fromProfile}
-                </Badge>
-                <span className="text-muted-foreground">→</span>
-                <Badge className="text-xs bg-purple-500/20 text-purple-500">
-                  {data.targetProfile}
-                </Badge>
-              </div>
-              <p className="text-sm text-muted-foreground">{data.reason}</p>
-              {data.summary && (
-                <p className="text-xs text-muted-foreground/70 italic">
-                  {data.summary}
-                </p>
-              )}
-            </div>
-          </div>
-        );
       case "chimp-request":
         return (
           <div className="flex items-start gap-2.5 bg-blue-500/10 rounded-lg p-3">

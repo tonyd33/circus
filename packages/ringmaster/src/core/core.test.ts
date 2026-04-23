@@ -3,7 +3,6 @@ import {
   type CoreState,
   decide,
   deriveChimpId,
-  deriveTransmogrifyChimpId,
   type EventPayload,
 } from "./core.ts";
 
@@ -133,7 +132,6 @@ describe("event_received", () => {
       chimpId: "stale-chimp",
       type: "register_topic",
       topic,
-      force: true,
     });
   });
 
@@ -160,7 +158,6 @@ describe("event_received", () => {
       chimpId,
       type: "register_topic",
       topic,
-      force: false,
     });
     expect(decision.actions.find((a) => a.type === "create_job")).toEqual({
       chimpId,
@@ -278,25 +275,6 @@ describe("event_received", () => {
     expect(decision.actions.find((a) => a.type === "create_job")).toBeDefined();
   });
 
-  test("forceClaimTopic: topic claimed by stale chimp, no pod → force claim with reclaim", () => {
-    const staleChimpId = "stale-chimp";
-    const decision = decide(state(), {
-      type: "event_received",
-      chimpId: staleChimpId,
-      profile: P,
-      eventSubject,
-      topic,
-      topicOwner: { chimpId: staleChimpId },
-      messageSequence: 42,
-    });
-
-    const registerTopicAction = decision.actions.find(
-      (a) => a.type === "register_topic",
-    );
-    expect(registerTopicAction).toBeDefined();
-    expect(registerTopicAction?.force).toBe(true);
-  });
-
   test("debug event (null topic) → no register_topic", () => {
     const chimpId = deriveChimpId(null, "events.debug.abc123");
     const decision = decide(state(), {
@@ -317,7 +295,7 @@ describe("event_received", () => {
 });
 
 describe("chimp_output", () => {
-  test("transmogrify: new chimpId, transfers topics, sends resume command", () => {
+  test("chimp-request: creates new chimp with transfer command", () => {
     const eventContexts = [
       {
         seenAt: "2026-04-20T01:00:00.000Z",
@@ -333,104 +311,50 @@ describe("chimp_output", () => {
       type: "chimp_output",
       chimpId: "chimp-1",
       message: {
-        type: "transmogrify",
-        fromProfile: "scout",
-        targetProfile: "powerful",
-        reason: "need more power",
-        summary: "working on X",
+        type: "chimp-request",
+        profile: "worker",
+        chimpId: "new-chimp-1",
+        message: "Continue working on the task",
         eventContexts,
       },
     });
 
-    const newChimpId = deriveTransmogrifyChimpId("chimp-1", "powerful");
-
     expect(decision.chimpId).toBe("chimp-1");
     expect(decision.actions).toEqual([
-      { chimpId: "chimp-1", type: "delete_job" },
       {
-        type: "transfer_topics",
-        fromChimpId: "chimp-1",
-        toChimpId: newChimpId,
-      },
-      { chimpId: "chimp-1", type: "delete_state" },
-      {
-        chimpId: newChimpId,
+        chimpId: "new-chimp-1",
         type: "upsert_status",
-        profile: "powerful",
+        profile: "worker",
         status: "scheduled",
       },
       {
-        chimpId: newChimpId,
+        chimpId: "new-chimp-1",
+        type: "create_consumers",
+        eventFilterSubjects: [],
+        startSequence: 1,
+      },
+      {
+        chimpId: "new-chimp-1",
         type: "send_command",
         command: {
-          command: "resume-transmogrify",
+          command: "resume-transfer",
           args: {
-            fromProfile: "scout",
-            reason: "need more power",
-            summary: "working on X",
+            fromChimpId: "chimp-1",
+            message: "Continue working on the task",
             eventContexts,
           },
         },
       },
-      { chimpId: newChimpId, type: "create_job", profile: "powerful" },
+      {
+        chimpId: "new-chimp-1",
+        type: "create_job",
+        profile: "worker",
+      },
     ]);
+    expect(decision.reason).toContain("Chimp request from chimp-1");
   });
 
-  test("transmogrify: new chimpId is deterministic", () => {
-    const id1 = deriveTransmogrifyChimpId("chimp-1", "powerful");
-    const id2 = deriveTransmogrifyChimpId("chimp-1", "powerful");
-    const id3 = deriveTransmogrifyChimpId("chimp-1", "worker");
-
-    expect(id1).toBe(id2);
-    expect(id1).not.toBe(id3);
-    expect(id1).toMatch(/^evt-/);
-  });
-
-  test("other output types: noop", () => {
-    const decision = decide(state(), {
-      type: "chimp_output",
-      chimpId: "chimp-1",
-      message: {
-        type: "agent-message-response",
-        content: "hello",
-        sessionId: "s1",
-      },
-    });
-
-    expect(decision.actions).toEqual([{ type: "noop" }]);
-  });
-
-  test("chimp_output: agent-message-response type → noop", () => {
-    const decision = decide(state(), {
-      type: "chimp_output",
-      chimpId: "chimp-1",
-      message: {
-        type: "agent-message-response",
-        content: "task completed",
-        sessionId: "session-123",
-      },
-    });
-
-    expect(decision.chimpId).toBe("chimp-1");
-    expect(decision.actions).toEqual([{ type: "noop" }]);
-    expect(decision.reason).toBe("Output: agent-message-response");
-  });
-
-  test("chimp_output: dashboard-response type → noop", () => {
-    const decision = decide(state(), {
-      type: "chimp_output",
-      chimpId: "chimp-2",
-      message: {
-        type: "agent-message-response",
-        content: "status update",
-        sessionId: "dashboard-session",
-      },
-    });
-
-    expect(decision.actions).toEqual([{ type: "noop" }]);
-  });
-
-  test("transmogrify with stored event contexts → transfers all contexts", () => {
+  test("chimp-request: preserves event contexts", () => {
     const eventContexts = [
       {
         seenAt: "2026-04-20T01:00:00.000Z",
@@ -461,22 +385,81 @@ describe("chimp_output", () => {
       type: "chimp_output",
       chimpId: "chimp-1",
       message: {
-        type: "transmogrify",
-        fromProfile: "scout",
-        targetProfile: "powerful",
-        reason: "need more power",
-        summary: "working on X",
+        type: "chimp-request",
+        profile: "architect",
+        chimpId: "arch-chimp-1",
+        message: "Design the system",
         eventContexts,
       },
     });
 
-    const newChimpId = deriveTransmogrifyChimpId("chimp-1", "powerful");
     const sendCommandAction = decision.actions.find(
       (a) => a.type === "send_command",
-    ) as any;
-
+    );
     expect(sendCommandAction).toBeDefined();
-    expect(sendCommandAction.command.args.eventContexts).toEqual(eventContexts);
-    expect(sendCommandAction.command.args.eventContexts.length).toBe(2);
+    if (sendCommandAction && sendCommandAction.type === "send_command") {
+      const cmd = sendCommandAction.command;
+      if (cmd.command === "resume-transfer") {
+        expect(cmd.args.eventContexts).toEqual(eventContexts);
+        expect(cmd.args.eventContexts.length).toBe(2);
+      } else {
+        throw new Error("Expected resume-transfer command");
+      }
+    }
+  });
+
+  test("chimp-request: empty event contexts", () => {
+    const decision = decide(state(), {
+      type: "chimp_output",
+      chimpId: "chimp-1",
+      message: {
+        type: "chimp-request",
+        profile: "worker",
+        chimpId: "helper-1",
+        message: "Do this small task",
+        eventContexts: [],
+      },
+    });
+
+    const sendCommandAction = decision.actions.find(
+      (a) => a.type === "send_command",
+    );
+    expect(sendCommandAction).toBeDefined();
+    if (sendCommandAction && sendCommandAction.type === "send_command") {
+      const cmd = sendCommandAction.command;
+      if (cmd.command === "resume-transfer") {
+        expect(cmd.args.eventContexts).toEqual([]);
+      }
+    }
+  });
+
+  test("other output types: noop", () => {
+    const decision = decide(state(), {
+      type: "chimp_output",
+      chimpId: "chimp-1",
+      message: {
+        type: "agent-message-response",
+        content: "hello",
+        sessionId: "s1",
+      },
+    });
+
+    expect(decision.actions).toEqual([{ type: "noop" }]);
+  });
+
+  test("chimp_output: agent-message-response type → noop", () => {
+    const decision = decide(state(), {
+      type: "chimp_output",
+      chimpId: "chimp-1",
+      message: {
+        type: "agent-message-response",
+        content: "task completed",
+        sessionId: "session-123",
+      },
+    });
+
+    expect(decision.chimpId).toBe("chimp-1");
+    expect(decision.actions).toEqual([{ type: "noop" }]);
+    expect(decision.reason).toBe("Output: agent-message-response");
   });
 });

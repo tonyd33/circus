@@ -39,7 +39,7 @@ export type Action =
       eventFilterSubjects: string[];
       startSequence: number;
     }
-  | { chimpId: string; type: "register_topic"; topic: Topic; force?: boolean }
+  | { chimpId: string; type: "register_topic"; topic: Topic }
   | { chimpId: string; type: "delete_consumers" }
   | { chimpId: string; type: "cleanup_topics" }
   | {
@@ -55,7 +55,6 @@ export type Action =
       type: "send_command";
       command: Protocol.ChimpCommand;
     }
-  | { type: "transfer_topics"; fromChimpId: string; toChimpId: string }
   | { type: "noop" };
 
 export interface Decision {
@@ -89,13 +88,6 @@ export function deriveChimpId(
     ? Standards.Topic.serializeTopic(topic)
     : eventSubject.slice(Standards.Chimp.Prefix.EVENTS.length + 1);
   return `evt-${Bun.hash(key).toString(36)}`;
-}
-
-export function deriveTransmogrifyChimpId(
-  oldChimpId: string,
-  targetProfile: string,
-): string {
-  return `evt-${Bun.hash(`${oldChimpId}:${targetProfile}`).toString(36)}`;
 }
 
 function decideOnPodEvent(
@@ -155,9 +147,8 @@ function decideOnEventReceived(
     startSequence: messageSequence,
   });
 
-  const isReclaim = topicOwner != null && !state.pod;
   if (topic) {
-    actions.push({ chimpId, type: "register_topic", topic, force: isReclaim });
+    actions.push({ chimpId, type: "register_topic", topic });
   }
 
   actions.push({ chimpId, type: "create_job", profile });
@@ -176,36 +167,31 @@ function decideOnChimpOutput(
   message: Protocol.ChimpOutputMessage,
 ): Decision {
   switch (message.type) {
-    case "transmogrify": {
-      const newChimpId = deriveTransmogrifyChimpId(
-        chimpId,
-        message.targetProfile,
-      );
+    case "chimp-request": {
+      const newChimpId = message.chimpId;
       return {
         chimpId,
         actions: [
-          { chimpId, type: "delete_job" },
-          {
-            type: "transfer_topics",
-            fromChimpId: chimpId,
-            toChimpId: newChimpId,
-          },
-          { chimpId, type: "delete_state" },
           {
             chimpId: newChimpId,
             type: "upsert_status",
-            profile: message.targetProfile,
+            profile: message.profile,
             status: "scheduled",
+          },
+          {
+            chimpId: newChimpId,
+            type: "create_consumers",
+            eventFilterSubjects: [],
+            startSequence: 1,
           },
           {
             chimpId: newChimpId,
             type: "send_command",
             command: {
-              command: "resume-transmogrify",
+              command: "resume-transfer",
               args: {
-                fromProfile: message.fromProfile,
-                reason: message.reason,
-                summary: message.summary,
+                fromChimpId: chimpId,
+                message: message.message,
                 eventContexts: message.eventContexts,
               },
             },
@@ -213,10 +199,10 @@ function decideOnChimpOutput(
           {
             chimpId: newChimpId,
             type: "create_job",
-            profile: message.targetProfile,
+            profile: message.profile,
           },
         ],
-        reason: `Transmogrify ${chimpId} → ${newChimpId} (${message.targetProfile})`,
+        reason: `Chimp request from ${chimpId} → ${newChimpId} (${message.profile})`,
       };
     }
     default:

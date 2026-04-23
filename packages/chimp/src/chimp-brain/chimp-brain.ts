@@ -97,8 +97,8 @@ export abstract class ChimpBrain {
         return this.handleSetAllowedTools(command.args.tools);
       case "setup-github-auth":
         return this.handleSetupGithubAuth();
-      case "resume-transmogrify":
-        return this.handleResumeTransmogrify(command.args);
+      case "resume-transfer":
+        return this.handleResumeTransfer(command.args);
       default:
         return Typing.unreachable(command);
     }
@@ -181,32 +181,12 @@ export abstract class ChimpBrain {
     return "continue";
   }
 
-  protected async handleResumeTransmogrify(args: {
-    fromProfile: string;
-    reason: string;
-    summary: string;
+  protected async handleResumeTransfer(args: {
+    fromChimpId: string;
+    message: string;
     eventContexts: StoredEventContext[];
   }): Promise<CommandResult> {
-    // Validate that fromProfile exists in the ProfileStore
-    if (this.profileStore) {
-      const profile = await this.profileStore.get(args.fromProfile);
-      if (!profile) {
-        this.log(
-          "warn",
-          `Profile "${args.fromProfile}" does not exist in ProfileStore`,
-        );
-      }
-    } else {
-      this.log(
-        "warn",
-        "ProfileStore not available for validation of fromProfile",
-      );
-    }
-
-    this.log(
-      "info",
-      `Resumed after transmogrify from ${args.fromProfile}: ${args.reason}`,
-    );
+    this.log("info", `Resumed via transfer from chimp ${args.fromChimpId}`);
 
     if (args.eventContexts.length > 0) {
       this.restoreEventContexts(args.eventContexts);
@@ -215,14 +195,7 @@ export abstract class ChimpBrain {
       });
     }
 
-    const context = [
-      `You are resuming work after a transmogrify from the "${args.fromProfile}" profile.`,
-      `Reason for transmogrify: ${args.reason}`,
-      `Summary from previous chimp: ${args.summary}`,
-      "Continue the work described above.",
-    ].join("\n");
-
-    return this.handlePrompt(context);
+    return this.handlePrompt(args.message);
   }
 
   protected restoreEventContexts(contexts: StoredEventContext[]): void {

@@ -79,9 +79,7 @@ export class EventHandler {
         break;
 
       case "register_topic":
-        await this.deps.topicRegistry.subscribe(action.topic, action.chimpId, {
-          force: action.force ?? false,
-        });
+        await this.deps.topicRegistry.subscribe(action.topic, action.chimpId);
         break;
 
       case "delete_consumers":
@@ -116,31 +114,6 @@ export class EventHandler {
       case "send_command": {
         const subject = Standards.Chimp.Naming.directSubject(action.chimpId);
         this.deps.nc.publish(subject, JSON.stringify(action.command));
-        break;
-      }
-
-      case "transfer_topics": {
-        const topics = await this.deps.topicRegistry.listForChimp(
-          action.fromChimpId,
-        );
-        const topicFilters = topics.map(Standards.Topic.topicToEventSubject);
-
-        // Create consumer for new chimpId with topic filters before
-        // updating KV — ensures consumer exists when subscribe() tries
-        // to update filter_subjects
-        await this.deps.consumerManager.ensureConsumer(
-          action.toChimpId,
-          topicFilters,
-          1,
-        );
-
-        for (const topic of topics) {
-          await this.deps.topicRegistry.subscribe(topic, action.toChimpId, {
-            force: true,
-          });
-        }
-        await this.deps.topicRegistry.unsubscribeAll(action.fromChimpId);
-        await this.deps.consumerManager.deleteConsumer(action.fromChimpId);
         break;
       }
 
