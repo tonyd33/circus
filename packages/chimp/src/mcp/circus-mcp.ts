@@ -333,62 +333,8 @@ export class CircusMcp {
     );
 
     server.tool(
-      "handoff",
-      "Request a graceful handoff to another chimp profile. The new chimp inherits subscriptions and event contexts, while the current chimp gracefully shuts down. Use when the current profile is insufficient for the task.",
-      {
-        targetProfile: z.string().describe("Profile to hand off to"),
-        reason: z.string().describe("Why the handoff is needed"),
-        summary: z
-          .string()
-          .describe("Summary of work done so far for the new incarnation"),
-      },
-      async (args) => {
-        const { nc, chimpId, profile, logger } = this.config;
-
-        if (!nc || !this.config.topicRegistry) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: "Handoff unavailable (missing NATS or TopicRegistry)",
-              },
-            ],
-          };
-        }
-
-        logger.info(
-          { chimpId, targetProfile: args.targetProfile, reason: args.reason },
-          "Handoff initiated",
-        );
-
-        // Get current subscriptions
-        const subscriptions = await this.config.topicRegistry.listForChimp(
-          chimpId,
-        );
-
-        publish({
-          type: "chimp-handoff",
-          targetProfile: args.targetProfile,
-          reason: args.reason,
-          summary: args.summary,
-          subscriptions,
-          eventContexts: this.eventContexts,
-        });
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Handoff initiated: ${profile} → ${args.targetProfile}. Subscriptions and context will be transferred. This chimp will gracefully shut down.`,
-            },
-          ],
-        };
-      },
-    );
-
-    server.tool(
       "transmogrify",
-      "(Deprecated) Transform this chimp into a more powerful profile. Use 'handoff' instead for graceful profile switching.",
+      "Transform this chimp into a more powerful profile. The new chimp inherits subscriptions and event contexts, while the current chimp gracefully shuts down. Use when the current profile is insufficient for the task.",
       {
         targetProfile: z.string().describe("Profile to transform into"),
         reason: z.string().describe("Why the transformation is needed"),
