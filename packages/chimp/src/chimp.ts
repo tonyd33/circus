@@ -101,6 +101,9 @@ export class Chimp {
     );
     const brain = this.brain;
     brain.setProfileStore(profileStore);
+    if (this.topicRegistry) {
+      brain.setTopicRegistry(this.topicRegistry);
+    }
     brain.onEventContextsChanged = (list) => this.mcp?.setEventContexts(list);
 
     await brain.onStartup();
