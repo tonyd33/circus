@@ -19,6 +19,9 @@ async function main() {
     redisUrl: ER.str(Standards.Chimp.Env.redisUrl).fallback(
       "redis://localhost:6379",
     ),
+    databaseUrl: ER.str(Standards.Chimp.Env.databaseUrl).fallback(
+      "postgresql://circus:circus@localhost:5432/circus",
+    ),
     brainType: ER.enm(Standards.Chimp.Env.brainType, [
       "claude",
       "opencode",
@@ -59,6 +62,7 @@ async function main() {
       model: config.model,
       natsUrl: config.natsUrl,
       redisUrl: config.redisUrl,
+      databaseUrl: config.databaseUrl,
       inputMode: config.inputMode,
       outputMode: config.outputMode,
       httpPort: config.httpPort,

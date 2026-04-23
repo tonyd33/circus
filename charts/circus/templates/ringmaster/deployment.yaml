@@ -31,6 +31,8 @@ spec:
               value: {{ .Values.externalServices.redis.url | quote }}
             - name: NATS_URL
               value: {{ .Values.externalServices.nats.url | quote }}
+            - name: DATABASE_URL
+              value: {{ .Values.externalServices.postgres.url | quote }}
             - name: NAMESPACE
               valueFrom:
                 fieldRef:

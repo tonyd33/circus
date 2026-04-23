@@ -1,9 +1,9 @@
-import { useState } from "react";
 import { ChevronDown } from "lucide-react";
+import { useState } from "react";
 import {
   Collapsible,
-  CollapsibleTrigger,
   CollapsibleContent,
+  CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 
 interface ExpandableJSONProps {

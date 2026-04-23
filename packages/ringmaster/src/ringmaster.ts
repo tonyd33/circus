@@ -1,5 +1,7 @@
 import { type Logger, Standards } from "@mnke/circus-shared";
-import { NatsLib, ProfileStore, TopicRegistry } from "@mnke/circus-shared/lib";
+import { createDatabase } from "@mnke/circus-shared/db";
+import { NatsLib } from "@mnke/circus-shared/lib";
+import { ProfileStore, TopicRegistry } from "@mnke/circus-shared/services";
 import Redis from "ioredis";
 import {
   connect,
@@ -56,7 +58,8 @@ export class Ringmaster {
     this.logger.info("Connected to NATS JetStream");
 
     await this.ensureSharedStreams(this.jsm);
-    const topicRegistry = new TopicRegistry(this.nc);
+    const db = createDatabase(this.config.databaseUrl);
+    const topicRegistry = new TopicRegistry(this.nc, db);
     await topicRegistry.start();
 
     this.stateManager = new StateManager(

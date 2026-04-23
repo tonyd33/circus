@@ -1,13 +1,27 @@
 # yaml-language-server: $schema=https://taskfile.dev/schema.json
 
-version: '3'
+version: "3"
 
-vars:
-  GREETING: Hello, world!
+includes:
+  db:
+    taskfile: taskfiles/db.yml
+    dir: .
+  lint:
+    taskfile: taskfiles/lint.yml
 
 tasks:
-  default:
-    desc: Print a greeting message
-    cmds:
-      - echo "{{.GREETING}}"
-    silent: true
+  test:
+    desc: Run all tests
+    cmd: bun test --recursive
+
+  typecheck:
+    desc: Typecheck all packages
+    cmd: bun run --filter='*' typecheck
+
+  format:
+    desc: Format all files
+    cmd: bun run biome format --write
+
+  build:
+    desc: Build all packages
+    cmd: bun run --filter='*' build

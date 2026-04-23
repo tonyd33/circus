@@ -11,6 +11,7 @@ type ChimpStatus = Standards.Chimp.ChimpStatus;
 export interface RingmasterConfig {
   natsUrl: string;
   redisUrl: string;
+  databaseUrl: string;
   namespace: string;
   profileTemplatePath?: string;
 }

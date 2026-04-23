@@ -18,6 +18,20 @@
       "recommended": true,
       "suspicious": {
         "noArrayIndexKey": "off"
+      },
+      "correctness": {
+        "noUnusedImports": {
+          "level": "warn",
+          "fix": "safe"
+        },
+        "noUnusedVariables": {
+          "level": "warn",
+          "fix": "safe"
+        },
+        "noUnusedFunctionParameters": {
+          "level": "warn",
+          "fix": "safe"
+        }
       }
     }
   },

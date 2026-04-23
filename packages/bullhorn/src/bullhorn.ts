@@ -158,17 +158,10 @@ export class Bullhorn {
         break;
 
       case "chimp-request":
-        if (this.nc) {
-          const subject = Standards.Chimp.Naming.directSubject(msg.chimpId);
-          this.nc.publish(
-            subject,
-            JSON.stringify(Protocol.createAgentCommand(msg.message)),
-          );
-          this.logger.info(
-            { chimpId, targetChimpId: msg.chimpId, targetProfile: msg.profile },
-            "Forwarded chimp request",
-          );
-        }
+        this.logger.info(
+          { chimpId, targetChimpId: msg.chimpId, targetProfile: msg.profile },
+          "Chimp request (handled by ringmaster)",
+        );
         break;
 
       case "discord-response":
@@ -177,13 +170,6 @@ export class Bullhorn {
 
       case "github-comment":
         await this.handleGithubComment(msg);
-        break;
-
-      case "transmogrify":
-        this.logger.info(
-          { chimpId, targetProfile: msg.targetProfile },
-          "Transmogrify requested",
-        );
         break;
 
       default:

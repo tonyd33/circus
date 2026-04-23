@@ -2,6 +2,7 @@ export const Env = {
   chimpId: "CHIMP_ID",
   natsUrl: "NATS_URL",
   redisUrl: "REDIS_URL",
+  databaseUrl: "DATABASE_URL",
   brainType: "CHIMP_BRAIN_TYPE",
   model: "CHIMP_MODEL",
   profile: "CHIMP_PROFILE",

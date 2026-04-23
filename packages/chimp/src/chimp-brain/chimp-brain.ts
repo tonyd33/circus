@@ -1,6 +1,7 @@
 import path from "node:path";
 import { type Logger, Protocol } from "@mnke/circus-shared";
-import { type ProfileStore, type TopicRegistry, Typing } from "@mnke/circus-shared/lib";
+import { Typing } from "@mnke/circus-shared/lib";
+import type { ProfileStore, TopicRegistry } from "@mnke/circus-shared/services";
 import type { StoredEventContext } from "@/chimp-brain/event-contexts";
 import { setupGithubAuth } from "@/lib/github-auth";
 import { cloneRepo, ghCloneRepo } from "@/lib/tooling";
@@ -102,10 +103,10 @@ export abstract class ChimpBrain {
         return this.handleSetAllowedTools(command.args.tools);
       case "setup-github-auth":
         return this.handleSetupGithubAuth();
-      case "resume-transmogrify":
-        return this.handleResumeTransmogrify(command.args);
-      case "resume-handoff":
-        return this.handleResumeHandoff(command.args);
+      case "subscribe-topic":
+        return this.handleSubscribeTopic(command.args.topic);
+      case "add-event-context":
+        return this.handleAddEventContext(command.args.context);
       default:
         return Typing.unreachable(command);
     }
@@ -189,128 +190,27 @@ export abstract class ChimpBrain {
     return "continue";
   }
 
-  protected async handleResumeTransmogrify(args: {
-    fromProfile: string;
-    reason: string;
-    summary: string;
-    eventContexts: StoredEventContext[];
-  }): Promise<CommandResult> {
-    // Validate that fromProfile exists in the ProfileStore
-    if (this.profileStore) {
-      const profile = await this.profileStore.get(args.fromProfile);
-      if (!profile) {
-        this.log(
-          "warn",
-          `Profile "${args.fromProfile}" does not exist in ProfileStore`,
-        );
-      }
-    } else {
-      this.log(
-        "warn",
-        "ProfileStore not available for validation of fromProfile",
-      );
-    }
-
-    this.log(
-      "info",
-      `Resumed after transmogrify from ${args.fromProfile}: ${args.reason}`,
-    );
-
-    if (args.eventContexts.length > 0) {
-      this.restoreEventContexts(args.eventContexts);
-      this.log("info", "Restored event contexts from predecessor", {
-        count: args.eventContexts.length,
-      });
-    }
-
-    const context = [
-      `You are resuming work after a transmogrify from the "${args.fromProfile}" profile.`,
-      `Reason for transmogrify: ${args.reason}`,
-      `Summary from previous chimp: ${args.summary}`,
-      "Continue the work described above.",
-    ].join("\n");
-
-    return this.handlePrompt(context);
-  }
-
-  protected async handleResumeHandoff(args: {
-    fromProfile: string;
-    reason: string;
-    summary: string;
-    subscriptions: unknown[];
-    eventContexts: StoredEventContext[];
-  }): Promise<CommandResult> {
-    // Validate that fromProfile exists in the ProfileStore
-    if (this.profileStore) {
-      const profile = await this.profileStore.get(args.fromProfile);
-      if (!profile) {
-        this.log(
-          "warn",
-          `Profile "${args.fromProfile}" does not exist in ProfileStore`,
-        );
-      }
-    } else {
-      this.log(
-        "warn",
-        "ProfileStore not available for validation of fromProfile",
-      );
-    }
-
-    this.log(
-      "info",
-      `Resumed after handoff from ${args.fromProfile}: ${args.reason}`,
-    );
-
-    if (args.eventContexts.length > 0) {
-      this.restoreEventContexts(args.eventContexts);
-      this.log("info", "Restored event contexts from predecessor", {
-        count: args.eventContexts.length,
-      });
-    }
-
-    if (args.subscriptions.length > 0) {
-      this.log("info", "Inherited topic subscriptions from predecessor", {
-        count: args.subscriptions.length,
-      });
-    }
-
-    const context = [
-      `You are resuming work after a handoff from the "${args.fromProfile}" profile.`,
-      `Reason for handoff: ${args.reason}`,
-      `Summary from previous chimp: ${args.summary}`,
-      "Continue the work described above.",
-    ].join("\n");
-
-    return this.handlePrompt(context);
-  }
-
-  protected async requestHandoff(
-    targetProfile: string,
-    reason: string,
-    summary: string,
-  ): Promise<void> {
+  protected async handleSubscribeTopic(
+    topic: Parameters<TopicRegistry["subscribe"]>[0],
+  ): Promise<CommandResult> {
     if (!this.topicRegistry) {
-      this.log("error", "TopicRegistry not available for handoff");
-      return;
+      this.log("warn", "TopicRegistry not available for subscribe-topic");
+      return "continue";
     }
 
-    // Get current subscriptions
-    const subscriptions = await this.topicRegistry.listForChimp(this.chimpId);
+    await this.topicRegistry.subscribe(topic, this.chimpId);
+    this.log("info", "Subscribed to topic via command", { topic });
+    return "continue";
+  }
 
-    this.log("info", `Requesting handoff to ${targetProfile}`, {
-      reason,
-      subscriptionCount: subscriptions.length,
+  protected handleAddEventContext(
+    context: Protocol.EventContext,
+  ): CommandResult {
+    this.recordEventContext(context);
+    this.log("info", "Added event context via command", {
+      source: context.source,
     });
-
-    // Publish handoff message
-    this.publish({
-      type: "chimp-handoff",
-      targetProfile,
-      reason,
-      summary,
-      subscriptions,
-      eventContexts: [],
-    });
+    return "continue";
   }
 
   protected async gracefulShutdown(): Promise<void> {

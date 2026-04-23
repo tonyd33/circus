@@ -21,7 +21,8 @@ const COMMAND_TYPES: ChimpCommand["command"][] = [
   "set-allowed-tools",
   "send-agent-message",
   "setup-github-auth",
-  "resume-transmogrify",
+  "subscribe-topic",
+  "add-event-context",
   "stop",
 ];
 
@@ -43,10 +44,23 @@ export function newCommand(type: string): ChimpCommand {
       return { command: "send-agent-message", args: { prompt: "" } };
     case "setup-github-auth":
       return { command: "setup-github-auth" };
-    case "resume-transmogrify":
+    case "subscribe-topic":
       return {
-        command: "resume-transmogrify",
-        args: { fromProfile: "", reason: "", summary: "", eventContexts: [] },
+        command: "subscribe-topic",
+        args: {
+          topic: {
+            platform: "github",
+            owner: "",
+            repo: "",
+            type: "issue",
+            number: 0,
+          },
+        },
+      };
+    case "add-event-context":
+      return {
+        command: "add-event-context",
+        args: { context: { source: "unknown" } },
       };
     default:
       return { command: "stop" };

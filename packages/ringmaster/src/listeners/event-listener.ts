@@ -1,5 +1,5 @@
 import { type Logger, Standards } from "@mnke/circus-shared";
-import type { TopicRegistry } from "@mnke/circus-shared/lib";
+import type { TopicRegistry } from "@mnke/circus-shared/services";
 import {
   AckPolicy,
   type Consumer,
@@ -57,11 +57,12 @@ export class EventListener {
           const profile =
             msg.headers?.get("profile") ?? Standards.Chimp.DEFAULT_PROFILE;
 
-          const topicOwner = topic
+          const topicSubscribers = topic
             ? await this.topicRegistry.lookup(topic)
-            : null;
-          const chimpId = topicOwner
-            ? topicOwner.chimpId
+            : [];
+          const firstSubscriber = topicSubscribers[0];
+          const chimpId = firstSubscriber
+            ? firstSubscriber.chimpId
             : deriveChimpId(topic, subject);
 
           await this.eventHandler.handleEvent({
@@ -70,7 +71,7 @@ export class EventListener {
             profile,
             eventSubject: subject,
             topic,
-            topicOwner,
+            topicSubscribers,
             messageSequence: msg.seq,
           });
 

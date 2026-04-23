@@ -15,6 +15,8 @@ externalServices:
     url: "nats://nats:4222"
   minio:
     url: "http://minio:9000"
+  postgres:
+    url: "postgresql://circus:circus@postgres:5432/circus"
 
 # Ringmaster configuration
 ringmaster:

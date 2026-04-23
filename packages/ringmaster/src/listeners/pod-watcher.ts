@@ -86,7 +86,7 @@ export class PodWatcher {
       return;
     }
 
-    this.performWatch(path, queryParams).catch((error) => {
+    this.performWatch(path, queryParams).catch((_error) => {
       // Watch promise rejected, which means we need to retry
       if (!this.isStarted || this.abortController?.signal.aborted) {
         return;

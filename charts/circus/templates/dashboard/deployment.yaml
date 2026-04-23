@@ -27,6 +27,8 @@ spec:
               value: {{ .Values.externalServices.redis.url | quote }}
             - name: NATS_URL
               value: {{ .Values.externalServices.nats.url | quote }}
+            - name: DATABASE_URL
+              value: {{ .Values.externalServices.postgres.url | quote }}
             - name: NODE_ENV
               value: "production"
             {{- with .Values.dashboard.extraEnv }}
@@ -41,8 +43,8 @@ spec:
             httpGet:
               path: /healthz
               port: 3000
-            initialDelaySeconds: 10
-            periodSeconds: 10
+            initialDelaySeconds: 5
+            periodSeconds: 3
             timeoutSeconds: 5
             failureThreshold: 3
           livenessProbe:
@@ -58,7 +60,7 @@ spec:
               path: /healthz
               port: 3000
             initialDelaySeconds: 0
-            periodSeconds: 10
+            periodSeconds: 1
             timeoutSeconds: 5
             failureThreshold: 30
 {{- end }}

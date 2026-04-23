@@ -1,5 +1,5 @@
 import type { Logger } from "@mnke/circus-shared";
-import type { TopicRegistry } from "@mnke/circus-shared/lib";
+import type { TopicRegistry } from "@mnke/circus-shared/services";
 import type { NatsConnection } from "nats";
 import { createActivityStream } from "../streams/activity-stream";
 

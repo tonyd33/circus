@@ -21,6 +21,9 @@ async function main() {
   const result = ER.record({
     natsUrl: ER.str("NATS_URL").fallback("nats://localhost:4222"),
     redisUrl: ER.str("REDIS_URL").fallback("redis://localhost:6379"),
+    databaseUrl: ER.str("DATABASE_URL").fallback(
+      "postgresql://circus:circus@localhost:5432/circus",
+    ),
     profileTemplatePath: ER.str("PROFILE_TEMPLATE_PATH").fallbackW(undefined),
   }).read(process.env).value;
 
@@ -34,6 +37,7 @@ async function main() {
   const config: RingmasterConfig = {
     natsUrl: envConfig.natsUrl,
     redisUrl: envConfig.redisUrl,
+    databaseUrl: envConfig.databaseUrl,
     namespace: opts.namespace,
     profileTemplatePath: envConfig.profileTemplatePath,
   };

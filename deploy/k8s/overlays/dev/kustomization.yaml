@@ -8,15 +8,16 @@ components:
   - ../../components/redis
   - ../../components/nats
   - ../../components/minio
+  - ../../components/postgres
   # - ../../components/loki
   # - ../../components/grafana
   # - ../../components/tempo
   # - ../../components/mimir
   - ../../components/cloudflared
 
-helmCharts:
-  - name: opentelemetry-collector
-    repo: https://open-telemetry.github.io/opentelemetry-helm-charts
-    releaseName: otel-collector
-    namespace: default
-    valuesFile: helm/otel-collector-values.yaml
+# helmCharts:
+#   - name: opentelemetry-collector
+#     repo: https://open-telemetry.github.io/opentelemetry-helm-charts
+#     releaseName: otel-collector
+#     namespace: default
+#     valuesFile: helm/otel-collector-values.yaml

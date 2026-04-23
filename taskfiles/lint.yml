@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: "3"
+
+tasks:
+  default:
+    desc: Lint all files
+    cmd: bun run biome check
+
+  fix:
+    desc: Lint and auto-fix all files
+    cmd: bun run biome check --write

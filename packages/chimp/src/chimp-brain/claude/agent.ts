@@ -25,13 +25,13 @@ interface ClaudeAgentState {
  * Create a stub hook handler that logs all hook events
  */
 function createHookHandler(
-  log: LogFn,
+  _log: LogFn,
 ): (
   input: ClaudeSDK.HookInput,
   toolUseID: string | undefined,
   options: { signal: AbortSignal },
 ) => Promise<ClaudeSDK.HookJSONOutput> {
-  return async (input, toolUseID, _options) => {
+  return async (_input, _toolUseID, _options) => {
     return {
       async: true,
     };

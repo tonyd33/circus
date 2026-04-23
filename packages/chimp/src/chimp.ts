@@ -1,5 +1,7 @@
-import { type Logger, Protocol, Standards } from "@mnke/circus-shared";
-import { ProfileStore, TopicRegistry, Typing } from "@mnke/circus-shared/lib";
+import type { Logger } from "@mnke/circus-shared";
+import { createDatabase } from "@mnke/circus-shared/db";
+import { Typing } from "@mnke/circus-shared/lib";
+import { ProfileStore, TopicRegistry } from "@mnke/circus-shared/services";
 import Redis from "ioredis";
 import type { NatsConnection } from "nats";
 import { connect } from "nats";
@@ -21,6 +23,7 @@ export interface ChimpConfig {
   model: string;
   natsUrl: string;
   redisUrl: string;
+  databaseUrl: string;
   inputMode: "nats" | "http";
   outputMode: "nats" | "stdout";
   httpPort: number;
@@ -65,7 +68,8 @@ export class Chimp {
       });
       this.logger.info("Connected to NATS");
 
-      this.topicRegistry = new TopicRegistry(this.nc);
+      const db = createDatabase(this.config.databaseUrl);
+      this.topicRegistry = new TopicRegistry(this.nc, db);
       await this.topicRegistry.start();
       this.logger.info("Topic registry connected");
     }

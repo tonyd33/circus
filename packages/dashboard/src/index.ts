@@ -1,12 +1,10 @@
 #!/usr/bin/env bun
 
 import { Logger } from "@mnke/circus-shared";
-import {
-  EnvReader as ER,
-  ProfileStore,
-  TopicRegistry,
-} from "@mnke/circus-shared/lib";
+import { createDatabase } from "@mnke/circus-shared/db";
+import { EnvReader as ER } from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
+import { ProfileStore, TopicRegistry } from "@mnke/circus-shared/services";
 import { serve } from "bun";
 import Redis from "ioredis";
 import { connect } from "nats";
@@ -23,6 +21,9 @@ async function main() {
   const result = ER.record({
     redisUrl: ER.str("REDIS_URL").fallback("redis://localhost:6379"),
     natsUrl: ER.str("NATS_URL").fallback("nats://localhost:4222"),
+    databaseUrl: ER.str("DATABASE_URL").fallback(
+      "postgresql://circus:circus@localhost:5432/circus",
+    ),
   }).read(process.env).value;
 
   if (Either.isLeft(result)) {
@@ -42,7 +43,8 @@ async function main() {
   });
   logger.info({ url: config.natsUrl }, "Connected to NATS");
 
-  const topicRegistry = new TopicRegistry(nc);
+  const db = createDatabase(config.databaseUrl);
+  const topicRegistry = new TopicRegistry(nc, db);
   await topicRegistry.start();
 
   const activityRouter = new ActivityRouter(

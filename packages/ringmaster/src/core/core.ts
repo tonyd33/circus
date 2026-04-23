@@ -22,7 +22,7 @@ export type EventPayload =
       profile: string;
       eventSubject: string;
       topic: Topic | null;
-      topicOwner: { chimpId: string } | null;
+      topicSubscribers: { chimpId: string }[];
       messageSequence: number;
     }
   | {
@@ -30,6 +30,7 @@ export type EventPayload =
       chimpId: string;
       profile: string;
       message: Protocol.ChimpOutputMessage;
+      timestamp: Date;
     };
 
 export type Action =
@@ -38,9 +39,11 @@ export type Action =
       chimpId: string;
       type: "create_consumers";
       eventFilterSubjects: string[];
-      startSequence: number;
+      deliverFrom:
+        | { type: "sequence"; value: number }
+        | { type: "time"; value: Date };
     }
-  | { chimpId: string; type: "register_topic"; topic: Topic; force?: boolean }
+  | { chimpId: string; type: "register_topic"; topic: Topic }
   | { chimpId: string; type: "delete_consumers" }
   | { chimpId: string; type: "cleanup_topics" }
   | {
@@ -55,18 +58,6 @@ export type Action =
       chimpId: string;
       type: "send_command";
       command: Protocol.ChimpCommand;
-    }
-  | { type: "transfer_topics"; fromChimpId: string; toChimpId: string }
-  | {
-      type: "handoff";
-      fromChimpId: string;
-      toChimpId: string;
-      targetProfile: string;
-      fromProfile: string;
-      reason: string;
-      summary: string;
-      subscriptions: Topic[];
-      eventContexts: Protocol.StoredEventContext[];
     }
   | { type: "noop" };
 
@@ -103,13 +94,6 @@ export function deriveChimpId(
   return `evt-${Bun.hash(key).toString(36)}`;
 }
 
-export function deriveTransmogrifyChimpId(
-  oldChimpId: string,
-  targetProfile: string,
-): string {
-  return `evt-${Bun.hash(`${oldChimpId}:${targetProfile}`).toString(36)}`;
-}
-
 function decideOnPodEvent(
   chimpId: string,
   profile: string,
@@ -134,14 +118,13 @@ function decideOnEventReceived(
   state: CoreState,
   payload: EventPayload & { type: "event_received" },
 ): Decision {
-  const { chimpId, profile, topic, topicOwner, messageSequence, eventSubject } =
-    payload;
+  const { chimpId, profile, topic, topicSubscribers, eventSubject } = payload;
 
-  if (topicOwner && state.pod) {
+  if (topicSubscribers.length > 0 && state.pod) {
     return {
       chimpId,
       actions: [{ type: "noop" }],
-      reason: `Event topic already claimed by ${chimpId}`,
+      reason: `Event topic already has subscribers, pod running for ${chimpId}`,
     };
   }
 
@@ -164,12 +147,11 @@ function decideOnEventReceived(
     chimpId,
     type: "create_consumers",
     eventFilterSubjects: [topicFilter],
-    startSequence: messageSequence,
+    deliverFrom: { type: "sequence", value: payload.messageSequence },
   });
 
-  const isReclaim = topicOwner != null && !state.pod;
   if (topic) {
-    actions.push({ chimpId, type: "register_topic", topic, force: isReclaim });
+    actions.push({ chimpId, type: "register_topic", topic });
   }
 
   actions.push({ chimpId, type: "create_job", profile });
@@ -183,88 +165,52 @@ function decideOnEventReceived(
   };
 }
 
-function decideOnChimpHandoff(
+function decideOnChimpRequest(
   fromChimpId: string,
-  fromProfile: string,
-  message: Protocol.ChimpHandoff,
+  message: Protocol.ChimpOutputMessage & { type: "chimp-request" },
+  timestamp: Date,
 ): Decision {
-  const toChimpId = deriveTransmogrifyChimpId(fromChimpId, message.targetProfile);
   return {
-    chimpId: fromChimpId,
+    chimpId: message.chimpId,
     actions: [
       {
-        type: "handoff",
-        fromChimpId,
-        toChimpId,
-        targetProfile: message.targetProfile,
-        fromProfile,
-        reason: message.reason,
-        summary: message.summary,
-        subscriptions: message.subscriptions,
-        eventContexts: message.eventContexts,
+        chimpId: message.chimpId,
+        type: "upsert_status",
+        profile: message.profile,
+        status: "scheduled",
+      },
+      {
+        chimpId: message.chimpId,
+        type: "create_consumers",
+        eventFilterSubjects: [
+          Standards.Chimp.Naming.directSubject(message.chimpId),
+        ],
+        deliverFrom: { type: "time", value: timestamp },
+      },
+      {
+        chimpId: message.chimpId,
+        type: "create_job",
+        profile: message.profile,
       },
     ],
-    reason: `Handoff ${fromChimpId} → ${toChimpId} (${message.targetProfile})`,
+    reason: `Chimp ${fromChimpId} requested new chimp ${message.chimpId} (${message.profile})`,
   };
 }
 
 function decideOnChimpOutput(
   chimpId: string,
-  profile: string,
+  _profile: string,
   message: Protocol.ChimpOutputMessage,
+  timestamp: Date,
 ): Decision {
   switch (message.type) {
-    case "chimp-handoff": {
-      return decideOnChimpHandoff(chimpId, profile, message);
-    }
-    case "transmogrify": {
-      const newChimpId = deriveTransmogrifyChimpId(
-        chimpId,
-        message.targetProfile,
-      );
-      return {
-        chimpId,
-        actions: [
-          { chimpId, type: "delete_job" },
-          {
-            type: "transfer_topics",
-            fromChimpId: chimpId,
-            toChimpId: newChimpId,
-          },
-          { chimpId, type: "delete_state" },
-          {
-            chimpId: newChimpId,
-            type: "upsert_status",
-            profile: message.targetProfile,
-            status: "scheduled",
-          },
-          {
-            chimpId: newChimpId,
-            type: "send_command",
-            command: {
-              command: "resume-transmogrify",
-              args: {
-                fromProfile: message.fromProfile,
-                reason: message.reason,
-                summary: message.summary,
-                eventContexts: message.eventContexts,
-              },
-            },
-          },
-          {
-            chimpId: newChimpId,
-            type: "create_job",
-            profile: message.targetProfile,
-          },
-        ],
-        reason: `Transmogrify ${chimpId} → ${newChimpId} (${message.targetProfile})`,
-      };
-    }
+    case "chimp-request":
+      return decideOnChimpRequest(chimpId, message, timestamp);
     default:
       return {
         chimpId,
-        actions: [{ type: "noop" }],
-        reason: `Output: ${message.type}`,
+        actions: [],
+        reason: "Nothing to do",
       };
   }
 }
@@ -281,6 +227,11 @@ export function decide(state: CoreState, payload: EventPayload): Decision {
     case "event_received":
       return decideOnEventReceived(state, payload);
     case "chimp_output":
-      return decideOnChimpOutput(payload.chimpId, payload.profile, payload.message);
+      return decideOnChimpOutput(
+        payload.chimpId,
+        payload.profile,
+        payload.message,
+        payload.timestamp,
+      );
   }
 }

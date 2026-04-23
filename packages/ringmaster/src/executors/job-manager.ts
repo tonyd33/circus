@@ -9,6 +9,7 @@ export class JobManager {
   private namespace: string;
   private natsUrl: string;
   private redisUrl: string;
+  private databaseUrl: string;
   private profileLoader: ProfileLoader;
   private logger: Logger.Logger;
 
@@ -24,6 +25,7 @@ export class JobManager {
     this.namespace = config.namespace;
     this.natsUrl = config.natsUrl;
     this.redisUrl = config.redisUrl;
+    this.databaseUrl = config.databaseUrl;
     this.profileLoader = profileLoader;
     this.logger = logger;
   }
@@ -89,6 +91,10 @@ export class JobManager {
                   {
                     name: Standards.Chimp.Env.redisUrl,
                     value: this.redisUrl,
+                  },
+                  {
+                    name: Standards.Chimp.Env.databaseUrl,
+                    value: this.databaseUrl,
                   },
                   ...profileData.extraEnv,
                 ],

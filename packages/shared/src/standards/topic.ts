@@ -24,8 +24,6 @@ export interface TopicSubscription {
   subscribedAt: string;
 }
 
-export const TOPIC_OWNERS_BUCKET = "topic-owners";
-
 export function serializeTopic(topic: Topic): string {
   switch (topic.platform) {
     case "github":

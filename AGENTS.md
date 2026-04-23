@@ -32,7 +32,7 @@ bun --watch packages/ringmaster/src/index.ts
 ## Architecture
 
 - **Event-centric NATS subjects**: Events describe what happened in the world (`events.github.{owner}.{repo}.pr.{number}.comment`). Chimps subscribe to topics they care about. Direct commands via `commands.{chimpId}`.
-- **Topic subscriptions**: Chimps register interest in topics (via MCP `subscribe_topic` tool). NATS KV bucket `topic-owners` maps topics to chimps. Enables cross-platform continuity (e.g. discord-triggered chimp receives github PR comments).
+- **Topic subscriptions**: Chimps register interest in topics (via MCP `subscribe_topic` tool). Postgres `topic_subscriptions` table maps topics to chimps (multiple chimps per topic). Enables cross-platform continuity (e.g. discord-triggered chimp receives github PR comments).
 - **Pure core**: Ringmaster's `core/core.ts` is pure decision logic. Side effects in event handler.
 - **Chimp state in Redis**: Key pattern `chimp:{id}:state` via `Standards.Chimp.Naming.redisChimpKey()`
 - **Types in shared**: Put types in `packages/shared/src/standards/`, not separate files.
@@ -52,43 +52,35 @@ Each chimp has:
 - Events consumer: `chimp-{chimpId}` on `events` stream (filtered to subscribed topics)
 - Commands consumer: `chimp-{chimpId}-commands` on `commands` stream
 
-## Chimp Profile Handoff
+## Chimp Handoff
 
-Chimps can gracefully transition between profiles using the **handoff** mechanism. Unlike the legacy `transmogrify` (in-place upgrade), handoff explicitly transfers context and allows the old chimp to unsubscribe cleanly.
+Chimps hand off work to a new chimp with a different profile using `chimp_request`. The old chimp asks ringmaster to spawn the new chimp, then sends it individual commands (subscribe to topics, add event contexts, continue work). No special handoff orchestration — just regular commands.
 
-### Usage (MCP Tool)
+## Project Structure
 
-```
-handoff(targetProfile="worker", 
-        reason="need more computational power", 
-        summary="completed analysis phase")
-```
+**Structure reflects intent.** Where code lives communicates what it does, what it depends on, and who should care about it. Bad structure forces readers to open files to understand them. Good structure makes the codebase navigable by convention.
 
-### How It Works
+### Shared package layout (`packages/shared/`)
 
-1. **Old chimp** calls `handoff()` with target profile and context
-2. **Ringmaster** receives `chimp-handoff` message and creates new chimp
-3. **New chimp** starts and receives `resume-handoff` command with inherited:
-   - Topic subscriptions (for cross-platform continuity)
-   - Event contexts (for responding on inherited channels)
-   - Work summary (to resume context)
-4. **Old chimp** confirms new chimp is running, then:
-   - Unsubscribes from all topics
-   - Gracefully stops
-5. **New chimp** continues work in new profile
+| Path | Purpose | Depends on |
+|------|---------|------------|
+| `src/standards/` | Constants, naming conventions, Zod schemas for domain types | Nothing (leaf) |
+| `src/protocol.ts` | Wire protocol — commands, outputs, meta events | `standards/` |
+| `src/db/` | Database schema (Drizzle), client factory | Nothing (leaf) |
+| `src/services/` | Data access + business logic (TopicRegistry, ProfileStore) | `db/`, `standards/`, external stores |
+| `src/lib/` | Pure utilities — env reading, NATS helpers, parsers, typing | Nothing (leaf) |
 
-### Benefits vs Transmogrify
+### Principles
 
-| Aspect | Transmogrify | Handoff |
-|--------|--------------|---------|
-| Control | Ringmaster kills old | Chimp initiates gracefully |
-| Shutdown | Abrupt | Clean unsubscribe |
-| Reliability | Single point of failure | Explicit handoff |
-| Future-Proof | 1-to-1 topics only | Multi-chimp ready |
+1. **Leaf modules have no internal dependencies.** `standards/`, `db/`, `lib/` don't import each other. This keeps them independently testable and prevents cycles.
 
-### Backward Compatibility
+2. **Services compose leaves.** `services/` imports from `db/`, `standards/`, and external packages (NATS, Redis). This is the only layer that talks to external stores.
 
-The legacy `transmogrify` tool still works but is **deprecated**. New implementations should use `handoff`. See [HANDOFF_DESIGN.md](HANDOFF_DESIGN.md) for architectural details.
+3. **Export paths match purpose.** `@mnke/circus-shared/lib` for utilities, `@mnke/circus-shared/db` for persistence, `@mnke/circus-shared/services` for data access. Consumers import from the path that matches what they need — not a kitchen-sink re-export.
+
+4. **Don't put things where they don't belong.** A database client is not a "lib utility." A topic registry is not a "lib helper." If something talks to an external system, it's a service. If something defines table schemas, it's db. Misplacing code erodes the meaning of the structure over time.
+
+5. **Structure is load-bearing.** When someone adds a new file, the directory it goes in should be obvious from the conventions above. If it's not obvious, the structure needs refining — not a "misc" folder.
 
 ## TypeScript Safety
 
@@ -134,7 +126,7 @@ Use Bun not Node.js.
 - `Bun.serve()` do WebSockets, HTTPS, routes. No `express`.
 - `bun:sqlite` for SQLite. No `better-sqlite3`.
 - `Bun.redis` for Redis. But this repo uses `ioredis` — keep using that.
-- `Bun.sql` for Postgres. No `pg` or `postgres.js`.
+- Postgres via `postgres` (postgres.js) + Drizzle ORM. Not `Bun.sql` (ringmaster must run on Node due to K8s API).
 - `WebSocket` built-in. No `ws`.
 - `Bun.file` better than `node:fs` readFile/writeFile
 - Bun.$`ls` not execa.
@@ -425,7 +417,7 @@ const profile: Protocol.ChimpProfile = ...;
 
 - `packages/shared/src/standards/chimp.ts` — NATS subject naming, stream names, consumer names, Redis keys
 - `packages/shared/src/standards/topic.ts` — topic schema, serialization, event subject parsing
-- `packages/shared/src/lib/topic-registry.ts` — NATS KV topic subscription registry
+- `packages/shared/src/services/topic-registry.ts` — topic subscription registry (Postgres + NATS consumer management)
 - `packages/shared/src/protocol.ts` — all Zod schemas (commands, outputs, meta events, event context)
 - `packages/ringmaster/src/core/core.ts` — pure decision logic (event routing, chimp spawning)
 - `packages/chimp/src/chimp-brain/chimp-brain.ts` — base brain class (command dispatch, overridable handlers)

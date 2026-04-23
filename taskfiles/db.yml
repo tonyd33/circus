@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: "3"
+
+tasks:
+  generate:
+    desc: Generate migration from schema changes
+    dir: packages/shared
+    cmd: bunx drizzle-kit generate
+
+  migrate:
+    desc: Apply pending migrations
+    dir: packages/shared
+    cmd: bunx drizzle-kit migrate
+
+  push:
+    desc: Push schema directly (no migration files)
+    dir: packages/shared
+    cmd: bunx drizzle-kit push

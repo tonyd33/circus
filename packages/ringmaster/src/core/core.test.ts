@@ -1,13 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import {
-  type CoreState,
-  decide,
-  deriveChimpId,
-  deriveTransmogrifyChimpId,
-  type EventPayload,
-} from "./core.ts";
+import { type CoreState, decide, deriveChimpId } from "./core.ts";
 
 const P = "default";
+const T = new Date("2026-04-22T00:00:00.000Z");
 
 function state(overrides: Partial<CoreState> = {}): CoreState {
   return { now: Date.now(), pod: undefined, ...overrides };
@@ -107,13 +102,13 @@ describe("event_received", () => {
       profile: P,
       eventSubject,
       topic,
-      topicOwner: { chimpId: "existing-chimp" },
+      topicSubscribers: [{ chimpId: "existing-chimp" }],
       messageSequence: 42,
     });
 
     expect(decision.chimpId).toBe("existing-chimp");
     expect(decision.actions).toEqual([{ type: "noop" }]);
-    expect(decision.reason).toContain("already claimed");
+    expect(decision.reason).toContain("already has subscribers");
   });
 
   test("topic claimed + no pod → reclaim", () => {
@@ -123,7 +118,7 @@ describe("event_received", () => {
       profile: P,
       eventSubject,
       topic,
-      topicOwner: { chimpId: "stale-chimp" },
+      topicSubscribers: [{ chimpId: "stale-chimp" }],
       messageSequence: 42,
     });
 
@@ -133,7 +128,6 @@ describe("event_received", () => {
       chimpId: "stale-chimp",
       type: "register_topic",
       topic,
-      force: true,
     });
   });
 
@@ -145,7 +139,7 @@ describe("event_received", () => {
       profile: "fast",
       eventSubject,
       topic,
-      topicOwner: null,
+      topicSubscribers: [],
       messageSequence: 42,
     });
 
@@ -160,7 +154,6 @@ describe("event_received", () => {
       chimpId,
       type: "register_topic",
       topic,
-      force: false,
     });
     expect(decision.actions.find((a) => a.type === "create_job")).toEqual({
       chimpId,
@@ -178,7 +171,7 @@ describe("event_received", () => {
       profile: P,
       eventSubject,
       topic,
-      topicOwner: null,
+      topicSubscribers: [],
       messageSequence: 42,
     });
 
@@ -199,7 +192,7 @@ describe("event_received", () => {
       profile: P,
       eventSubject,
       topic,
-      topicOwner: null,
+      topicSubscribers: [],
       messageSequence: 42,
     });
 
@@ -221,7 +214,7 @@ describe("event_received", () => {
       profile: P,
       eventSubject,
       topic,
-      topicOwner: null,
+      topicSubscribers: [],
       messageSequence: 42,
     });
 
@@ -243,7 +236,7 @@ describe("event_received", () => {
       profile: P,
       eventSubject,
       topic,
-      topicOwner: null,
+      topicSubscribers: [],
       messageSequence: 42,
     });
 
@@ -265,7 +258,7 @@ describe("event_received", () => {
       profile: P,
       eventSubject,
       topic,
-      topicOwner: null,
+      topicSubscribers: [],
       messageSequence: 42,
     });
 
@@ -278,7 +271,7 @@ describe("event_received", () => {
     expect(decision.actions.find((a) => a.type === "create_job")).toBeDefined();
   });
 
-  test("forceClaimTopic: topic claimed by stale chimp, no pod → force claim with reclaim", () => {
+  test("topic with subscriber but no pod → reclaim with register_topic", () => {
     const staleChimpId = "stale-chimp";
     const decision = decide(state(), {
       type: "event_received",
@@ -286,7 +279,7 @@ describe("event_received", () => {
       profile: P,
       eventSubject,
       topic,
-      topicOwner: { chimpId: staleChimpId },
+      topicSubscribers: [{ chimpId: staleChimpId }],
       messageSequence: 42,
     });
 
@@ -294,7 +287,11 @@ describe("event_received", () => {
       (a) => a.type === "register_topic",
     );
     expect(registerTopicAction).toBeDefined();
-    expect(registerTopicAction?.force).toBe(true);
+    expect(registerTopicAction).toEqual({
+      chimpId: staleChimpId,
+      type: "register_topic",
+      topic,
+    });
   });
 
   test("debug event (null topic) → no register_topic", () => {
@@ -305,8 +302,8 @@ describe("event_received", () => {
       profile: P,
       eventSubject: "events.debug.abc123",
       topic: null,
-      topicOwner: null,
-      messageSequence: 10,
+      topicSubscribers: [],
+      messageSequence: 42,
     });
 
     expect(
@@ -317,79 +314,62 @@ describe("event_received", () => {
 });
 
 describe("chimp_output", () => {
-  test("transmogrify: new chimpId, transfers topics, sends resume command", () => {
-    const eventContexts = [
-      {
-        seenAt: "2026-04-20T01:00:00.000Z",
-        context: {
-          source: "discord" as const,
-          interactionToken: "tok",
-          applicationId: "app",
-          channelId: "ch",
-        },
-      },
-    ];
+  test("chimp-request: creates job for requested chimp", () => {
     const decision = decide(state(), {
       type: "chimp_output",
+      timestamp: T,
       chimpId: "chimp-1",
       profile: "scout",
       message: {
-        type: "transmogrify",
-        fromProfile: "scout",
-        targetProfile: "powerful",
-        reason: "need more power",
-        summary: "working on X",
-        eventContexts,
+        type: "chimp-request",
+        profile: "worker",
+        chimpId: "new-chimp",
       },
     });
 
-    const newChimpId = deriveTransmogrifyChimpId("chimp-1", "powerful");
-
-    expect(decision.chimpId).toBe("chimp-1");
+    expect(decision.chimpId).toBe("new-chimp");
     expect(decision.actions).toEqual([
-      { chimpId: "chimp-1", type: "delete_job" },
       {
-        type: "transfer_topics",
-        fromChimpId: "chimp-1",
-        toChimpId: newChimpId,
-      },
-      { chimpId: "chimp-1", type: "delete_state" },
-      {
-        chimpId: newChimpId,
+        chimpId: "new-chimp",
         type: "upsert_status",
-        profile: "powerful",
+        profile: "worker",
         status: "scheduled",
       },
       {
-        chimpId: newChimpId,
-        type: "send_command",
-        command: {
-          command: "resume-transmogrify",
-          args: {
-            fromProfile: "scout",
-            reason: "need more power",
-            summary: "working on X",
-            eventContexts,
-          },
-        },
+        chimpId: "new-chimp",
+        type: "create_consumers",
+        eventFilterSubjects: ["events.direct.new-chimp"],
+        deliverFrom: { type: "time", value: T },
       },
-      { chimpId: newChimpId, type: "create_job", profile: "powerful" },
+      {
+        chimpId: "new-chimp",
+        type: "create_job",
+        profile: "worker",
+      },
     ]);
   });
 
-  test("transmogrify: new chimpId is deterministic", () => {
-    const id1 = deriveTransmogrifyChimpId("chimp-1", "powerful");
-    const id2 = deriveTransmogrifyChimpId("chimp-1", "powerful");
-    const id3 = deriveTransmogrifyChimpId("chimp-1", "worker");
-
-    expect(id1).toBe(id2);
-    expect(id1).not.toBe(id3);
-    expect(id1).toMatch(/^evt-/);
-  });
-
-  test("other output types: noop", () => {
+  test("chimp-request: reason includes requesting chimp", () => {
     const decision = decide(state(), {
       type: "chimp_output",
+      timestamp: T,
+      chimpId: "requester",
+      profile: "scout",
+      message: {
+        type: "chimp-request",
+        profile: "worker",
+        chimpId: "target",
+      },
+    });
+
+    expect(decision.reason).toContain("requester");
+    expect(decision.reason).toContain("target");
+  });
+
+  test("other output types: no actions", () => {
+    const decision = decide(state(), {
+      type: "chimp_output",
+      timestamp: T,
       chimpId: "chimp-1",
       profile: "scout",
       message: {
@@ -399,12 +379,13 @@ describe("chimp_output", () => {
       },
     });
 
-    expect(decision.actions).toEqual([{ type: "noop" }]);
+    expect(decision.actions).toEqual([]);
   });
 
-  test("chimp_output: agent-message-response type → noop", () => {
+  test("agent-message-response → no actions", () => {
     const decision = decide(state(), {
       type: "chimp_output",
+      timestamp: T,
       chimpId: "chimp-1",
       profile: "scout",
       message: {
@@ -415,188 +396,6 @@ describe("chimp_output", () => {
     });
 
     expect(decision.chimpId).toBe("chimp-1");
-    expect(decision.actions).toEqual([{ type: "noop" }]);
-    expect(decision.reason).toBe("Output: agent-message-response");
-  });
-
-  test("chimp_output: dashboard-response type → noop", () => {
-    const decision = decide(state(), {
-      type: "chimp_output",
-      chimpId: "chimp-2",
-      message: {
-        type: "agent-message-response",
-        content: "status update",
-        sessionId: "dashboard-session",
-      },
-    });
-
-    expect(decision.actions).toEqual([{ type: "noop" }]);
-  });
-
-  test("transmogrify with stored event contexts → transfers all contexts", () => {
-    const eventContexts = [
-      {
-        seenAt: "2026-04-20T01:00:00.000Z",
-        context: {
-          source: "discord" as const,
-          interactionToken: "tok-1",
-          applicationId: "app-1",
-          channelId: "ch-1",
-        },
-      },
-      {
-        seenAt: "2026-04-20T02:00:00.000Z",
-        context: {
-          source: "github" as const,
-          repo: "owner/repo",
-          installationId: 123,
-          event: {
-            name: "issue_comment.created" as const,
-            issueNumber: 42,
-            isPR: false,
-            commentId: 456,
-            author: "user123",
-          },
-        },
-      },
-    ];
-    const decision = decide(state(), {
-      type: "chimp_output",
-      chimpId: "chimp-1",
-      profile: "scout",
-      message: {
-        type: "transmogrify",
-        fromProfile: "scout",
-        targetProfile: "powerful",
-        reason: "need more power",
-        summary: "working on X",
-        eventContexts,
-      },
-    });
-
-    const newChimpId = deriveTransmogrifyChimpId("chimp-1", "powerful");
-    const sendCommandAction = decision.actions.find(
-      (a) => a.type === "send_command",
-    ) as any;
-
-    expect(sendCommandAction).toBeDefined();
-    expect(sendCommandAction.command.args.eventContexts).toEqual(eventContexts);
-    expect(sendCommandAction.command.args.eventContexts.length).toBe(2);
-  });
-
-  test("chimp-handoff: creates new chimp with handoff action", () => {
-    const subscriptions = [
-      {
-        platform: "github" as const,
-        owner: "tonyd33",
-        repo: "circus",
-        type: "pr" as const,
-        number: 100,
-      },
-    ];
-    const eventContexts: any[] = [];
-
-    const decision = decide(state(), {
-      type: "chimp_output",
-      chimpId: "chimp-scout",
-      profile: "scout",
-      message: {
-        type: "chimp-handoff",
-        targetProfile: "worker",
-        reason: "need to implement feature",
-        summary: "analyzed design",
-        subscriptions,
-        eventContexts,
-      },
-    });
-
-    expect(decision.chimpId).toBe("chimp-scout");
-    expect(decision.actions).toHaveLength(1);
-    expect(decision.actions[0]).toEqual({
-      type: "handoff",
-      fromChimpId: "chimp-scout",
-      toChimpId: deriveTransmogrifyChimpId("chimp-scout", "worker"),
-      targetProfile: "worker",
-      fromProfile: "scout",
-      reason: "need to implement feature",
-      summary: "analyzed design",
-      subscriptions,
-      eventContexts,
-    });
-  });
-
-  test("chimp-handoff: transfers subscriptions to new chimp", () => {
-    const subscriptions = [
-      {
-        platform: "github" as const,
-        owner: "owner1",
-        repo: "repo1",
-        type: "issue" as const,
-        number: 42,
-      },
-      {
-        platform: "github" as const,
-        owner: "owner2",
-        repo: "repo2",
-        type: "pr" as const,
-        number: 99,
-      },
-    ];
-
-    const decision = decide(state(), {
-      type: "chimp_output",
-      chimpId: "old-chimp",
-      profile: "scout",
-      message: {
-        type: "chimp-handoff",
-        targetProfile: "powerful",
-        reason: "upgrade needed",
-        summary: "work in progress",
-        subscriptions,
-        eventContexts: [],
-      },
-    });
-
-    const handoffAction = decision.actions[0] as any;
-    expect(handoffAction.type).toBe("handoff");
-    expect(handoffAction.subscriptions).toEqual(subscriptions);
-    expect(handoffAction.subscriptions.length).toBe(2);
-  });
-
-  test("chimp-handoff with event contexts → preserves contexts", () => {
-    const subscriptions: any[] = [];
-    const eventContexts = [
-      {
-        seenAt: "2026-04-23T06:39:00.000Z",
-        context: {
-          source: "github" as const,
-          repo: "owner/repo",
-          installationId: 123,
-          event: {
-            name: "issues.opened" as const,
-            issueNumber: 100,
-            author: "tonyd33",
-            title: "Test issue",
-          },
-        },
-      },
-    ];
-
-    const decision = decide(state(), {
-      type: "chimp_output",
-      chimpId: "chimp-scout",
-      profile: "scout",
-      message: {
-        type: "chimp-handoff",
-        targetProfile: "worker",
-        reason: "continuing work",
-        summary: "previous context preserved",
-        subscriptions,
-        eventContexts,
-      },
-    });
-
-    const handoffAction = decision.actions[0] as any;
-    expect(handoffAction.eventContexts).toEqual(eventContexts);
+    expect(decision.actions).toEqual([]);
   });
 });

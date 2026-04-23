@@ -2,6 +2,7 @@
  * Chimps List Page
  */
 
+import type { Standards } from "@mnke/circus-shared";
 import { CircleDot, Loader2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +16,6 @@ import {
 import { useChimps } from "@/hooks/useChimps";
 import { useChimpTopics } from "@/hooks/useChimpTopics";
 import type { ChimpState } from "@/lib/chimp-api";
-import type { Standards } from "@mnke/circus-shared";
 
 const statusColors: Record<ChimpState["status"], string> = {
   scheduled: "bg-blue-400",

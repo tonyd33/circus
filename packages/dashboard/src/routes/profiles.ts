@@ -1,5 +1,5 @@
 import { type Logger, Protocol } from "@mnke/circus-shared";
-import type { ProfileStore } from "@mnke/circus-shared/lib";
+import type { ProfileStore } from "@mnke/circus-shared/services";
 
 export class ProfileRouter {
   private store: ProfileStore;

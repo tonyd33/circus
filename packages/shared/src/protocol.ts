@@ -151,24 +151,17 @@ const GhCloneRepoCommandSchema = z.object({
   }),
 });
 
-const ResumeTransmogrifyCommandSchema = z.object({
-  command: z.literal("resume-transmogrify"),
+const SubscribeTopicCommandSchema = z.object({
+  command: z.literal("subscribe-topic"),
   args: z.object({
-    fromProfile: z.string(),
-    reason: z.string(),
-    summary: z.string(),
-    eventContexts: z.array(StoredEventContextSchema).default([]),
+    topic: TopicSchema,
   }),
 });
 
-const ResumeHandoffCommandSchema = z.object({
-  command: z.literal("resume-handoff"),
+const AddEventContextCommandSchema = z.object({
+  command: z.literal("add-event-context"),
   args: z.object({
-    fromProfile: z.string(),
-    reason: z.string(),
-    summary: z.string(),
-    subscriptions: z.array(TopicSchema).default([]),
-    eventContexts: z.array(StoredEventContextSchema).default([]),
+    context: EventContextSchema,
   }),
 });
 
@@ -182,8 +175,8 @@ const ChimpCommandSchema = z.discriminatedUnion("command", [
   AppendSystemPromptCommandSchema,
   SetAllowedToolsCommandSchema,
   SetupGithubAuthCommandSchema,
-  ResumeTransmogrifyCommandSchema,
-  ResumeHandoffCommandSchema,
+  SubscribeTopicCommandSchema,
+  AddEventContextCommandSchema,
 ]);
 
 // ============================================================================
@@ -320,7 +313,6 @@ export const ChimpRequestSchema = z.object({
   type: z.literal("chimp-request"),
   profile: z.string(),
   chimpId: z.string(),
-  message: z.string(),
 });
 
 export const DiscordResponseSchema = z.object({
@@ -339,31 +331,6 @@ export const GithubCommentSchema = z.object({
   in_reply_to_id: z.number().optional(),
 });
 
-export const TransmogrifySchema = z.object({
-  type: z.literal("transmogrify"),
-  fromProfile: z.string(),
-  targetProfile: z.string(),
-  reason: z.string(),
-  summary: z.string(),
-  eventContexts: z.array(StoredEventContextSchema).default([]),
-});
-
-export const ChimpHandoffSchema = z.object({
-  type: z.literal("chimp-handoff"),
-  targetProfile: z.string(),
-  reason: z.string(),
-  summary: z.string(),
-  subscriptions: z.array(TopicSchema).default([]),
-  eventContexts: z.array(StoredEventContextSchema).default([]),
-});
-
-export const HandoffCompleteSchema = z.object({
-  type: z.literal("handoff-complete"),
-  fromChimpId: z.string(),
-  toChimpId: z.string(),
-  unsubscribedCount: z.number(),
-});
-
 export const ChimpOutputMessageSchema = z.discriminatedUnion("type", [
   AgentMessageResponseSchema,
   ArtifactMessageSchema,
@@ -374,9 +341,6 @@ export const ChimpOutputMessageSchema = z.discriminatedUnion("type", [
   ChimpRequestSchema,
   DiscordResponseSchema,
   GithubCommentSchema,
-  TransmogrifySchema,
-  ChimpHandoffSchema,
-  HandoffCompleteSchema,
 ]);
 
 /**
