@@ -614,9 +614,48 @@ export function ChimpActivity() {
                   }
                   if (blockType === "tool_use") {
                     const toolName = block.name as string | undefined;
+                    const toolId = block.id as string | undefined;
                     const toolInput = block.input as
                       | Record<string, unknown>
                       | undefined;
+
+                    // Bash gets a special renderer: show description + command block
+                    if (toolName === "Bash" && toolInput) {
+                      const command = toolInput.command as string | undefined;
+                      const description = toolInput.description as
+                        | string
+                        | undefined;
+                      return (
+                        <div
+                          key={i}
+                          className="bg-muted/30 rounded-lg p-2.5 space-y-1.5"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Terminal className="h-3.5 w-3.5 text-circus-gold shrink-0" />
+                            <code className="text-xs font-mono font-medium text-circus-gold">
+                              Bash
+                            </code>
+                            {toolId && (
+                              <code className="text-xs font-mono text-muted-foreground/40 ml-auto">
+                                {toolId.slice(-8)}
+                              </code>
+                            )}
+                          </div>
+                          {description && (
+                            <p className="text-xs text-muted-foreground pl-5">
+                              {description}
+                            </p>
+                          )}
+                          {command && (
+                            <pre className="text-xs font-mono bg-black/30 rounded p-2 whitespace-pre-wrap break-all overflow-x-auto">
+                              {command}
+                            </pre>
+                          )}
+                        </div>
+                      );
+                    }
+
+                    // Generic tool_use
                     return (
                       <div
                         key={i}
@@ -627,6 +666,11 @@ export function ChimpActivity() {
                           <code className="text-xs font-mono font-medium text-circus-gold">
                             {toolName || "tool_use"}
                           </code>
+                          {toolId && (
+                            <code className="text-xs font-mono text-muted-foreground/40 ml-auto">
+                              {toolId.slice(-8)}
+                            </code>
+                          )}
                         </div>
                         {toolInput && (
                           <ExpandableJSON data={toolInput} label="Input" />
@@ -749,8 +793,12 @@ export function ChimpActivity() {
       case "user": {
         // SDK: SDKUserMessage = { type: 'user', message: MessageParam, ... }
         // MessageParam.content = string | Array<text|image|tool_result|document>
+        // tool_use_result holds structured stdout/stderr/isImage from the tool runner
         const msgParam = event.message as Record<string, unknown> | undefined;
         const rawContent = msgParam?.content;
+        const toolUseResult = event.tool_use_result as
+          | Record<string, unknown>
+          | undefined;
 
         /** Render a single content block from a user message */
         const renderUserBlock = (
@@ -769,8 +817,18 @@ export function ChimpActivity() {
           if (bt === "tool_result") {
             const toolUseId = block.tool_use_id as string | undefined;
             const isError = block.is_error as boolean | undefined;
+
+            // Prefer structured tool_use_result (has stdout/stderr separately)
+            const stdout = toolUseResult?.stdout as string | undefined;
+            const stderr = toolUseResult?.stderr as string | undefined;
+            const isImage = toolUseResult?.isImage as boolean | undefined;
+            const interrupted = toolUseResult?.interrupted as
+              | boolean
+              | undefined;
+
+            // Fall back to message content if tool_use_result not present
             const resultContent = block.content;
-            const resultText =
+            const contentText =
               typeof resultContent === "string"
                 ? resultContent
                 : Array.isArray(resultContent)
@@ -784,12 +842,16 @@ export function ChimpActivity() {
                       .filter(Boolean)
                       .join("\n")
                   : undefined;
+
+            const displayStdout = stdout ?? contentText;
+            const hasOutput = displayStdout || stderr;
+
             return (
               <div
                 key={key}
                 className={`rounded-lg p-2.5 space-y-1.5 ${isError ? "bg-red-500/10 border border-red-500/20" : "bg-emerald-500/10 border border-emerald-500/20"}`}
               >
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <Terminal
                     className={`h-3.5 w-3.5 shrink-0 ${isError ? "text-red-400" : "text-emerald-400"}`}
                   />
@@ -797,8 +859,8 @@ export function ChimpActivity() {
                     tool result
                   </span>
                   {toolUseId && (
-                    <code className="text-xs font-mono text-muted-foreground/70">
-                      {toolUseId}
+                    <code className="text-xs font-mono text-muted-foreground/50">
+                      {toolUseId.slice(-8)}
                     </code>
                   )}
                   {isError && (
@@ -809,11 +871,35 @@ export function ChimpActivity() {
                       error
                     </Badge>
                   )}
+                  {interrupted && (
+                    <Badge
+                      variant="outline"
+                      className="text-xs border-amber-500/40 text-amber-400"
+                    >
+                      interrupted
+                    </Badge>
+                  )}
                 </div>
-                {resultText && (
-                  <pre className="text-xs font-mono bg-muted/30 rounded p-2 whitespace-pre-wrap break-all max-h-48 overflow-y-auto">
-                    {resultText}
-                  </pre>
+                {isImage ? (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground pl-5">
+                    <Image className="h-3.5 w-3.5 shrink-0" />
+                    <span>[Image output]</span>
+                  </div>
+                ) : (
+                  hasOutput && (
+                    <div className="space-y-1">
+                      {displayStdout && (
+                        <pre className="text-xs font-mono bg-black/20 rounded p-2 whitespace-pre-wrap break-all max-h-48 overflow-y-auto">
+                          {displayStdout}
+                        </pre>
+                      )}
+                      {stderr && (
+                        <pre className="text-xs font-mono bg-red-500/10 text-red-300 rounded p-2 whitespace-pre-wrap break-all max-h-32 overflow-y-auto">
+                          {stderr}
+                        </pre>
+                      )}
+                    </div>
+                  )
                 )}
               </div>
             );
