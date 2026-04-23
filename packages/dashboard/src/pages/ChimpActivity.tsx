@@ -12,27 +12,36 @@ import {
   Circle,
   CircleDot,
   Clock,
+  Code,
   Cog,
+  Eye,
   FileBox,
+  FileText,
   Filter,
   FolderSync,
   GitBranch,
   GitPullRequestArrow,
+  Globe,
   Hash,
+  Image,
+  ListChecks,
   Loader2,
   Megaphone,
   MessageCircle,
   MessageSquare,
   OctagonX,
+  Play,
   Radio,
   RefreshCw,
   ScrollText,
+  Search,
   Send,
+  Server,
   Sparkles,
   Terminal,
   User,
+  Webhook,
   XCircle,
-  Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Markdown from "react-markdown";
@@ -109,18 +118,6 @@ type ActivityMessage =
     };
 
 /**
- * Safely extracts a string value from a record object, with fallback to string coercion.
- *
- * @param obj - The object to extract from
- * @param key - The property key to retrieve
- * @returns The string value, or an empty string if the key is missing or null
- */
-function getString(obj: Record<string, unknown>, key: string): string {
-  const val = obj[key];
-  return typeof val === "string" ? val : String(val ?? "");
-}
-
-/**
  * Safely extracts a numeric value from a record object, with no fallback.
  *
  * @param obj - The object to extract from
@@ -133,29 +130,6 @@ function getNumber(
 ): number | undefined {
   const val = obj[key];
   return typeof val === "number" ? val : undefined;
-}
-
-/**
- * Safely extracts a nested object from a record, excluding arrays.
- *
- * @param obj - The object to extract from
- * @param key - The property key to retrieve
- * @returns A shallow copy of the nested object if found, or an empty object otherwise
- */
-function getRecord(
-  obj: Record<string, unknown>,
-  key: string,
-): Record<string, unknown> {
-  const val = obj[key];
-  if (typeof val === "object" && val !== null && !Array.isArray(val)) {
-    // Safe: we've verified it's a non-null, non-array object
-    const record: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(val)) {
-      record[k] = v;
-    }
-    return record;
-  }
-  return {};
 }
 
 /**
@@ -531,23 +505,469 @@ export function ChimpActivity() {
       case "assistant": {
         const message = event.message as Record<string, unknown> | undefined;
         const model = message?.model as string | undefined;
+        const stopReason = message?.stop_reason as string | undefined;
         const usage = message?.usage as Record<string, unknown> | undefined;
+        const content = message?.content as unknown[] | undefined;
+
+        // Extract token counts from usage
+        const inputTokens = getNumber(usage ?? {}, "input_tokens") ?? 0;
+        const outputTokens = getNumber(usage ?? {}, "output_tokens") ?? 0;
+        const cacheCreationTokens =
+          getNumber(usage ?? {}, "cache_creation_input_tokens") ?? 0;
+        const cacheReadTokens =
+          getNumber(usage ?? {}, "cache_read_input_tokens") ?? 0;
+
+        // Parse content blocks (text, tool_use, etc.)
+        const contentBlocks = Array.isArray(content)
+          ? content.filter(
+              (block): block is Record<string, unknown> =>
+                typeof block === "object" && block !== null,
+            )
+          : [];
+
         return (
-          <div className="flex items-center gap-2.5">
-            <Bot className="h-4 w-4 text-circus-purple shrink-0" />
-            <span className="text-sm text-muted-foreground">
-              Assistant response
+          <div className="space-y-2">
+            <div className="flex items-center gap-2.5">
+              <Bot className="h-4 w-4 text-circus-purple shrink-0" />
+              <span className="text-sm font-medium">Assistant response</span>
               {model && (
-                <span className="font-mono text-xs ml-1.5 opacity-70">
-                  ({model})
+                <span className="font-mono text-xs bg-muted/50 px-2 py-1 rounded">
+                  {model}
                 </span>
               )}
-            </span>
+              {stopReason && (
+                <Badge variant="outline" className="text-xs font-mono">
+                  {stopReason}
+                </Badge>
+              )}
+            </div>
+
             {usage && (
-              <span className="text-xs text-muted-foreground/60 ml-auto tabular-nums">
-                {String(usage.input_tokens ?? 0)}↓{" "}
-                {String(usage.output_tokens ?? 0)}↑
-              </span>
+              <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                <div className="flex items-center gap-1">
+                  <span className="text-muted-foreground/70">Input:</span>
+                  <span className="font-mono font-medium">{inputTokens}</span>
+                  {cacheReadTokens > 0 && (
+                    <span className="text-blue-500/70">
+                      (+{cacheReadTokens} cached)
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="text-muted-foreground/70">Output:</span>
+                  <span className="font-mono font-medium">{outputTokens}</span>
+                  {cacheCreationTokens > 0 && (
+                    <span className="text-amber-500/70">
+                      (+{cacheCreationTokens} created)
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {contentBlocks.length > 0 && (
+              <div className="space-y-2">
+                {contentBlocks.map((block, i) => {
+                  const blockType = block.type as string | undefined;
+                  if (blockType === "text") {
+                    const text = block.text as string | undefined;
+                    return text ? (
+                      <div
+                        key={i}
+                        className="bg-muted/50 rounded-lg p-3 prose prose-sm dark:prose-invert max-w-none"
+                      >
+                        <Markdown remarkPlugins={[remarkGfm]}>{text}</Markdown>
+                      </div>
+                    ) : null;
+                  }
+                  if (blockType === "tool_use") {
+                    const toolName = block.name as string | undefined;
+                    const toolId = block.id as string | undefined;
+                    const toolInput = block.input as
+                      | Record<string, unknown>
+                      | undefined;
+
+                    // Bash gets a special renderer: show description + command block
+                    if (toolName === "Bash" && toolInput) {
+                      const command = toolInput.command as string | undefined;
+                      const description = toolInput.description as
+                        | string
+                        | undefined;
+                      return (
+                        <div
+                          key={i}
+                          className="bg-muted/30 rounded-lg p-2.5 space-y-1.5"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Terminal className="h-3.5 w-3.5 text-circus-gold shrink-0" />
+                            <code className="text-xs font-mono font-medium text-circus-gold">
+                              Bash
+                            </code>
+                            {toolId && (
+                              <code className="text-xs font-mono text-muted-foreground/40 ml-auto">
+                                {toolId.slice(-8)}
+                              </code>
+                            )}
+                          </div>
+                          {description && (
+                            <p className="text-xs text-muted-foreground pl-5">
+                              {description}
+                            </p>
+                          )}
+                          {command && (
+                            <pre className="text-xs font-mono bg-black/30 rounded p-2 whitespace-pre-wrap break-all overflow-x-auto">
+                              {command}
+                            </pre>
+                          )}
+                        </div>
+                      );
+                    }
+
+                    // Generic tool_use
+                    return (
+                      <div
+                        key={i}
+                        className="bg-muted/30 rounded-lg p-2.5 space-y-1.5"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Terminal className="h-3.5 w-3.5 text-circus-gold shrink-0" />
+                          <code className="text-xs font-mono font-medium text-circus-gold">
+                            {toolName || "tool_use"}
+                          </code>
+                          {toolId && (
+                            <code className="text-xs font-mono text-muted-foreground/40 ml-auto">
+                              {toolId.slice(-8)}
+                            </code>
+                          )}
+                        </div>
+                        {toolInput && (
+                          <ExpandableJSON data={toolInput} label="Input" />
+                        )}
+                      </div>
+                    );
+                  }
+                  if (blockType === "thinking") {
+                    const thinking = block.thinking as string | undefined;
+                    return (
+                      <div
+                        key={i}
+                        className="bg-purple-500/10 border border-purple-500/20 rounded-lg p-3 space-y-1.5"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Brain className="h-3.5 w-3.5 text-purple-400 shrink-0" />
+                          <span className="text-xs font-medium text-purple-400">
+                            Thinking
+                          </span>
+                        </div>
+                        {thinking ? (
+                          <p className="text-sm whitespace-pre-wrap text-muted-foreground leading-relaxed">
+                            {thinking}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground/60 italic">
+                            (empty)
+                          </p>
+                        )}
+                      </div>
+                    );
+                  }
+                  if (blockType === "redacted_thinking") {
+                    return (
+                      <div
+                        key={i}
+                        className="bg-slate-500/5 border border-slate-500/20 rounded-lg p-2.5"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Eye className="h-3.5 w-3.5 text-slate-500 shrink-0" />
+                          <code className="text-xs font-mono font-medium text-slate-500">
+                            redacted_thinking
+                          </code>
+                        </div>
+                      </div>
+                    );
+                  }
+                  if (blockType === "server_tool_use") {
+                    const serverToolName = block.name as string | undefined;
+                    const toolId = block.id as string | undefined;
+                    const toolInput = block.input as
+                      | Record<string, unknown>
+                      | undefined;
+                    return (
+                      <div
+                        key={i}
+                        className="bg-muted/30 rounded-lg p-2.5 space-y-1.5"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Server className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                          <code className="text-xs font-mono font-medium text-blue-400">
+                            {serverToolName || "server_tool_use"}
+                          </code>
+                          {toolId && (
+                            <code className="text-xs font-mono text-muted-foreground/40 ml-auto">
+                              {toolId.slice(-8)}
+                            </code>
+                          )}
+                        </div>
+                        {toolInput && (
+                          <ExpandableJSON data={toolInput} label="Input" />
+                        )}
+                      </div>
+                    );
+                  }
+                  if (blockType === "web_search_tool_result") {
+                    const results = block.results as unknown[] | undefined;
+                    const error = block.error as
+                      | Record<string, unknown>
+                      | undefined;
+                    return (
+                      <div
+                        key={i}
+                        className={`rounded-lg p-2.5 space-y-1.5 ${error ? "bg-red-500/10 border border-red-500/20" : "bg-blue-500/10 border border-blue-500/20"}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Globe
+                            className={`h-3.5 w-3.5 shrink-0 ${error ? "text-red-400" : "text-blue-400"}`}
+                          />
+                          <code
+                            className={`text-xs font-mono font-medium ${error ? "text-red-400" : "text-blue-400"}`}
+                          >
+                            web_search
+                          </code>
+                          {results && !error && (
+                            <span className="text-xs text-muted-foreground/60 ml-auto">
+                              {results.length} result
+                              {results.length !== 1 ? "s" : ""}
+                            </span>
+                          )}
+                        </div>
+                        {error ? (
+                          <ExpandableJSON data={error} label="Error" />
+                        ) : results && results.length > 0 ? (
+                          <ExpandableJSON data={results} label="Results" />
+                        ) : null}
+                      </div>
+                    );
+                  }
+                  if (blockType === "web_fetch_tool_result") {
+                    const extractedContent = block.extracted_content as
+                      | string
+                      | undefined;
+                    const error = block.error as
+                      | Record<string, unknown>
+                      | undefined;
+                    return (
+                      <div
+                        key={i}
+                        className={`rounded-lg p-2.5 space-y-1.5 ${error ? "bg-red-500/10 border border-red-500/20" : "bg-cyan-500/10 border border-cyan-500/20"}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Globe
+                            className={`h-3.5 w-3.5 shrink-0 ${error ? "text-red-400" : "text-cyan-400"}`}
+                          />
+                          <code
+                            className={`text-xs font-mono font-medium ${error ? "text-red-400" : "text-cyan-400"}`}
+                          >
+                            web_fetch
+                          </code>
+                        </div>
+                        {error ? (
+                          <ExpandableJSON data={error} label="Error" />
+                        ) : extractedContent ? (
+                          <pre className="text-xs font-mono bg-black/20 rounded p-2 whitespace-pre-wrap break-all max-h-48 overflow-y-auto">
+                            {extractedContent}
+                          </pre>
+                        ) : (
+                          <p className="text-xs text-muted-foreground/60 italic">
+                            (empty result)
+                          </p>
+                        )}
+                      </div>
+                    );
+                  }
+                  if (
+                    blockType === "code_execution_tool_result" ||
+                    blockType === "bash_code_execution_tool_result" ||
+                    blockType === "text_editor_code_execution_tool_result"
+                  ) {
+                    const stdout = block.stdout as string | undefined;
+                    const stderr = block.stderr as string | undefined;
+                    const returnCode = block.return_code as number | undefined;
+                    const error = block.error as
+                      | Record<string, unknown>
+                      | undefined;
+                    const displayName =
+                      blockType === "bash_code_execution_tool_result"
+                        ? "bash"
+                        : blockType === "text_editor_code_execution_tool_result"
+                          ? "editor"
+                          : "code";
+                    return (
+                      <div
+                        key={i}
+                        className={`rounded-lg p-2.5 space-y-1.5 ${error ? "bg-red-500/10 border border-red-500/20" : "bg-emerald-500/10 border border-emerald-500/20"}`}
+                      >
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Code
+                            className={`h-3.5 w-3.5 shrink-0 ${error ? "text-red-400" : "text-emerald-400"}`}
+                          />
+                          <code
+                            className={`text-xs font-mono font-medium ${error ? "text-red-400" : "text-emerald-400"}`}
+                          >
+                            {displayName}
+                          </code>
+                          {returnCode !== undefined && !error && (
+                            <Badge
+                              variant={
+                                returnCode === 0 ? "secondary" : "outline"
+                              }
+                              className="text-xs border-emerald-500/40 text-emerald-400"
+                            >
+                              exit {returnCode}
+                            </Badge>
+                          )}
+                        </div>
+                        {error ? (
+                          <ExpandableJSON data={error} label="Error" />
+                        ) : (
+                          <div className="space-y-1">
+                            {stdout && (
+                              <pre className="text-xs font-mono bg-black/20 rounded p-2 whitespace-pre-wrap break-all max-h-48 overflow-y-auto">
+                                {stdout}
+                              </pre>
+                            )}
+                            {stderr && (
+                              <pre className="text-xs font-mono bg-red-500/10 text-red-300 rounded p-2 whitespace-pre-wrap break-all max-h-32 overflow-y-auto">
+                                {stderr}
+                              </pre>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+                  if (blockType === "tool_search_tool_result") {
+                    const results = block.results as unknown[] | undefined;
+                    const error = block.error as
+                      | Record<string, unknown>
+                      | undefined;
+                    return (
+                      <div
+                        key={i}
+                        className={`rounded-lg p-2.5 space-y-1.5 ${error ? "bg-red-500/10 border border-red-500/20" : "bg-purple-500/10 border border-purple-500/20"}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Search
+                            className={`h-3.5 w-3.5 shrink-0 ${error ? "text-red-400" : "text-purple-400"}`}
+                          />
+                          <code
+                            className={`text-xs font-mono font-medium ${error ? "text-red-400" : "text-purple-400"}`}
+                          >
+                            tool_search
+                          </code>
+                          {results && !error && (
+                            <span className="text-xs text-muted-foreground/60 ml-auto">
+                              {results.length} result
+                              {results.length !== 1 ? "s" : ""}
+                            </span>
+                          )}
+                        </div>
+                        {error ? (
+                          <ExpandableJSON data={error} label="Error" />
+                        ) : results && results.length > 0 ? (
+                          <ExpandableJSON data={results} label="Results" />
+                        ) : null}
+                      </div>
+                    );
+                  }
+                  if (blockType === "mcp_tool_use") {
+                    const serverName = block.server_name as string | undefined;
+                    const toolName = block.name as string | undefined;
+                    const toolId = block.id as string | undefined;
+                    const toolInput = block.input as
+                      | Record<string, unknown>
+                      | undefined;
+                    return (
+                      <div
+                        key={i}
+                        className="bg-muted/30 rounded-lg p-2.5 space-y-1.5"
+                      >
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Webhook className="h-3.5 w-3.5 text-indigo-400 shrink-0" />
+                          <code className="text-xs font-mono font-medium text-indigo-400">
+                            {serverName || "mcp"}
+                          </code>
+                          <span className="text-xs text-muted-foreground">
+                            /
+                          </span>
+                          <code className="text-xs font-mono font-medium">
+                            {toolName || "tool"}
+                          </code>
+                          {toolId && (
+                            <code className="text-xs font-mono text-muted-foreground/40 ml-auto">
+                              {toolId.slice(-8)}
+                            </code>
+                          )}
+                        </div>
+                        {toolInput && (
+                          <ExpandableJSON data={toolInput} label="Input" />
+                        )}
+                      </div>
+                    );
+                  }
+                  if (blockType === "mcp_tool_result") {
+                    const serverName = block.server_name as string | undefined;
+                    const content = block.content as
+                      | Record<string, unknown>
+                      | string
+                      | undefined;
+                    const isError = block.is_error as boolean | undefined;
+                    return (
+                      <div
+                        key={i}
+                        className={`rounded-lg p-2.5 space-y-1.5 ${isError ? "bg-red-500/10 border border-red-500/20" : "bg-indigo-500/10 border border-indigo-500/20"}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Webhook
+                            className={`h-3.5 w-3.5 shrink-0 ${isError ? "text-red-400" : "text-indigo-400"}`}
+                          />
+                          <code
+                            className={`text-xs font-mono font-medium ${isError ? "text-red-400" : "text-indigo-400"}`}
+                          >
+                            {serverName || "mcp"} result
+                          </code>
+                          {isError && (
+                            <Badge
+                              variant="outline"
+                              className="text-xs border-red-500/40 text-red-400"
+                            >
+                              error
+                            </Badge>
+                          )}
+                        </div>
+                        {typeof content === "string" ? (
+                          <p className="text-xs text-muted-foreground whitespace-pre-wrap">
+                            {content}
+                          </p>
+                        ) : content ? (
+                          <ExpandableJSON data={content} label="Content" />
+                        ) : null}
+                      </div>
+                    );
+                  }
+                  // Fallback: show block type and raw JSON
+                  return (
+                    <div
+                      key={i}
+                      className="bg-muted/30 rounded-lg p-2.5 space-y-1"
+                    >
+                      <Badge variant="outline" className="text-xs font-mono">
+                        {blockType || "unknown"}
+                      </Badge>
+                      <ExpandableJSON data={block} label="Block details" />
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
         );
@@ -557,37 +977,254 @@ export function ChimpActivity() {
         const cost = event.total_cost_usd as number | undefined;
         const turns = event.num_turns as number | undefined;
         const durationMs = event.duration_ms as number | undefined;
+        // SDKResultSuccess has `result: string` (final text output)
+        const resultText = event.result as string | undefined;
+        // SDKResultError has `errors: string[]`
+        const errors = Array.isArray(event.errors)
+          ? (event.errors as string[])
+          : undefined;
         return (
           <div
-            className={`flex items-center gap-2.5 rounded-lg p-2.5 ${isError ? "bg-red-500/10" : "bg-emerald-500/10"}`}
+            className={`rounded-lg p-2.5 space-y-2 ${isError ? "bg-red-500/10" : "bg-emerald-500/10"}`}
           >
-            {isError ? (
-              <XCircle className="h-4 w-4 text-red-500 shrink-0" />
-            ) : (
-              <CheckCircle className="h-4 w-4 text-emerald-500 shrink-0" />
-            )}
-            <span
-              className={`text-sm font-medium ${isError ? "text-red-500" : "text-emerald-500"}`}
-            >
-              {isError ? `Error: ${subtype}` : "Completed"}
-            </span>
-            <div className="flex items-center gap-3 ml-auto text-xs text-muted-foreground tabular-nums">
-              {turns !== undefined && <span>{turns} turns</span>}
-              {durationMs !== undefined && (
-                <span>{(durationMs / 1000).toFixed(1)}s</span>
+            <div className="flex items-center gap-2.5">
+              {isError ? (
+                <XCircle className="h-4 w-4 text-red-500 shrink-0" />
+              ) : (
+                <CheckCircle className="h-4 w-4 text-emerald-500 shrink-0" />
               )}
-              {cost !== undefined && <span>${cost.toFixed(4)}</span>}
+              <span
+                className={`text-sm font-medium ${isError ? "text-red-500" : "text-emerald-500"}`}
+              >
+                {isError ? `Error: ${subtype}` : "Completed"}
+              </span>
+              <div className="flex items-center gap-3 ml-auto text-xs text-muted-foreground tabular-nums">
+                {turns !== undefined && <span>{turns} turns</span>}
+                {durationMs !== undefined && (
+                  <span>{(durationMs / 1000).toFixed(1)}s</span>
+                )}
+                {cost !== undefined && <span>${cost.toFixed(4)}</span>}
+              </div>
             </div>
+            {resultText && (
+              <div className="bg-muted/50 rounded-lg p-3 prose prose-sm dark:prose-invert max-w-none">
+                <Markdown remarkPlugins={[remarkGfm]}>{resultText}</Markdown>
+              </div>
+            )}
+            {errors && errors.length > 0 && (
+              <div className="space-y-1">
+                {errors.map((err, i) => (
+                  <p
+                    key={i}
+                    className="text-xs text-red-400 font-mono bg-red-500/10 rounded px-2 py-1"
+                  >
+                    {err}
+                  </p>
+                ))}
+              </div>
+            )}
           </div>
         );
       }
       case "user": {
-        const content = event.content as string | undefined;
+        // SDK: SDKUserMessage = { type: 'user', message: MessageParam, ... }
+        // MessageParam.content = string | Array<text|image|tool_result|document>
+        // tool_use_result holds structured stdout/stderr/isImage from the tool runner
+        const msgParam = event.message as Record<string, unknown> | undefined;
+        const rawContent = msgParam?.content;
+        const toolUseResult = event.tool_use_result as
+          | Record<string, unknown>
+          | undefined;
+
+        /** Render a single content block from a user message */
+        const renderUserBlock = (
+          block: Record<string, unknown>,
+          key: number,
+        ) => {
+          const bt = block.type as string | undefined;
+          if (bt === "text") {
+            const text = block.text as string | undefined;
+            return text ? (
+              <p key={key} className="text-sm whitespace-pre-wrap">
+                {text}
+              </p>
+            ) : null;
+          }
+          if (bt === "tool_result") {
+            const toolUseId = block.tool_use_id as string | undefined;
+            const isError = block.is_error as boolean | undefined;
+
+            // Prefer structured tool_use_result (has stdout/stderr separately)
+            const stdout = toolUseResult?.stdout as string | undefined;
+            const stderr = toolUseResult?.stderr as string | undefined;
+            const isImage = toolUseResult?.isImage as boolean | undefined;
+            const interrupted = toolUseResult?.interrupted as
+              | boolean
+              | undefined;
+
+            // Fall back to message content if tool_use_result not present
+            const resultContent = block.content;
+            const contentText =
+              typeof resultContent === "string"
+                ? resultContent
+                : Array.isArray(resultContent)
+                  ? resultContent
+                      .filter(
+                        (b): b is Record<string, unknown> =>
+                          typeof b === "object" && b !== null,
+                      )
+                      .filter((b) => b.type === "text")
+                      .map((b) => b.text as string)
+                      .filter(Boolean)
+                      .join("\n")
+                  : undefined;
+
+            const displayStdout = stdout ?? contentText;
+            const hasOutput = displayStdout || stderr;
+
+            return (
+              <div
+                key={key}
+                className={`rounded-lg p-2.5 space-y-1.5 ${isError ? "bg-red-500/10 border border-red-500/20" : "bg-emerald-500/10 border border-emerald-500/20"}`}
+              >
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Terminal
+                    className={`h-3.5 w-3.5 shrink-0 ${isError ? "text-red-400" : "text-emerald-400"}`}
+                  />
+                  <span className="text-xs font-medium text-muted-foreground">
+                    tool result
+                  </span>
+                  {toolUseId && (
+                    <code className="text-xs font-mono text-muted-foreground/50">
+                      {toolUseId.slice(-8)}
+                    </code>
+                  )}
+                  {isError && (
+                    <Badge
+                      variant="outline"
+                      className="text-xs border-red-500/40 text-red-400"
+                    >
+                      error
+                    </Badge>
+                  )}
+                  {interrupted && (
+                    <Badge
+                      variant="outline"
+                      className="text-xs border-amber-500/40 text-amber-400"
+                    >
+                      interrupted
+                    </Badge>
+                  )}
+                </div>
+                {isImage ? (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground pl-5">
+                    <Image className="h-3.5 w-3.5 shrink-0" />
+                    <span>[Image output]</span>
+                  </div>
+                ) : (
+                  hasOutput && (
+                    <div className="space-y-1">
+                      {displayStdout && (
+                        <pre className="text-xs font-mono bg-black/20 rounded p-2 whitespace-pre-wrap break-all max-h-48 overflow-y-auto">
+                          {displayStdout}
+                        </pre>
+                      )}
+                      {stderr && (
+                        <pre className="text-xs font-mono bg-red-500/10 text-red-300 rounded p-2 whitespace-pre-wrap break-all max-h-32 overflow-y-auto">
+                          {stderr}
+                        </pre>
+                      )}
+                    </div>
+                  )
+                )}
+              </div>
+            );
+          }
+          if (bt === "image") {
+            return (
+              <div
+                key={key}
+                className="flex items-center gap-2 text-xs text-muted-foreground"
+              >
+                <Image className="h-3.5 w-3.5 shrink-0" />
+                <span>[Image attachment]</span>
+              </div>
+            );
+          }
+          if (bt === "document") {
+            const title = block.title as string | undefined;
+            return (
+              <div
+                key={key}
+                className="flex items-center gap-2 text-xs text-muted-foreground"
+              >
+                <FileText className="h-3.5 w-3.5 shrink-0" />
+                <span>{title ? `Document: ${title}` : "[Document]"}</span>
+              </div>
+            );
+          }
+          if (bt === "search_result") {
+            const results = block.results as
+              | Array<Record<string, unknown>>
+              | undefined;
+            return (
+              <div key={key} className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <Search className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                  <span className="text-xs font-medium text-blue-400">
+                    Search Results
+                  </span>
+                  {results && (
+                    <span className="text-xs text-muted-foreground/60">
+                      ({results.length})
+                    </span>
+                  )}
+                </div>
+                {results && results.length > 0 && (
+                  <ExpandableJSON data={results} label="Results" />
+                )}
+              </div>
+            );
+          }
+          return (
+            <ExpandableJSON key={key} data={block} label={bt ?? "block"} />
+          );
+        };
+
+        if (typeof rawContent === "string") {
+          return (
+            <div className="flex items-start gap-2.5">
+              <User className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+              <p className="text-sm whitespace-pre-wrap">
+                {rawContent || "(empty)"}
+              </p>
+            </div>
+          );
+        }
+        if (Array.isArray(rawContent)) {
+          const blocks = rawContent.filter(
+            (b): b is Record<string, unknown> =>
+              typeof b === "object" && b !== null,
+          );
+          return (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <User className="h-4 w-4 text-amber-500 shrink-0" />
+                <span className="text-xs text-muted-foreground font-medium">
+                  User message
+                </span>
+              </div>
+              <div className="space-y-1.5 pl-6">
+                {blocks.map((b, i) => renderUserBlock(b, i))}
+              </div>
+            </div>
+          );
+        }
         return (
           <div className="flex items-start gap-2.5">
             <User className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
-            <p className="text-sm whitespace-pre-wrap">
-              {content || "(user message)"}
+            <p className="text-sm text-muted-foreground italic">
+              (user message)
             </p>
           </div>
         );
@@ -626,15 +1263,267 @@ export function ChimpActivity() {
               </div>
             );
           }
-          case "memory_recall":
+          case "memory_recall": {
+            const mode = event.mode as string | undefined;
+            const memories = Array.isArray(event.memories)
+              ? event.memories
+              : [];
             return (
-              <div className="flex items-center gap-2.5">
-                <BookOpen className="h-4 w-4 text-purple-400 shrink-0" />
-                <span className="text-sm text-muted-foreground">
-                  Memory recalled
-                </span>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <BookOpen className="h-4 w-4 text-purple-400 shrink-0" />
+                  <span className="text-sm text-muted-foreground">
+                    Memory recalled
+                  </span>
+                  {mode && (
+                    <Badge variant="outline" className="text-xs font-mono">
+                      {mode}
+                    </Badge>
+                  )}
+                  {memories.length > 0 && (
+                    <span className="text-xs text-muted-foreground/70">
+                      {memories.length} file{memories.length !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                </div>
+                {memories.length > 0 && (
+                  <div className="pl-6 space-y-0.5">
+                    {(memories as Record<string, unknown>[]).map(
+                      (m, i) =>
+                        typeof m.path === "string" && (
+                          <p
+                            key={i}
+                            className="text-xs font-mono text-muted-foreground/70 truncate"
+                          >
+                            {m.path}
+                          </p>
+                        ),
+                    )}
+                  </div>
+                )}
               </div>
             );
+          }
+          case "init": {
+            // SDKSystemMessage: init event with model, tools, mcp_servers, cwd
+            const model = event.model as string | undefined;
+            const tools = Array.isArray(event.tools)
+              ? (event.tools as string[])
+              : [];
+            const mcpServers = Array.isArray(event.mcp_servers)
+              ? (event.mcp_servers as Record<string, unknown>[])
+              : [];
+            const cwd = event.cwd as string | undefined;
+            return (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Server className="h-4 w-4 text-blue-400 shrink-0" />
+                  <span className="text-sm font-medium">
+                    Claude initialized
+                  </span>
+                  {model && (
+                    <span className="font-mono text-xs bg-muted/50 px-2 py-1 rounded">
+                      {model}
+                    </span>
+                  )}
+                </div>
+                <div className="pl-6 space-y-1 text-xs text-muted-foreground">
+                  {cwd && (
+                    <div className="flex items-center gap-1.5">
+                      <FolderSync className="h-3 w-3 shrink-0" />
+                      <code className="font-mono">{cwd}</code>
+                    </div>
+                  )}
+                  {tools.length > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <Cog className="h-3 w-3 shrink-0" />
+                      <span>{tools.length} tools</span>
+                    </div>
+                  )}
+                  {mcpServers.length > 0 && (
+                    <div className="space-y-0.5">
+                      {mcpServers.map((srv, i) => (
+                        <div key={i} className="flex items-center gap-1.5">
+                          <Webhook className="h-3 w-3 shrink-0" />
+                          <span className="font-mono">
+                            {String(srv.name ?? "")}
+                          </span>
+                          <Badge variant="outline" className="text-xs py-0">
+                            {String(srv.status ?? "")}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          }
+          case "local_command_output": {
+            // Slash command output (e.g. /cost, /voice)
+            const content = event.content as string | undefined;
+            return (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <Terminal className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-xs text-muted-foreground font-medium">
+                    Command output
+                  </span>
+                </div>
+                {content && (
+                  <pre className="text-xs font-mono bg-muted/30 rounded p-2 whitespace-pre-wrap break-all max-h-48 overflow-y-auto">
+                    {content}
+                  </pre>
+                )}
+              </div>
+            );
+          }
+          case "task_started": {
+            const desc = event.description as string | undefined;
+            const taskType = event.task_type as string | undefined;
+            return (
+              <div className="flex items-center gap-2.5">
+                <Play className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                <span className="text-sm text-muted-foreground">
+                  {desc || "Task started"}
+                </span>
+                {taskType && (
+                  <Badge variant="outline" className="text-xs font-mono">
+                    {taskType}
+                  </Badge>
+                )}
+              </div>
+            );
+          }
+          case "task_progress": {
+            const desc = event.description as string | undefined;
+            const usage = event.usage as Record<string, unknown> | undefined;
+            const totalTokens = getNumber(usage ?? {}, "total_tokens");
+            const toolUses = getNumber(usage ?? {}, "tool_uses");
+            const lastTool = event.last_tool_name as string | undefined;
+            return (
+              <div className="space-y-1">
+                <div className="flex items-center gap-2.5">
+                  <ListChecks className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                  <span className="text-sm text-muted-foreground">
+                    {desc || "Task in progress"}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-3 pl-6 text-xs text-muted-foreground/70">
+                  {lastTool && (
+                    <span>
+                      last: <code className="font-mono">{lastTool}</code>
+                    </span>
+                  )}
+                  {toolUses !== undefined && <span>{toolUses} tools</span>}
+                  {totalTokens !== undefined && (
+                    <span>{totalTokens.toLocaleString()} tokens</span>
+                  )}
+                </div>
+              </div>
+            );
+          }
+          case "task_notification": {
+            const status = event.status as string | undefined;
+            const summary = event.summary as string | undefined;
+            const isOk = status === "completed";
+            return (
+              <div
+                className={`rounded-lg p-2.5 space-y-1 ${isOk ? "bg-emerald-500/10" : "bg-red-500/10"}`}
+              >
+                <div className="flex items-center gap-2">
+                  {isOk ? (
+                    <CheckCircle className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                  ) : (
+                    <XCircle className="h-3.5 w-3.5 text-red-400 shrink-0" />
+                  )}
+                  <span
+                    className={`text-sm font-medium ${isOk ? "text-emerald-400" : "text-red-400"}`}
+                  >
+                    Task {status ?? "done"}
+                  </span>
+                </div>
+                {summary && (
+                  <p className="text-xs text-muted-foreground pl-5">
+                    {summary}
+                  </p>
+                )}
+              </div>
+            );
+          }
+          case "hook_started": {
+            const hookName = event.hook_name as string | undefined;
+            const hookEvent = event.hook_event as string | undefined;
+            return (
+              <div className="flex items-center gap-2">
+                <Webhook className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <span className="text-xs text-muted-foreground">
+                  Hook:{" "}
+                  <code className="font-mono">{hookName || "unknown"}</code>
+                </span>
+                {hookEvent && (
+                  <Badge variant="outline" className="text-xs font-mono">
+                    {hookEvent}
+                  </Badge>
+                )}
+              </div>
+            );
+          }
+          case "hook_progress": {
+            const hookName = event.hook_name as string | undefined;
+            const stdout = event.stdout as string | undefined;
+            const stderr = event.stderr as string | undefined;
+            return (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <Webhook className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-xs text-muted-foreground font-medium">
+                    {hookName || "hook"} running
+                  </span>
+                </div>
+                {(stdout || stderr) && (
+                  <pre className="text-xs font-mono bg-muted/30 rounded p-2 whitespace-pre-wrap break-all max-h-32 overflow-y-auto">
+                    {[stdout, stderr].filter(Boolean).join("\n")}
+                  </pre>
+                )}
+              </div>
+            );
+          }
+          case "hook_response": {
+            const hookName = event.hook_name as string | undefined;
+            const outcome = event.outcome as string | undefined;
+            const exitCode = event.exit_code as number | undefined;
+            const stdout = event.stdout as string | undefined;
+            const stderr = event.stderr as string | undefined;
+            const isOk = outcome === "success";
+            return (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <Webhook
+                    className={`h-3.5 w-3.5 shrink-0 ${isOk ? "text-emerald-400" : "text-red-400"}`}
+                  />
+                  <span className="text-xs text-muted-foreground font-medium">
+                    {hookName || "hook"}{" "}
+                    <span
+                      className={isOk ? "text-emerald-400" : "text-red-400"}
+                    >
+                      {outcome ?? "done"}
+                    </span>
+                  </span>
+                  {exitCode !== undefined && (
+                    <code className="text-xs font-mono text-muted-foreground/70">
+                      exit {exitCode}
+                    </code>
+                  )}
+                </div>
+                {(stdout || stderr) && (
+                  <pre className="text-xs font-mono bg-muted/30 rounded p-2 whitespace-pre-wrap break-all max-h-32 overflow-y-auto">
+                    {[stdout, stderr].filter(Boolean).join("\n")}
+                  </pre>
+                )}
+              </div>
+            );
+          }
           default:
             return (
               <div className="space-y-1">
@@ -652,13 +1541,27 @@ export function ChimpActivity() {
         }
       }
       case "tool_use_summary": {
-        const toolName = event.tool_name as string | undefined;
+        // SDKToolUseSummaryMessage: { summary: string, preceding_tool_use_ids: string[] }
+        const summary = event.summary as string | undefined;
+        const ids = Array.isArray(event.preceding_tool_use_ids)
+          ? (event.preceding_tool_use_ids as string[])
+          : [];
         return (
-          <div className="flex items-center gap-2.5">
-            <Terminal className="h-4 w-4 text-circus-gold shrink-0" />
-            <code className="text-xs font-mono bg-muted/30 rounded px-2 py-1">
-              {toolName || "tool"}
-            </code>
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2">
+              <Terminal className="h-4 w-4 text-circus-gold shrink-0" />
+              <span className="text-xs text-muted-foreground font-medium">
+                Tool use summary
+              </span>
+              {ids.length > 0 && (
+                <span className="text-xs text-muted-foreground/60">
+                  ({ids.length} tool{ids.length !== 1 ? "s" : ""})
+                </span>
+              )}
+            </div>
+            {summary && (
+              <p className="text-sm text-muted-foreground pl-6">{summary}</p>
+            )}
           </div>
         );
       }
