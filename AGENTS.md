@@ -52,6 +52,44 @@ Each chimp has:
 - Events consumer: `chimp-{chimpId}` on `events` stream (filtered to subscribed topics)
 - Commands consumer: `chimp-{chimpId}-commands` on `commands` stream
 
+## Chimp Profile Handoff
+
+Chimps can gracefully transition between profiles using the **handoff** mechanism. Unlike the legacy `transmogrify` (in-place upgrade), handoff explicitly transfers context and allows the old chimp to unsubscribe cleanly.
+
+### Usage (MCP Tool)
+
+```
+handoff(targetProfile="worker", 
+        reason="need more computational power", 
+        summary="completed analysis phase")
+```
+
+### How It Works
+
+1. **Old chimp** calls `handoff()` with target profile and context
+2. **Ringmaster** receives `chimp-handoff` message and creates new chimp
+3. **New chimp** starts and receives `resume-handoff` command with inherited:
+   - Topic subscriptions (for cross-platform continuity)
+   - Event contexts (for responding on inherited channels)
+   - Work summary (to resume context)
+4. **Old chimp** confirms new chimp is running, then:
+   - Unsubscribes from all topics
+   - Gracefully stops
+5. **New chimp** continues work in new profile
+
+### Benefits vs Transmogrify
+
+| Aspect | Transmogrify | Handoff |
+|--------|--------------|---------|
+| Control | Ringmaster kills old | Chimp initiates gracefully |
+| Shutdown | Abrupt | Clean unsubscribe |
+| Reliability | Single point of failure | Explicit handoff |
+| Future-Proof | 1-to-1 topics only | Multi-chimp ready |
+
+### Backward Compatibility
+
+The legacy `transmogrify` tool still works but is **deprecated**. New implementations should use `handoff`. See [HANDOFF_DESIGN.md](HANDOFF_DESIGN.md) for architectural details.
+
 ## TypeScript Safety
 
 **CRITICAL: NEVER use type assertions or casting to bypass type errors.**
