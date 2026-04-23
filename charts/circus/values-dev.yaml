@@ -2,6 +2,23 @@ ringmaster:
   enabled: true
   image:
     repository: ringmaster
+  profileTemplate:
+    base:
+      extraEnv:
+        - name: CLAUDE_CODE_OAUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: circus-secrets
+              key: CLAUDE_CODE_OAUTH_TOKEN
+        - name: GITHUB_APP_ID
+          value: "3434984"
+        - name: GITHUB_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: circus-secrets
+              key: GITHUB_PRIVATE_KEY
+        - name: GITHUB_INSTALLATION_ID
+          value: "125365483"
 
 usher:
   enabled: true
