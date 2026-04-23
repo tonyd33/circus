@@ -28,6 +28,7 @@ export type EventPayload =
   | {
       type: "chimp_output";
       chimpId: string;
+      profile: string;
       message: Protocol.ChimpOutputMessage;
     };
 
@@ -56,6 +57,17 @@ export type Action =
       command: Protocol.ChimpCommand;
     }
   | { type: "transfer_topics"; fromChimpId: string; toChimpId: string }
+  | {
+      type: "handoff";
+      fromChimpId: string;
+      toChimpId: string;
+      targetProfile: string;
+      fromProfile: string;
+      reason: string;
+      summary: string;
+      subscriptions: Topic[];
+      eventContexts: Protocol.StoredEventContext[];
+    }
   | { type: "noop" };
 
 export interface Decision {
@@ -171,11 +183,40 @@ function decideOnEventReceived(
   };
 }
 
+function decideOnChimpHandoff(
+  fromChimpId: string,
+  fromProfile: string,
+  message: Protocol.ChimpHandoff,
+): Decision {
+  const toChimpId = deriveTransmogrifyChimpId(fromChimpId, message.targetProfile);
+  return {
+    chimpId: fromChimpId,
+    actions: [
+      {
+        type: "handoff",
+        fromChimpId,
+        toChimpId,
+        targetProfile: message.targetProfile,
+        fromProfile,
+        reason: message.reason,
+        summary: message.summary,
+        subscriptions: message.subscriptions,
+        eventContexts: message.eventContexts,
+      },
+    ],
+    reason: `Handoff ${fromChimpId} → ${toChimpId} (${message.targetProfile})`,
+  };
+}
+
 function decideOnChimpOutput(
   chimpId: string,
+  profile: string,
   message: Protocol.ChimpOutputMessage,
 ): Decision {
   switch (message.type) {
+    case "chimp-handoff": {
+      return decideOnChimpHandoff(chimpId, profile, message);
+    }
     case "transmogrify": {
       const newChimpId = deriveTransmogrifyChimpId(
         chimpId,
@@ -240,6 +281,6 @@ export function decide(state: CoreState, payload: EventPayload): Decision {
     case "event_received":
       return decideOnEventReceived(state, payload);
     case "chimp_output":
-      return decideOnChimpOutput(payload.chimpId, payload.message);
+      return decideOnChimpOutput(payload.chimpId, payload.profile, payload.message);
   }
 }
