@@ -12,6 +12,7 @@ import {
   Circle,
   CircleDot,
   Clock,
+  Code,
   Cog,
   Eye,
   FileBox,
@@ -20,6 +21,7 @@ import {
   FolderSync,
   GitBranch,
   GitPullRequestArrow,
+  Globe,
   Hash,
   Image,
   ListChecks,
@@ -32,6 +34,7 @@ import {
   Radio,
   RefreshCw,
   ScrollText,
+  Search,
   Send,
   Server,
   Sparkles,
@@ -718,6 +721,274 @@ export function ChimpActivity() {
                       </div>
                     );
                   }
+                  if (blockType === "server_tool_use") {
+                    const serverToolName = block.name as string | undefined;
+                    const toolId = block.id as string | undefined;
+                    const toolInput = block.input as
+                      | Record<string, unknown>
+                      | undefined;
+                    return (
+                      <div
+                        key={i}
+                        className="bg-muted/30 rounded-lg p-2.5 space-y-1.5"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Server className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                          <code className="text-xs font-mono font-medium text-blue-400">
+                            {serverToolName || "server_tool_use"}
+                          </code>
+                          {toolId && (
+                            <code className="text-xs font-mono text-muted-foreground/40 ml-auto">
+                              {toolId.slice(-8)}
+                            </code>
+                          )}
+                        </div>
+                        {toolInput && (
+                          <ExpandableJSON data={toolInput} label="Input" />
+                        )}
+                      </div>
+                    );
+                  }
+                  if (blockType === "web_search_tool_result") {
+                    const results = block.results as unknown[] | undefined;
+                    const error = block.error as
+                      | Record<string, unknown>
+                      | undefined;
+                    return (
+                      <div
+                        key={i}
+                        className={`rounded-lg p-2.5 space-y-1.5 ${error ? "bg-red-500/10 border border-red-500/20" : "bg-blue-500/10 border border-blue-500/20"}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Globe
+                            className={`h-3.5 w-3.5 shrink-0 ${error ? "text-red-400" : "text-blue-400"}`}
+                          />
+                          <code
+                            className={`text-xs font-mono font-medium ${error ? "text-red-400" : "text-blue-400"}`}
+                          >
+                            web_search
+                          </code>
+                          {results && !error && (
+                            <span className="text-xs text-muted-foreground/60 ml-auto">
+                              {results.length} result
+                              {results.length !== 1 ? "s" : ""}
+                            </span>
+                          )}
+                        </div>
+                        {error ? (
+                          <ExpandableJSON data={error} label="Error" />
+                        ) : results && results.length > 0 ? (
+                          <ExpandableJSON data={results} label="Results" />
+                        ) : null}
+                      </div>
+                    );
+                  }
+                  if (blockType === "web_fetch_tool_result") {
+                    const extractedContent = block.extracted_content as
+                      | string
+                      | undefined;
+                    const error = block.error as
+                      | Record<string, unknown>
+                      | undefined;
+                    return (
+                      <div
+                        key={i}
+                        className={`rounded-lg p-2.5 space-y-1.5 ${error ? "bg-red-500/10 border border-red-500/20" : "bg-cyan-500/10 border border-cyan-500/20"}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Globe
+                            className={`h-3.5 w-3.5 shrink-0 ${error ? "text-red-400" : "text-cyan-400"}`}
+                          />
+                          <code
+                            className={`text-xs font-mono font-medium ${error ? "text-red-400" : "text-cyan-400"}`}
+                          >
+                            web_fetch
+                          </code>
+                        </div>
+                        {error ? (
+                          <ExpandableJSON data={error} label="Error" />
+                        ) : extractedContent ? (
+                          <pre className="text-xs font-mono bg-black/20 rounded p-2 whitespace-pre-wrap break-all max-h-48 overflow-y-auto">
+                            {extractedContent}
+                          </pre>
+                        ) : (
+                          <p className="text-xs text-muted-foreground/60 italic">
+                            (empty result)
+                          </p>
+                        )}
+                      </div>
+                    );
+                  }
+                  if (
+                    blockType === "code_execution_tool_result" ||
+                    blockType === "bash_code_execution_tool_result" ||
+                    blockType === "text_editor_code_execution_tool_result"
+                  ) {
+                    const stdout = block.stdout as string | undefined;
+                    const stderr = block.stderr as string | undefined;
+                    const returnCode = block.return_code as number | undefined;
+                    const error = block.error as
+                      | Record<string, unknown>
+                      | undefined;
+                    const displayName =
+                      blockType === "bash_code_execution_tool_result"
+                        ? "bash"
+                        : blockType === "text_editor_code_execution_tool_result"
+                          ? "editor"
+                          : "code";
+                    return (
+                      <div
+                        key={i}
+                        className={`rounded-lg p-2.5 space-y-1.5 ${error ? "bg-red-500/10 border border-red-500/20" : "bg-emerald-500/10 border border-emerald-500/20"}`}
+                      >
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Code
+                            className={`h-3.5 w-3.5 shrink-0 ${error ? "text-red-400" : "text-emerald-400"}`}
+                          />
+                          <code
+                            className={`text-xs font-mono font-medium ${error ? "text-red-400" : "text-emerald-400"}`}
+                          >
+                            {displayName}
+                          </code>
+                          {returnCode !== undefined && !error && (
+                            <Badge
+                              variant={
+                                returnCode === 0 ? "secondary" : "outline"
+                              }
+                              className="text-xs border-emerald-500/40 text-emerald-400"
+                            >
+                              exit {returnCode}
+                            </Badge>
+                          )}
+                        </div>
+                        {error ? (
+                          <ExpandableJSON data={error} label="Error" />
+                        ) : (
+                          <div className="space-y-1">
+                            {stdout && (
+                              <pre className="text-xs font-mono bg-black/20 rounded p-2 whitespace-pre-wrap break-all max-h-48 overflow-y-auto">
+                                {stdout}
+                              </pre>
+                            )}
+                            {stderr && (
+                              <pre className="text-xs font-mono bg-red-500/10 text-red-300 rounded p-2 whitespace-pre-wrap break-all max-h-32 overflow-y-auto">
+                                {stderr}
+                              </pre>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+                  if (blockType === "tool_search_tool_result") {
+                    const results = block.results as unknown[] | undefined;
+                    const error = block.error as
+                      | Record<string, unknown>
+                      | undefined;
+                    return (
+                      <div
+                        key={i}
+                        className={`rounded-lg p-2.5 space-y-1.5 ${error ? "bg-red-500/10 border border-red-500/20" : "bg-purple-500/10 border border-purple-500/20"}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Search
+                            className={`h-3.5 w-3.5 shrink-0 ${error ? "text-red-400" : "text-purple-400"}`}
+                          />
+                          <code
+                            className={`text-xs font-mono font-medium ${error ? "text-red-400" : "text-purple-400"}`}
+                          >
+                            tool_search
+                          </code>
+                          {results && !error && (
+                            <span className="text-xs text-muted-foreground/60 ml-auto">
+                              {results.length} result
+                              {results.length !== 1 ? "s" : ""}
+                            </span>
+                          )}
+                        </div>
+                        {error ? (
+                          <ExpandableJSON data={error} label="Error" />
+                        ) : results && results.length > 0 ? (
+                          <ExpandableJSON data={results} label="Results" />
+                        ) : null}
+                      </div>
+                    );
+                  }
+                  if (blockType === "mcp_tool_use") {
+                    const serverName = block.server_name as string | undefined;
+                    const toolName = block.name as string | undefined;
+                    const toolId = block.id as string | undefined;
+                    const toolInput = block.input as
+                      | Record<string, unknown>
+                      | undefined;
+                    return (
+                      <div
+                        key={i}
+                        className="bg-muted/30 rounded-lg p-2.5 space-y-1.5"
+                      >
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Webhook className="h-3.5 w-3.5 text-indigo-400 shrink-0" />
+                          <code className="text-xs font-mono font-medium text-indigo-400">
+                            {serverName || "mcp"}
+                          </code>
+                          <span className="text-xs text-muted-foreground">
+                            /
+                          </span>
+                          <code className="text-xs font-mono font-medium">
+                            {toolName || "tool"}
+                          </code>
+                          {toolId && (
+                            <code className="text-xs font-mono text-muted-foreground/40 ml-auto">
+                              {toolId.slice(-8)}
+                            </code>
+                          )}
+                        </div>
+                        {toolInput && (
+                          <ExpandableJSON data={toolInput} label="Input" />
+                        )}
+                      </div>
+                    );
+                  }
+                  if (blockType === "mcp_tool_result") {
+                    const serverName = block.server_name as string | undefined;
+                    const content = block.content as
+                      | Record<string, unknown>
+                      | string
+                      | undefined;
+                    const isError = block.is_error as boolean | undefined;
+                    return (
+                      <div
+                        key={i}
+                        className={`rounded-lg p-2.5 space-y-1.5 ${isError ? "bg-red-500/10 border border-red-500/20" : "bg-indigo-500/10 border border-indigo-500/20"}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Webhook
+                            className={`h-3.5 w-3.5 shrink-0 ${isError ? "text-red-400" : "text-indigo-400"}`}
+                          />
+                          <code
+                            className={`text-xs font-mono font-medium ${isError ? "text-red-400" : "text-indigo-400"}`}
+                          >
+                            {serverName || "mcp"} result
+                          </code>
+                          {isError && (
+                            <Badge
+                              variant="outline"
+                              className="text-xs border-red-500/40 text-red-400"
+                            >
+                              error
+                            </Badge>
+                          )}
+                        </div>
+                        {typeof content === "string" ? (
+                          <p className="text-xs text-muted-foreground whitespace-pre-wrap">
+                            {content}
+                          </p>
+                        ) : content ? (
+                          <ExpandableJSON data={content} label="Content" />
+                        ) : null}
+                      </div>
+                    );
+                  }
                   // Fallback: show block type and raw JSON
                   return (
                     <div
@@ -924,6 +1195,29 @@ export function ChimpActivity() {
               >
                 <FileText className="h-3.5 w-3.5 shrink-0" />
                 <span>{title ? `Document: ${title}` : "[Document]"}</span>
+              </div>
+            );
+          }
+          if (bt === "search_result") {
+            const results = block.results as
+              | Array<Record<string, unknown>>
+              | undefined;
+            return (
+              <div key={key} className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <Search className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                  <span className="text-xs font-medium text-blue-400">
+                    Search Results
+                  </span>
+                  {results && (
+                    <span className="text-xs text-muted-foreground/60">
+                      ({results.length})
+                    </span>
+                  )}
+                </div>
+                {results && results.length > 0 && (
+                  <ExpandableJSON data={results} label="Results" />
+                )}
               </div>
             );
           }
