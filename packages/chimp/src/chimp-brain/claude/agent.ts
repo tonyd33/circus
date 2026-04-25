@@ -2,7 +2,8 @@
  * Claude Agent SDK integration and message processing
  */
 import * as ClaudeSDK from "@anthropic-ai/claude-agent-sdk";
-import { type Logger, Protocol } from "@mnke/circus-shared";
+import { Protocol } from "@mnke/circus-shared";
+import type * as Logger from "@mnke/circus-shared/logger";
 import type { PublishFn } from "@/chimp-brain/chimp-brain";
 
 type LogFn = (
@@ -25,13 +26,13 @@ interface ClaudeAgentState {
  * Create a stub hook handler that logs all hook events
  */
 function createHookHandler(
-  log: LogFn,
+  _log: LogFn,
 ): (
   input: ClaudeSDK.HookInput,
   toolUseID: string | undefined,
   options: { signal: AbortSignal },
 ) => Promise<ClaudeSDK.HookJSONOutput> {
-  return async (input, toolUseID, _options) => {
+  return async (_input, _toolUseID, _options) => {
     return {
       async: true,
     };

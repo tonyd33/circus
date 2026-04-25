@@ -1,22 +1,14 @@
-import type { Logger } from "@mnke/circus-shared";
-import type { TopicRegistry } from "@mnke/circus-shared/lib";
+import type { TopicRegistry } from "@mnke/circus-shared/components";
+import type * as Logger from "@mnke/circus-shared/logger";
 import type { NatsConnection } from "nats";
-import { createActivityStream } from "../streams/activity-stream";
+import { createActivityStream } from "../services/activity-service";
 
 export class ActivityRouter {
-  private nc: NatsConnection;
-  private topicRegistry: TopicRegistry;
-  private logger: Logger.Logger;
-
   constructor(
-    nc: NatsConnection,
-    topicRegistry: TopicRegistry,
-    logger: Logger.Logger,
-  ) {
-    this.nc = nc;
-    this.topicRegistry = topicRegistry;
-    this.logger = logger;
-  }
+    private nc: NatsConnection,
+    private topicRegistry: TopicRegistry,
+    private logger: Logger.Logger,
+  ) {}
 
   get routes() {
     return {
@@ -25,10 +17,7 @@ export class ActivityRouter {
           req: Bun.BunRequest<"/api/chimp/:chimpId/activity">,
         ): Promise<Response> => {
           const { chimpId } = req.params;
-
-          if (!chimpId) {
-            return new Response("Missing chimpId", { status: 400 });
-          }
+          if (!chimpId) return new Response("Missing chimpId", { status: 400 });
 
           try {
             const stream = await createActivityStream(

@@ -1,4 +1,4 @@
-import type { Logger } from "@mnke/circus-shared";
+import type * as Logger from "@mnke/circus-shared/logger";
 import type { ChimpBrain, PublishFn } from "./chimp-brain";
 import { ClaudeChimp } from "./claude/claude-brain";
 import { EchoBrain } from "./echo/echo-brain";

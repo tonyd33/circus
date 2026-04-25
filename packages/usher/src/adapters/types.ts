@@ -2,7 +2,6 @@ import type { Protocol } from "@mnke/circus-shared";
 
 export interface AdapterResult {
   eventSubject: string;
-  defaultProfile: string;
   command: Protocol.ChimpCommand;
 }
 

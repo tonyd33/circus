@@ -1,4 +1,4 @@
-import type { Logger } from "@mnke/circus-shared";
+import type * as Logger from "@mnke/circus-shared/logger";
 import type { Adapter } from "@/types";
 
 import { DebugAdapter } from "./debug";

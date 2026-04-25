@@ -2,6 +2,8 @@
  * Chimps List Page
  */
 
+import { Standards } from "@mnke/circus-shared";
+import { Typing } from "@mnke/circus-shared/lib";
 import { CircleDot, Loader2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
@@ -14,8 +16,7 @@ import {
 } from "@/components/ui/card";
 import { useChimps } from "@/hooks/useChimps";
 import { useChimpTopics } from "@/hooks/useChimpTopics";
-import type { ChimpState } from "@/lib/chimp-api";
-import type { Standards } from "@mnke/circus-shared";
+import type { ChimpState } from "@/lib/chimp";
 
 const statusColors: Record<ChimpState["status"], string> = {
   scheduled: "bg-blue-400",
@@ -48,33 +49,52 @@ function ChimpTopicsBadges({
   return (
     <div className="flex flex-wrap gap-1.5 mt-3">
       {chimpTopics.map((t) => {
-        const key =
-          t.platform === "github"
-            ? `${t.platform}.${t.owner}.${t.repo}.${t.type}.${t.number}`
-            : `${t.platform}.${t.guildId}.${t.channelId}.${t.interactionId}`;
+        const key = Standards.Topic.serializeTopic(t);
 
-        if (t.platform === "github") {
-          return (
-            <Badge
-              key={key}
-              variant="outline"
-              className="text-xs font-mono text-emerald-500 border-emerald-500/30"
-            >
-              {t.owner}/{t.repo}#{t.number}
-            </Badge>
-          );
+        switch (t.platform) {
+          case "github":
+            return (
+              <Badge
+                key={key}
+                variant="outline"
+                className="text-xs font-mono text-emerald-500 border-emerald-500/30"
+              >
+                {t.owner}/{t.repo}#{t.number}
+              </Badge>
+            );
+          case "discord":
+            return (
+              <Badge
+                key={key}
+                variant="outline"
+                className="text-xs font-mono text-indigo-500 border-indigo-500/30"
+              >
+                discord
+              </Badge>
+            );
+          case "direct":
+            return (
+              <Badge
+                key={key}
+                variant="outline"
+                className="text-xs font-mono text-muted-foreground border-muted-foreground/30"
+              >
+                direct:{t.chimpId}
+              </Badge>
+            );
+          case "debug":
+            return (
+              <Badge
+                key={key}
+                variant="outline"
+                className="text-xs font-mono text-amber-500 border-amber-500/30"
+              >
+                debug:{t.sessionId}
+              </Badge>
+            );
+          default:
+            return Typing.unreachable(t);
         }
-
-        // Discord topics - shown as simple badge
-        return (
-          <Badge
-            key={key}
-            variant="outline"
-            className="text-xs font-mono text-indigo-500 border-indigo-500/30"
-          >
-            discord
-          </Badge>
-        );
       })}
     </div>
   );

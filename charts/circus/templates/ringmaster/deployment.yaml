@@ -31,13 +31,33 @@ spec:
               value: {{ .Values.externalServices.redis.url | quote }}
             - name: NATS_URL
               value: {{ .Values.externalServices.nats.url | quote }}
+            - name: DATABASE_URL
+              value: {{ .Values.externalServices.postgres.url | quote }}
+            - name: DEFAULT_PROFILE
+              value: {{ .Values.global.defaultProfile | quote }}
             - name: NAMESPACE
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            {{- if .Values.ringmaster.profileTemplate }}
+            - name: PROFILE_TEMPLATE_PATH
+              value: /etc/circus/profiles.json
+            {{- end }}
             {{- with .Values.ringmaster.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+          {{- if .Values.ringmaster.profileTemplate }}
+          volumeMounts:
+            - name: profile-template
+              mountPath: /etc/circus
+              readOnly: true
+          {{- end }}
           resources:
             {{- toYaml .Values.ringmaster.resources | nindent 12 }}
+      {{- if .Values.ringmaster.profileTemplate }}
+      volumes:
+        - name: profile-template
+          configMap:
+            name: {{ include "circus.fullname" . }}-profile-template
+      {{- end }}
 {{- end }}

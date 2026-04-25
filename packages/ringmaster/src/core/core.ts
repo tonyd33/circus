@@ -2,11 +2,75 @@ import type * as k8s from "@kubernetes/client-node";
 import { type Protocol, Standards } from "@mnke/circus-shared";
 
 type Topic = Standards.Topic.Topic;
+type TopicSubscription = Standards.Topic.TopicSubscription;
 
-export interface CoreState {
-  now: number;
-  pod: k8s.V1Pod | undefined;
-}
+// ─── Queries ───────────────────────────────────────────────────────────
+
+export type Query =
+  | { type: "lookup_topic"; topic: Topic }
+  | { type: "get_pod"; chimpId: string }
+  | { type: "get_chimp_state"; chimpId: string }
+  | { type: "get_chimp_profile"; chimpId: string };
+
+export type QueryResultMap = {
+  lookup_topic: TopicSubscription[];
+  get_pod: k8s.V1Pod | undefined;
+  get_chimp_state: Standards.Chimp.ChimpState | null;
+  get_chimp_profile: string;
+};
+
+export type QueryResult<Q extends Query> = QueryResultMap[Q["type"]];
+
+// ─── Actions ───────────────────────────────────────────────────────────
+
+export type Action =
+  | { chimpId: string; type: "create_job"; profile: string }
+  | {
+      chimpId: string;
+      type: "create_consumers";
+      eventFilterSubjects: string[];
+      deliverFrom:
+        | { type: "sequence"; value: number }
+        | { type: "time"; value: Date };
+    }
+  | { chimpId: string; type: "register_topic"; topic: Topic }
+  | { chimpId: string; type: "delete_consumers" }
+  | {
+      chimpId: string;
+      type: "upsert_status";
+      status: Standards.Chimp.ChimpStatus;
+    }
+  | { chimpId: string; type: "delete_job" }
+  | { chimpId: string; type: "delete_state" }
+  | {
+      chimpId: string;
+      type: "send_command";
+      command: Protocol.ChimpCommand;
+    };
+
+// ─── Effects ───────────────────────────────────────────────────────────
+
+export type Effect =
+  | { type: "pure"; actions: Action[] }
+  | {
+      type: "query";
+      query: Query;
+      cont: (result: never) => Effect;
+    };
+
+export const Fx = {
+  pure(actions: Action[]): Effect {
+    return { type: "pure", actions };
+  },
+  query<Q extends Query>(
+    query: Q,
+    cont: (result: QueryResult<Q>) => Effect,
+  ): Effect {
+    return { type: "query", query, cont: cont as (r: never) => Effect };
+  },
+};
+
+// ─── Event payloads (raw, no pre-fetched data) ─────────────────────────
 
 export type EventPayload =
   | {
@@ -18,51 +82,17 @@ export type EventPayload =
     }
   | {
       type: "event_received";
-      chimpId: string;
-      profile: string;
-      eventSubject: string;
-      topic: Topic | null;
-      topicOwner: { chimpId: string } | null;
-      messageSequence: number;
+      subject: string;
+      seq: number;
     }
   | {
       type: "chimp_output";
       chimpId: string;
       message: Protocol.ChimpOutputMessage;
+      timestamp: Date;
     };
 
-export type Action =
-  | { chimpId: string; type: "create_job"; profile: string }
-  | {
-      chimpId: string;
-      type: "create_consumers";
-      eventFilterSubjects: string[];
-      startSequence: number;
-    }
-  | { chimpId: string; type: "register_topic"; topic: Topic; force?: boolean }
-  | { chimpId: string; type: "delete_consumers" }
-  | { chimpId: string; type: "cleanup_topics" }
-  | {
-      chimpId: string;
-      type: "upsert_status";
-      profile: string;
-      status: Standards.Chimp.ChimpStatus;
-    }
-  | { chimpId: string; type: "delete_job" }
-  | { chimpId: string; type: "delete_state" }
-  | {
-      chimpId: string;
-      type: "send_command";
-      command: Protocol.ChimpCommand;
-    }
-  | { type: "transfer_topics"; fromChimpId: string; toChimpId: string }
-  | { type: "noop" };
-
-export interface Decision {
-  chimpId: string;
-  actions: Action[];
-  reason: string;
-}
+// ─── Pure helpers ──────────────────────────────────────────────────────
 
 function podPhaseToStatus(
   phase: string | undefined,
@@ -91,155 +121,203 @@ export function deriveChimpId(
   return `evt-${Bun.hash(key).toString(36)}`;
 }
 
-export function deriveTransmogrifyChimpId(
-  oldChimpId: string,
-  targetProfile: string,
-): string {
-  return `evt-${Bun.hash(`${oldChimpId}:${targetProfile}`).toString(36)}`;
-}
+// ─── Decision builders ─────────────────────────────────────────────────
 
-function decideOnPodEvent(
+function buildSpawnActions(
   chimpId: string,
   profile: string,
-  eventType: string,
-  pod: k8s.V1Pod,
-): Decision {
-  if (eventType === "DELETED") {
-    return { chimpId, actions: [], reason: "Pod deleted" };
-  }
-
-  const phase = pod.status?.phase;
-  const status = podPhaseToStatus(phase);
-
-  return {
-    chimpId,
-    actions: [{ chimpId, type: "upsert_status", profile, status }],
-    reason: `Pod ${eventType} phase ${phase}`,
-  };
-}
-
-function decideOnEventReceived(
-  state: CoreState,
-  payload: EventPayload & { type: "event_received" },
-): Decision {
-  const { chimpId, profile, topic, topicOwner, messageSequence, eventSubject } =
-    payload;
-
-  if (topicOwner && state.pod) {
-    return {
-      chimpId,
-      actions: [{ type: "noop" }],
-      reason: `Event topic already claimed by ${chimpId}`,
-    };
-  }
-
+  eventSubject: string,
+  topic: Topic | null,
+  pod: k8s.V1Pod | undefined,
+  seq: number,
+): Action[] {
   const topicFilter = topic
     ? Standards.Topic.topicToEventSubject(topic)
     : eventSubject;
 
   const actions: Action[] = [];
 
-  if (!state.pod) {
-    actions.push({
-      chimpId,
-      type: "upsert_status",
-      profile,
-      status: "scheduled",
-    });
+  if (!pod) {
+    actions.push({ chimpId, type: "upsert_status", status: "scheduled" });
   }
 
   actions.push({
     chimpId,
     type: "create_consumers",
     eventFilterSubjects: [topicFilter],
-    startSequence: messageSequence,
+    deliverFrom: { type: "sequence", value: seq },
   });
 
-  const isReclaim = topicOwner != null && !state.pod;
   if (topic) {
-    actions.push({ chimpId, type: "register_topic", topic, force: isReclaim });
+    actions.push({ chimpId, type: "register_topic", topic });
   }
 
   actions.push({ chimpId, type: "create_job", profile });
 
-  return {
-    chimpId,
-    actions,
-    reason: state.pod
-      ? "Unclaimed event, pod exists — ensuring consumers and job"
-      : "Unclaimed event, no pod — scheduling new chimp",
-  };
+  return actions;
+}
+
+/**
+ * Query profile then build spawn actions for a chimpId.
+ */
+function spawnWithProfile(
+  chimpId: string,
+  subject: string,
+  topic: Topic | null,
+  pod: k8s.V1Pod | undefined,
+  seq: number,
+): Effect {
+  return Fx.query({ type: "get_chimp_profile", chimpId }, (profile) =>
+    Fx.pure(buildSpawnActions(chimpId, profile, subject, topic, pod, seq)),
+  );
+}
+
+// ─── Decision functions ────────────────────────────────────────────────
+
+function decideOnPodEvent(
+  payload: EventPayload & { type: "pod_event" },
+): Effect {
+  if (payload.eventType === "DELETED") {
+    return Fx.pure([]);
+  }
+
+  const status = podPhaseToStatus(payload.pod.status?.phase);
+
+  return Fx.pure([{ chimpId: payload.chimpId, type: "upsert_status", status }]);
+}
+
+function decideOnEventReceived(
+  payload: EventPayload & { type: "event_received" },
+): Effect {
+  const topic = Standards.Topic.eventSubjectToTopic(payload.subject);
+
+  if (!topic) {
+    const chimpId = deriveChimpId(null, payload.subject);
+    return Fx.query({ type: "get_pod", chimpId }, (pod) =>
+      spawnWithProfile(chimpId, payload.subject, null, pod, payload.seq),
+    );
+  }
+
+  return Fx.query({ type: "lookup_topic", topic }, (subscribers) => {
+    if (subscribers.length === 0) {
+      const chimpId = deriveChimpId(topic, payload.subject);
+      return Fx.query({ type: "get_pod", chimpId }, (pod) =>
+        spawnWithProfile(chimpId, payload.subject, topic, pod, payload.seq),
+      );
+    }
+
+    return buildSubscriberEffects(
+      subscribers,
+      payload.subject,
+      topic,
+      payload.seq,
+    );
+  });
+}
+
+/**
+ * For each subscriber, check if their pod is running.
+ * If not, query their profile and build reclaim actions.
+ */
+function buildSubscriberEffects(
+  subscribers: TopicSubscription[],
+  subject: string,
+  topic: Topic,
+  seq: number,
+  collectedActions: Action[] = [],
+): Effect {
+  const [first, ...rest] = subscribers;
+  if (first == null) {
+    return Fx.pure(collectedActions);
+  }
+
+  return Fx.query({ type: "get_pod", chimpId: first.chimpId }, (pod) => {
+    if (pod) {
+      // Pod running — no action needed for this subscriber
+      if (rest.length === 0) return Fx.pure(collectedActions);
+      return buildSubscriberEffects(
+        rest,
+        subject,
+        topic,
+        seq,
+        collectedActions,
+      );
+    }
+
+    // No pod — query profile and reclaim
+    return Fx.query(
+      { type: "get_chimp_profile", chimpId: first.chimpId },
+      (profile) => {
+        const actions = [
+          ...collectedActions,
+          ...buildSpawnActions(
+            first.chimpId,
+            profile,
+            subject,
+            topic,
+            pod,
+            seq,
+          ),
+        ];
+
+        if (rest.length === 0) return Fx.pure(actions);
+        return buildSubscriberEffects(rest, subject, topic, seq, actions);
+      },
+    );
+  });
 }
 
 function decideOnChimpOutput(
-  chimpId: string,
-  message: Protocol.ChimpOutputMessage,
-): Decision {
+  payload: EventPayload & { type: "chimp_output" },
+): Effect {
+  const { message, timestamp } = payload;
+
   switch (message.type) {
-    case "transmogrify": {
-      const newChimpId = deriveTransmogrifyChimpId(
-        chimpId,
-        message.targetProfile,
-      );
-      return {
-        chimpId,
-        actions: [
-          { chimpId, type: "delete_job" },
-          {
-            type: "transfer_topics",
-            fromChimpId: chimpId,
-            toChimpId: newChimpId,
-          },
-          { chimpId, type: "delete_state" },
-          {
-            chimpId: newChimpId,
-            type: "upsert_status",
-            profile: message.targetProfile,
-            status: "scheduled",
-          },
-          {
-            chimpId: newChimpId,
-            type: "send_command",
-            command: {
-              command: "resume-transmogrify",
-              args: {
-                fromProfile: message.fromProfile,
-                reason: message.reason,
-                summary: message.summary,
-                eventContexts: message.eventContexts,
-              },
-            },
-          },
-          {
-            chimpId: newChimpId,
-            type: "create_job",
-            profile: message.targetProfile,
-          },
-        ],
-        reason: `Transmogrify ${chimpId} → ${newChimpId} (${message.targetProfile})`,
+    case "chimp-request": {
+      const directTopic: Topic = {
+        platform: "direct",
+        chimpId: message.chimpId,
       };
+      return Fx.pure([
+        {
+          chimpId: message.chimpId,
+          type: "upsert_status",
+          status: "scheduled",
+        },
+        {
+          chimpId: message.chimpId,
+          type: "create_consumers",
+          eventFilterSubjects: [
+            Standards.Topic.topicToEventSubject(directTopic),
+          ],
+          deliverFrom: { type: "time", value: timestamp },
+        },
+        {
+          chimpId: message.chimpId,
+          type: "register_topic",
+          topic: directTopic,
+        },
+        {
+          chimpId: message.chimpId,
+          type: "create_job",
+          profile: message.profile,
+        },
+      ]);
     }
     default:
-      return {
-        chimpId,
-        actions: [{ type: "noop" }],
-        reason: `Output: ${message.type}`,
-      };
+      return Fx.pure([]);
   }
 }
 
-export function decide(state: CoreState, payload: EventPayload): Decision {
+// ─── Main entry point ──────────────────────────────────────────────────
+
+export function decide(payload: EventPayload): Effect {
   switch (payload.type) {
     case "pod_event":
-      return decideOnPodEvent(
-        payload.chimpId,
-        payload.profile,
-        payload.eventType,
-        payload.pod,
-      );
+      return decideOnPodEvent(payload);
     case "event_received":
-      return decideOnEventReceived(state, payload);
+      return decideOnEventReceived(payload);
     case "chimp_output":
-      return decideOnChimpOutput(payload.chimpId, payload.message);
+      return decideOnChimpOutput(payload);
   }
 }

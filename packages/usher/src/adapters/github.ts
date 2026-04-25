@@ -1,6 +1,7 @@
-import { type Logger, type Protocol, Standards } from "@mnke/circus-shared";
+import { type Protocol, Standards } from "@mnke/circus-shared";
 import { EnvReader as ER } from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
+import type * as Logger from "@mnke/circus-shared/logger";
 import { App } from "@octokit/app";
 import type { EmitterWebhookEvent } from "@octokit/webhooks";
 import { verify } from "@octokit/webhooks-methods";
@@ -20,7 +21,6 @@ const OK: AdapterResponse = {
 
 export class GitHubAdapter implements Adapter {
   private botName: string;
-  private profile: string;
   private webhookSecret: string | null;
   private app: App;
   private logger: Logger.Logger;
@@ -30,9 +30,6 @@ export class GitHubAdapter implements Adapter {
 
     const result = ER.record({
       botName: ER.str("GITHUB_BOT_NAME"),
-      profile: ER.str("GITHUB_PROFILE").fallback(
-        Standards.Chimp.DEFAULT_PROFILE,
-      ),
       webhookSecret: ER.str("GITHUB_WEBHOOK_SECRET").fallbackW(null),
       appId: ER.str("GITHUB_APP_ID"),
       privateKey: ER.str("GITHUB_PRIVATE_KEY"),
@@ -43,7 +40,6 @@ export class GitHubAdapter implements Adapter {
     }
 
     this.botName = result.value.botName;
-    this.profile = result.value.profile;
     this.webhookSecret = result.value.webhookSecret;
     this.app = new App({
       appId: result.value.appId,
@@ -415,7 +411,6 @@ export class GitHubAdapter implements Adapter {
     return {
       result: {
         eventSubject,
-        defaultProfile: this.profile,
         command: {
           command: "send-agent-message",
           args: {

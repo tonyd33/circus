@@ -5,9 +5,9 @@
  * (Slack, GitHub, Discord, console logging, etc.)
  */
 
-import { Logger } from "@mnke/circus-shared";
 import { EnvReader as ER } from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
+import * as Logger from "@mnke/circus-shared/logger";
 import { Bullhorn } from "./bullhorn.ts";
 
 const logger = Logger.createLogger("bullhorn");

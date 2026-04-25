@@ -1,5 +1,6 @@
-import { type Logger, Protocol, Standards } from "@mnke/circus-shared";
-import type { TopicRegistry } from "@mnke/circus-shared/lib";
+import { Protocol, Standards } from "@mnke/circus-shared";
+import type { TopicRegistry } from "@mnke/circus-shared/components";
+import type * as Logger from "@mnke/circus-shared/logger";
 import {
   AckPolicy,
   type Consumer,
@@ -9,20 +10,9 @@ import {
   type NatsConnection,
   type Subscription,
 } from "nats";
+import type { ActivityEvent } from "../lib/chimp";
 
 const PING_INTERVAL_MS = 3_000;
-
-interface ActivityEvent {
-  id: string;
-  type: "event" | "output" | "meta";
-  messageType: string;
-  timestamp: string;
-  data:
-    | Protocol.ChimpCommand
-    | Protocol.ChimpOutputMessage
-    | Protocol.MetaEvent
-    | unknown;
-}
 
 export async function createActivityStream(
   chimpId: string,
@@ -66,7 +56,7 @@ export async function createActivityStream(
 
   function processMessages(
     messages: ConsumerMessages,
-    type: ActivityEvent["type"],
+    type: "event" | "output",
   ): void {
     (async () => {
       try {
@@ -74,28 +64,30 @@ export async function createActivityStream(
           const raw: unknown = msg.json();
           let event: ActivityEvent;
 
+          const timestamp = new Date(
+            millis(msg.info.timestampNanos),
+          ).toISOString();
+
           if (type === "event") {
             const parsed = Protocol.safeParseChimpCommand(raw);
-            event = {
-              id: `${type}-${msg.seq}`,
-              type,
-              messageType: parsed.success ? parsed.data.command : "event",
-              timestamp: new Date(
-                millis(msg.info.timestampNanos),
-              ).toISOString(),
-              data: parsed.success ? parsed.data : raw,
-            };
+            event = parsed.success
+              ? { id: `${type}-${msg.seq}`, type, timestamp, data: parsed.data }
+              : {
+                  id: `${type}-${msg.seq}`,
+                  type: "unknown" as const,
+                  timestamp,
+                  data: raw,
+                };
           } else {
             const parsed = Protocol.safeParseChimpOutputMessage(raw);
-            event = {
-              id: `${type}-${msg.seq}`,
-              type,
-              messageType: parsed.success ? parsed.data.type : "unknown",
-              timestamp: new Date(
-                millis(msg.info.timestampNanos),
-              ).toISOString(),
-              data: parsed.success ? parsed.data : raw,
-            };
+            event = parsed.success
+              ? { id: `${type}-${msg.seq}`, type, timestamp, data: parsed.data }
+              : {
+                  id: `${type}-${msg.seq}`,
+                  type: "unknown" as const,
+                  timestamp,
+                  data: raw,
+                };
           }
 
           const ctrl = controller;
@@ -117,7 +109,7 @@ export async function createActivityStream(
   async function addConsumer(
     streamName: string,
     filterSubject: string | string[],
-    type: ActivityEvent["type"],
+    type: "event" | "output",
   ): Promise<void> {
     const config: Record<string, unknown> = {
       ack_policy: AckPolicy.None,
@@ -168,7 +160,6 @@ export async function createActivityStream(
           emitEvent({
             id: `meta-${parsed.data.timestamp}`,
             type: "meta",
-            messageType: parsed.data.type,
             timestamp: parsed.data.timestamp,
             data: parsed.data,
           });

@@ -1,16 +1,18 @@
-import { type Logger, Protocol } from "@mnke/circus-shared";
+import { Protocol } from "@mnke/circus-shared";
+import type * as Logger from "@mnke/circus-shared/logger";
 import { serve } from "bun";
 import {
   type ActivityCallback,
   ChimpInput,
   type MessageHandler,
+  type StopCallback,
 } from "./input";
 
 export class HttpInput extends ChimpInput {
   private port: number;
   private handler: MessageHandler;
   private onActivity: ActivityCallback;
-  private onStopRequested: () => Promise<void>;
+  private onStop: StopCallback;
   private server: ReturnType<typeof serve> | null = null;
   private logger: Logger.Logger;
 
@@ -18,14 +20,14 @@ export class HttpInput extends ChimpInput {
     port: number,
     handler: MessageHandler,
     onActivity: ActivityCallback,
-    onStopRequested: () => Promise<void>,
+    onStop: StopCallback,
     logger: Logger.Logger,
   ) {
     super();
     this.port = port;
     this.handler = handler;
     this.onActivity = onActivity;
-    this.onStopRequested = onStopRequested;
+    this.onStop = onStop;
     this.logger = logger;
   }
 
@@ -79,7 +81,7 @@ export class HttpInput extends ChimpInput {
       this.logger.info({ command: command.command }, "Processed HTTP command");
 
       if (result === "stop") {
-        await this.onStopRequested();
+        await this.onStop("explicit_stop");
       }
     } catch (error) {
       this.logger.error(

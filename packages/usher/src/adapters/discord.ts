@@ -1,6 +1,7 @@
-import { type Logger, Standards } from "@mnke/circus-shared";
+import { Standards } from "@mnke/circus-shared";
 import { EnvReader as ER } from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
+import type * as Logger from "@mnke/circus-shared/logger";
 import {
   InteractionResponseType,
   InteractionType,
@@ -26,7 +27,6 @@ interface DiscordInteraction {
 export class DiscordAdapter implements Adapter {
   private publicKey: string;
   private applicationId: string;
-  private profile: string;
   private logger: Logger.Logger;
 
   constructor(logger: Logger.Logger) {
@@ -35,9 +35,6 @@ export class DiscordAdapter implements Adapter {
     const result = ER.record({
       publicKey: ER.str("DISCORD_PUBLIC_KEY"),
       applicationId: ER.str("DISCORD_APPLICATION_ID"),
-      profile: ER.str("DISCORD_PROFILE").fallback(
-        Standards.Chimp.DEFAULT_PROFILE,
-      ),
     }).read(process.env).value;
 
     if (Either.isLeft(result)) {
@@ -46,7 +43,6 @@ export class DiscordAdapter implements Adapter {
 
     this.publicKey = result.value.publicKey;
     this.applicationId = result.value.applicationId;
-    this.profile = result.value.profile;
   }
 
   async handleEvent(
@@ -124,7 +120,6 @@ export class DiscordAdapter implements Adapter {
       return {
         result: {
           eventSubject,
-          defaultProfile: this.profile,
           command: {
             command: "send-agent-message",
             args: {

@@ -2,6 +2,7 @@ export const Env = {
   chimpId: "CHIMP_ID",
   natsUrl: "NATS_URL",
   redisUrl: "REDIS_URL",
+  databaseUrl: "DATABASE_URL",
   brainType: "CHIMP_BRAIN_TYPE",
   model: "CHIMP_MODEL",
   profile: "CHIMP_PROFILE",
@@ -10,11 +11,8 @@ export const Env = {
   httpPort: "CHIMP_HTTP_PORT",
 };
 
-export const DEFAULT_PROFILE = "scout";
-
 export const Prefix = {
   EVENTS: "events",
-  DIRECT: "events.direct",
   OUTPUTS: "outputs",
   META: "meta",
 };
@@ -29,7 +27,6 @@ export type ChimpStatus =
 
 export interface ChimpState {
   chimpId: string;
-  profile: string;
   status: ChimpStatus;
   createdAt: number;
   updatedAt: number;
@@ -44,7 +41,7 @@ export const Naming = {
   },
 
   directSubject(chimpId: string): string {
-    return `${Prefix.DIRECT}.${chimpId}`;
+    return `${Prefix.EVENTS}.direct.${chimpId}`;
   },
   outputSubject(chimpId: string): string {
     return `${Prefix.OUTPUTS}.${chimpId}`;

@@ -1,6 +1,8 @@
 import { access, readFile } from "node:fs/promises";
-import type { Logger, Protocol } from "@mnke/circus-shared";
-import { ProfileCompiler, type ProfileStore } from "@mnke/circus-shared/lib";
+import type { Protocol } from "@mnke/circus-shared";
+import type { ProfileStore } from "@mnke/circus-shared/components";
+import { ProfileCompiler } from "@mnke/circus-shared/lib";
+import type * as Logger from "@mnke/circus-shared/logger";
 
 export class ProfileLoader {
   private store: ProfileStore;

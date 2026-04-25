@@ -11,9 +11,9 @@
  */
 
 import * as k8s from "@kubernetes/client-node";
-import type { Logger } from "@mnke/circus-shared";
+import type * as Logger from "@mnke/circus-shared/logger";
+import { Labels } from "@/lib/k8s.ts";
 import type { EventHandler } from "../core/event-handler.ts";
-import { Labels } from "../lib/k8s.ts";
 
 const INITIAL_RETRY_DELAY_MS = 1000;
 const MAX_RETRY_DELAY_MS = 30000;
@@ -86,7 +86,7 @@ export class PodWatcher {
       return;
     }
 
-    this.performWatch(path, queryParams).catch((error) => {
+    this.performWatch(path, queryParams).catch((_error) => {
       // Watch promise rejected, which means we need to retry
       if (!this.isStarted || this.abortController?.signal.aborted) {
         return;
@@ -188,18 +188,7 @@ export class PodWatcher {
     const chimpId = pod.metadata?.labels?.[Labels.CHIMP_ID];
     const profile = pod.metadata?.labels?.[Labels.CHIMP_PROFILE];
 
-    if (!chimpId || !profile) {
-      this.logger.debug(
-        { podName: pod.metadata?.name },
-        "Pod missing chimp-id or chimp-profile label, skipping",
-      );
-      return;
-    }
-
-    this.logger.debug(
-      { eventType: type, chimpId, profile, podName: pod.metadata?.name },
-      "Pod event received",
-    );
+    if (!chimpId || !profile) return;
 
     await this.eventHandler.handleEvent({
       type: "pod_event",

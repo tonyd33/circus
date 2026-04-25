@@ -1,5 +1,10 @@
-import { type Logger, Protocol, Standards } from "@mnke/circus-shared";
-import { type TopicRegistry, Typing } from "@mnke/circus-shared/lib";
+import { Standards } from "@mnke/circus-shared";
+import type {
+  ChimpProfileStore,
+  TopicRegistry,
+} from "@mnke/circus-shared/components";
+import { Typing } from "@mnke/circus-shared/lib";
+import type * as Logger from "@mnke/circus-shared/logger";
 import type { NatsConnection } from "nats";
 import type {
   ConsumerManager,
@@ -8,7 +13,14 @@ import type {
   StateManager,
 } from "@/executors";
 import type { PodCache } from "@/state";
-import { type Action, decide, type EventPayload } from "./core";
+import {
+  type Action,
+  decide,
+  type Effect,
+  type EventPayload,
+  type Query,
+  type QueryResultMap,
+} from "./core";
 
 export interface EventHandlerDeps {
   nc: NatsConnection;
@@ -17,6 +29,7 @@ export interface EventHandlerDeps {
   stateManager: StateManager;
   metaPublisher: MetaPublisher;
   topicRegistry: TopicRegistry;
+  chimpProfileStore: ChimpProfileStore;
   podCache: PodCache;
   logger: Logger.Logger;
 }
@@ -32,25 +45,8 @@ export class EventHandler {
 
   async handleEvent(payload: EventPayload): Promise<void> {
     try {
-      const state = {
-        now: Date.now(),
-        pod: this.deps.podCache.getPod(payload.chimpId),
-      };
-      const decision = decide(state, payload);
-
-      this.logger.info(
-        { chimpId: decision.chimpId, reason: decision.reason },
-        "Executing decision",
-      );
-
-      for (const action of decision.actions) {
-        await this.executeAction(action);
-      }
-
-      this.logger.info(
-        { chimpId: decision.chimpId, actionCount: decision.actions.length },
-        "Decision executed",
-      );
+      const effect = decide(payload);
+      await this.interpret(effect);
     } catch (error) {
       this.logger.error(
         { err: error, payloadType: payload.type },
@@ -60,12 +56,39 @@ export class EventHandler {
     }
   }
 
+  private async interpret(effect: Effect): Promise<void> {
+    switch (effect.type) {
+      case "pure":
+        for (const action of effect.actions) {
+          await this.executeAction(action);
+        }
+        break;
+      case "query": {
+        const result = await this.runQuery(effect.query);
+        // biome-ignore lint/suspicious/noExplicitAny: effect cont boundary erases query result type
+        const next = (effect.cont as (r: any) => Effect)(result);
+        await this.interpret(next);
+        break;
+      }
+    }
+  }
+
+  private async runQuery(query: Query): Promise<QueryResultMap[Query["type"]]> {
+    switch (query.type) {
+      case "lookup_topic":
+        return this.deps.topicRegistry.lookup(query.topic);
+      case "get_pod":
+        return this.deps.podCache.getPod(query.chimpId);
+      case "get_chimp_state":
+        return this.deps.stateManager.get(query.chimpId);
+      case "get_chimp_profile":
+        return this.deps.chimpProfileStore.getProfile(query.chimpId);
+    }
+  }
+
   private async executeAction(action: Action): Promise<void> {
     this.logger.info({ action }, "Executing action");
     switch (action.type) {
-      case "noop":
-        break;
-
       case "create_job":
         await this.deps.jobManager.createJob(action.chimpId, action.profile);
         break;
@@ -74,22 +97,16 @@ export class EventHandler {
         await this.deps.consumerManager.ensureConsumer(
           action.chimpId,
           action.eventFilterSubjects,
-          action.startSequence,
+          action.deliverFrom,
         );
         break;
 
       case "register_topic":
-        await this.deps.topicRegistry.subscribe(action.topic, action.chimpId, {
-          force: action.force ?? false,
-        });
+        await this.deps.topicRegistry.subscribe(action.topic, action.chimpId);
         break;
 
       case "delete_consumers":
         await this.deps.consumerManager.deleteConsumer(action.chimpId);
-        break;
-
-      case "cleanup_topics":
-        await this.deps.topicRegistry.unsubscribeAll(action.chimpId);
         break;
 
       case "delete_job":
@@ -97,13 +114,8 @@ export class EventHandler {
         break;
 
       case "upsert_status":
-        await this.deps.stateManager.upsert(
-          action.chimpId,
-          action.profile,
-          action.status,
-        );
+        await this.deps.stateManager.upsert(action.chimpId, action.status);
         await this.deps.metaPublisher.publishStatus(
-          action.profile,
           action.chimpId,
           action.status,
         );
@@ -116,31 +128,6 @@ export class EventHandler {
       case "send_command": {
         const subject = Standards.Chimp.Naming.directSubject(action.chimpId);
         this.deps.nc.publish(subject, JSON.stringify(action.command));
-        break;
-      }
-
-      case "transfer_topics": {
-        const topics = await this.deps.topicRegistry.listForChimp(
-          action.fromChimpId,
-        );
-        const topicFilters = topics.map(Standards.Topic.topicToEventSubject);
-
-        // Create consumer for new chimpId with topic filters before
-        // updating KV — ensures consumer exists when subscribe() tries
-        // to update filter_subjects
-        await this.deps.consumerManager.ensureConsumer(
-          action.toChimpId,
-          topicFilters,
-          1,
-        );
-
-        for (const topic of topics) {
-          await this.deps.topicRegistry.subscribe(topic, action.toChimpId, {
-            force: true,
-          });
-        }
-        await this.deps.topicRegistry.unsubscribeAll(action.fromChimpId);
-        await this.deps.consumerManager.deleteConsumer(action.fromChimpId);
         break;
       }
 

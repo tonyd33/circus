@@ -1,5 +1,5 @@
-import type { Logger } from "@mnke/circus-shared";
-import { connect, type NatsConnection, headers as natsHeaders } from "nats";
+import type * as Logger from "@mnke/circus-shared/logger";
+import { connect, type NatsConnection } from "nats";
 import type { Adapter } from "./adapters/index.ts";
 import type { RouteConfig } from "./types.ts";
 
@@ -76,11 +76,7 @@ export class Usher {
               headers,
             );
             if (result) {
-              const h = natsHeaders();
-              h.set("profile", result.defaultProfile);
-              nc.publish(result.eventSubject, JSON.stringify(result.command), {
-                headers: h,
-              });
+              nc.publish(result.eventSubject, JSON.stringify(result.command));
               adapterLogger.info(
                 { subject: result.eventSubject, path: route.path },
                 "Published event",

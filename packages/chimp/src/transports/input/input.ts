@@ -5,6 +5,7 @@ export type MessageHandler = (
 ) => Promise<"continue" | "stop">;
 
 export type ActivityCallback = () => void;
+export type StopCallback = (reason: "explicit_stop" | "error") => Promise<void>;
 
 export abstract class ChimpInput {
   abstract start(): Promise<void>;

@@ -54,21 +54,21 @@ helm install circus ./charts/circus -f custom-values.yaml
 
 ### Key Configuration Options
 
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `nats.enabled` | Enable NATS deployment | `true` |
-| `nats.image.tag` | NATS image tag | `2.10-alpine` |
-| `redis.enabled` | Enable Redis deployment | `true` |
-| `redis.image.tag` | Redis image tag | `7-alpine` |
-| `minio.enabled` | Enable MinIO deployment | `true` |
-| `minio.auth.rootUser` | MinIO root username | `minioadmin` |
-| `minio.auth.rootPassword` | MinIO root password | `minioadmin` |
-| `ringmaster.enabled` | Enable Ringmaster deployment | `true` |
-| `ringmaster.image.repository` | Ringmaster image | `circus-ringmaster` |
-| `ringmaster.env.chimpImage` | Chimp worker image | `circus-chimp:latest` |
-| `usher.enabled` | Enable Usher deployment | `true` |
-| `usher.image.repository` | Usher image | `circus-usher` |
-| `usher.service.port` | Usher service port | `3000` |
+| Parameter                     | Description                  | Default               |
+|-------------------------------|------------------------------|-----------------------|
+| `nats.enabled`                | Enable NATS deployment       | `true`                |
+| `nats.image.tag`              | NATS image tag               | `2.10-alpine`         |
+| `redis.enabled`               | Enable Redis deployment      | `true`                |
+| `redis.image.tag`             | Redis image tag              | `7-alpine`            |
+| `minio.enabled`               | Enable MinIO deployment      | `true`                |
+| `minio.auth.rootUser`         | MinIO root username          | `minioadmin`          |
+| `minio.auth.rootPassword`     | MinIO root password          | `minioadmin`          |
+| `ringmaster.enabled`          | Enable Ringmaster deployment | `true`                |
+| `ringmaster.image.repository` | Ringmaster image             | `circus-ringmaster`   |
+| `ringmaster.env.chimpImage`   | Chimp worker image           | `circus-chimp:latest` |
+| `usher.enabled`               | Enable Usher deployment      | `true`                |
+| `usher.image.repository`      | Usher image                  | `circus-usher`        |
+| `usher.service.port`          | Usher service port           | `7392`                |
 
 ### Example Custom Values
 

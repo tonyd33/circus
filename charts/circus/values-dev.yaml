@@ -2,6 +2,23 @@ ringmaster:
   enabled: true
   image:
     repository: ringmaster
+  profileTemplate:
+    base:
+      extraEnv:
+        - name: CLAUDE_CODE_OAUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: circus-secrets
+              key: CLAUDE_CODE_OAUTH_TOKEN
+        - name: GITHUB_APP_ID
+          value: "3434984"
+        - name: GITHUB_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: circus-secrets
+              key: GITHUB_PRIVATE_KEY
+        - name: GITHUB_INSTALLATION_ID
+          value: "125365483"
 
 usher:
   enabled: true
@@ -17,8 +34,6 @@ usher:
   extraEnv:
     - name: GITHUB_BOT_NAME
       value: circus-chimp
-    - name: GITHUB_PROFILE
-      value: scout
     - name: GITHUB_APP_ID
       value: '3434984'
     - name: GITHUB_WEBHOOK_SECRET
@@ -31,8 +46,6 @@ usher:
         secretKeyRef:
           name: circus-secrets
           key: GITHUB_PRIVATE_KEY
-    - name: DISCORD_PROFILE
-      value: scout
     - name: DISCORD_PUBLIC_KEY
       value: '94f9710cabc6d6b331b92adbe21bc4e2796d331f0a754fe2ca8211bbc7db5313'
     - name: DISCORD_APPLICATION_ID

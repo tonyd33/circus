@@ -1,8 +1,9 @@
 #!/usr/bin/env bun
 
-import { Logger, Standards } from "@mnke/circus-shared";
+import { Standards } from "@mnke/circus-shared";
 import { EnvReader as ER } from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
+import * as Logger from "@mnke/circus-shared/logger";
 import { Chimp } from "./chimp";
 import { DefaultBrainFactory } from "./chimp-brain";
 
@@ -18,6 +19,9 @@ async function main() {
     ),
     redisUrl: ER.str(Standards.Chimp.Env.redisUrl).fallback(
       "redis://localhost:6379",
+    ),
+    databaseUrl: ER.str(Standards.Chimp.Env.databaseUrl).fallback(
+      "postgresql://circus:circus@localhost:5432/circus",
     ),
     brainType: ER.enm(Standards.Chimp.Env.brainType, [
       "claude",
@@ -59,6 +63,7 @@ async function main() {
       model: config.model,
       natsUrl: config.natsUrl,
       redisUrl: config.redisUrl,
+      databaseUrl: config.databaseUrl,
       inputMode: config.inputMode,
       outputMode: config.outputMode,
       httpPort: config.httpPort,

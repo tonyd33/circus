@@ -1,5 +1,12 @@
-import { type Logger, Standards } from "@mnke/circus-shared";
-import { NatsLib, ProfileStore, TopicRegistry } from "@mnke/circus-shared/lib";
+import { Standards } from "@mnke/circus-shared";
+import {
+  ChimpProfileStore,
+  ProfileStore,
+  TopicRegistry,
+} from "@mnke/circus-shared/components";
+import { createDatabase } from "@mnke/circus-shared/db";
+import { NatsLib } from "@mnke/circus-shared/lib";
+import type * as Logger from "@mnke/circus-shared/logger";
 import Redis from "ioredis";
 import {
   connect,
@@ -56,7 +63,8 @@ export class Ringmaster {
     this.logger.info("Connected to NATS JetStream");
 
     await this.ensureSharedStreams(this.jsm);
-    const topicRegistry = new TopicRegistry(this.nc);
+    const db = createDatabase(this.config.databaseUrl);
+    const topicRegistry = new TopicRegistry(this.nc, db);
     await topicRegistry.start();
 
     this.stateManager = new StateManager(
@@ -80,9 +88,20 @@ export class Ringmaster {
     );
     await this.profileLoader.seedDefaults();
 
+    const chimpProfileStore = new ChimpProfileStore(
+      db,
+      this.config.defaultProfile,
+    );
+
     this.jobManager = new JobManager(
-      this.config,
+      {
+        namespace: this.config.namespace,
+        natsUrl: this.config.natsUrl,
+        redisUrl: this.config.redisUrl,
+        databaseUrl: this.config.databaseUrl,
+      },
       this.profileLoader,
+      chimpProfileStore,
       this.logger.child({ component: "JobManager" }),
     );
 
@@ -98,6 +117,7 @@ export class Ringmaster {
       stateManager: this.stateManager,
       metaPublisher: this.metaPublisher,
       topicRegistry,
+      chimpProfileStore,
       podCache: this.podCache,
       logger: this.logger.child({ component: "EventHandler" }),
     });
@@ -109,7 +129,6 @@ export class Ringmaster {
     );
     this.eventListener = new EventListener(
       this.nc,
-      topicRegistry,
       this.eventHandler,
       this.logger.child({ component: "EventListener" }),
     );
@@ -161,7 +180,7 @@ export class Ringmaster {
     const streamDefaults = {
       retention: RetentionPolicy.Limits,
       max_age: 7 * 24 * 60 * 60 * 1_000_000_000,
-      max_msgs: 100_000,
+      max_msgs: 1_000_000,
       storage: StorageType.File,
     };
 

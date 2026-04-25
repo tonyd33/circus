@@ -48,31 +48,21 @@ ENTRYPOINT ["bun", "run", "/app/packages/chimp/src/index.ts"]
 FROM base AS ringmaster
 WORKDIR /app
 
-COPY --from=build /usr/src/app/packages/ringmaster/index.js ./index.js
+COPY --from=build /usr/src/app/packages/ringmaster/dist/index.js ./index.js
 
 ENTRYPOINT ["node", "index.js"]
 
 FROM base AS usher
 WORKDIR /app
 
-# Copy the workspace dependencies and usher source
-COPY --from=build /usr/src/app/node_modules ./node_modules
-COPY --from=build /usr/src/app/packages ./packages
-COPY --from=build /usr/src/app/package.json ./
-
-WORKDIR /app/packages/usher
-ENTRYPOINT ["bun", "run", "src/index.ts"]
+COPY --from=build /usr/src/app/packages/usher/dist/index.js ./index.js
+ENTRYPOINT ["bun", "run", "index.js"]
 
 FROM base AS bullhorn
 WORKDIR /app
 
-# Copy the workspace dependencies and bullhorn source
-COPY --from=build /usr/src/app/node_modules ./node_modules
-COPY --from=build /usr/src/app/packages ./packages
-COPY --from=build /usr/src/app/package.json ./
-
-WORKDIR /app/packages/bullhorn
-ENTRYPOINT ["bun", "run", "src/index.ts"]
+COPY --from=build /usr/src/app/packages/bullhorn/dist/index.js ./index.js
+ENTRYPOINT ["bun", "run", "index.js"]
 
 FROM base AS dashboard
 WORKDIR /app

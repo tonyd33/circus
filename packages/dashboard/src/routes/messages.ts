@@ -1,21 +1,18 @@
-import { type Logger, Protocol, Standards } from "@mnke/circus-shared";
-import type { NatsConnection } from "nats";
 import { z } from "zod";
+import type { MessageService } from "../services/message-service";
 
-const Naming = Standards.Chimp.Naming;
+const SSE_HEADERS = {
+  "Content-Type": "text/event-stream",
+  "Cache-Control": "no-cache",
+  Connection: "keep-alive",
+};
 
 const SendMessageBody = z.object({
   prompt: z.string().min(1),
 });
 
 export class MessageRouter {
-  private nc: NatsConnection;
-  private logger: Logger.Logger;
-
-  constructor(nc: NatsConnection, logger: Logger.Logger) {
-    this.nc = nc;
-    this.logger = logger;
-  }
+  constructor(private messageService: MessageService) {}
 
   get routes() {
     return {
@@ -24,10 +21,7 @@ export class MessageRouter {
           req: Bun.BunRequest<"/api/chimp/:chimpId/message">,
         ): Promise<Response> => {
           const { chimpId } = req.params;
-
-          if (!chimpId) {
-            return new Response("Missing chimpId", { status: 400 });
-          }
+          if (!chimpId) return new Response("Missing chimpId", { status: 400 });
 
           const parsed = SendMessageBody.safeParse(
             await req.json().catch(() => null),
@@ -40,64 +34,17 @@ export class MessageRouter {
           }
 
           try {
-            const js = this.nc.jetstream();
-            await js.publish(
-              Naming.directSubject(chimpId),
-              JSON.stringify(Protocol.createAgentCommand(parsed.data.prompt)),
-            );
+            await this.messageService.sendCommand(chimpId, parsed.data.prompt);
             return Response.json({ ok: true });
-          } catch (e) {
-            this.logger.error({ err: e }, "Failed to publish message");
+          } catch {
             return new Response("Failed to send message", { status: 500 });
           }
         },
       },
       "/api/meta/events": {
         GET: (): Response => {
-          const nc = this.nc;
-          const log = this.logger;
-          const sub = nc.subscribe(`${Standards.Chimp.Prefix.META}.>`);
-
-          const stream = new ReadableStream<Uint8Array>({
-            start(controller) {
-              (async () => {
-                try {
-                  for await (const msg of sub) {
-                    const raw = msg.json();
-                    const parsed = Protocol.MetaEventSchema.safeParse(raw);
-
-                    if (!parsed.success) {
-                      log.warn(
-                        { error: parsed.error.issues },
-                        "Invalid meta event",
-                      );
-                      continue;
-                    }
-
-                    const event: Protocol.MetaEvent = parsed.data;
-                    const payload = JSON.stringify(event);
-                    controller.enqueue(
-                      new TextEncoder().encode(`data: ${payload}\n\n`),
-                    );
-                  }
-                } catch (e) {
-                  log.error({ err: e }, "Meta events stream error");
-                  controller.error(e);
-                }
-              })();
-            },
-            cancel() {
-              sub.unsubscribe();
-            },
-          });
-
-          return new Response(stream, {
-            headers: {
-              "Content-Type": "text/event-stream",
-              "Cache-Control": "no-cache",
-              Connection: "keep-alive",
-            },
-          });
+          const stream = this.messageService.createMetaEventStream();
+          return new Response(stream, { headers: SSE_HEADERS });
         },
       },
     };

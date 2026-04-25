@@ -1,9 +1,13 @@
 import path from "node:path";
-import { type Logger, Protocol } from "@mnke/circus-shared";
-import { type ProfileStore, Typing } from "@mnke/circus-shared/lib";
+import { Protocol } from "@mnke/circus-shared";
+import type {
+  ProfileStore,
+  TopicRegistry,
+} from "@mnke/circus-shared/components";
+import { Typing } from "@mnke/circus-shared/lib";
+import type * as Logger from "@mnke/circus-shared/logger";
 import type { StoredEventContext } from "@/chimp-brain/event-contexts";
-import { setupGithubAuth } from "@/lib/github-auth";
-import { cloneRepo, ghCloneRepo } from "@/lib/tooling";
+import { Tooling } from "@/lib";
 
 export type PublishFn = (message: Protocol.ChimpOutputMessage) => void;
 export type CommandResult = "continue" | "stop";
@@ -18,6 +22,7 @@ export abstract class ChimpBrain {
   protected logger: Logger.Logger;
   protected mcpUrl: string;
   protected profileStore: ProfileStore | null = null;
+  protected topicRegistry: TopicRegistry | null = null;
 
   /**
    * Fires whenever the brain's recorded event-context list changes
@@ -53,6 +58,10 @@ export abstract class ChimpBrain {
     this.profileStore = profileStore;
   }
 
+  setTopicRegistry(topicRegistry: TopicRegistry): void {
+    this.topicRegistry = topicRegistry;
+  }
+
   protected log(
     level: Logger.LogLevel,
     message: string,
@@ -63,10 +72,11 @@ export abstract class ChimpBrain {
     } else {
       this.logger[level](message);
     }
-    this.publish(Protocol.createLogMessage(level, message, data));
   }
 
   async handleCommand(command: Protocol.ChimpCommand): Promise<CommandResult> {
+    this.publish(Protocol.createCommandReceived(command.command));
+
     switch (command.command) {
       case "send-agent-message":
         if (command.args.context) {
@@ -97,8 +107,10 @@ export abstract class ChimpBrain {
         return this.handleSetAllowedTools(command.args.tools);
       case "setup-github-auth":
         return this.handleSetupGithubAuth();
-      case "resume-transmogrify":
-        return this.handleResumeTransmogrify(command.args);
+      case "subscribe-topic":
+        return this.handleSubscribeTopic(command.args.topic);
+      case "add-event-context":
+        return this.handleAddEventContext(command.args.context);
       default:
         return Typing.unreachable(command);
     }
@@ -108,6 +120,7 @@ export abstract class ChimpBrain {
 
   protected async handleStop(): Promise<CommandResult> {
     this.log("info", "Stop command received");
+    await this.gracefulShutdown();
     return "stop";
   }
 
@@ -117,7 +130,7 @@ export abstract class ChimpBrain {
     branch?: string,
   ): Promise<CommandResult> {
     this.log("info", `Cloning repository: ${url}`);
-    const { repoPath, branch: actualBranch } = await cloneRepo(
+    const { repoPath, branch: actualBranch } = await Tooling.cloneRepo(
       url,
       targetPath,
       branch,
@@ -135,7 +148,7 @@ export abstract class ChimpBrain {
     branch?: string,
   ): Promise<CommandResult> {
     this.log("info", `Cloning repository via gh: ${repo}`);
-    const { repoPath, branch: actualBranch } = await ghCloneRepo(
+    const { repoPath, branch: actualBranch } = await Tooling.ghCloneRepo(
       repo,
       targetPath,
       branch,
@@ -177,53 +190,34 @@ export abstract class ChimpBrain {
   }
 
   protected async handleSetupGithubAuth(): Promise<CommandResult> {
-    await setupGithubAuth(this.logger);
+    await Tooling.setupGithubAuth(this.logger);
     return "continue";
   }
 
-  protected async handleResumeTransmogrify(args: {
-    fromProfile: string;
-    reason: string;
-    summary: string;
-    eventContexts: StoredEventContext[];
-  }): Promise<CommandResult> {
-    // Validate that fromProfile exists in the ProfileStore
-    if (this.profileStore) {
-      const profile = await this.profileStore.get(args.fromProfile);
-      if (!profile) {
-        this.log(
-          "warn",
-          `Profile "${args.fromProfile}" does not exist in ProfileStore`,
-        );
-      }
-    } else {
-      this.log(
-        "warn",
-        "ProfileStore not available for validation of fromProfile",
-      );
+  protected async handleSubscribeTopic(
+    topic: Parameters<TopicRegistry["subscribe"]>[0],
+  ): Promise<CommandResult> {
+    if (!this.topicRegistry) {
+      this.log("warn", "TopicRegistry not available for subscribe-topic");
+      return "continue";
     }
 
-    this.log(
-      "info",
-      `Resumed after transmogrify from ${args.fromProfile}: ${args.reason}`,
-    );
-
-    if (args.eventContexts.length > 0) {
-      this.restoreEventContexts(args.eventContexts);
-      this.log("info", "Restored event contexts from predecessor", {
-        count: args.eventContexts.length,
-      });
-    }
-
-    const context = [
-      `You are resuming work after a transmogrify from the "${args.fromProfile}" profile.`,
-      `Reason for transmogrify: ${args.reason}`,
-      `Summary from previous chimp: ${args.summary}`,
-      "Continue the work described above.",
-    ].join("\n");
-
-    return this.handlePrompt(context);
+    await this.topicRegistry.subscribe(topic, this.chimpId);
+    this.log("info", "Subscribed to topic via command", { topic });
+    return "continue";
   }
+
+  protected handleAddEventContext(
+    context: Protocol.EventContext,
+  ): CommandResult {
+    this.recordEventContext(context);
+    this.log("info", "Added event context via command", {
+      source: context.source,
+    });
+    return "continue";
+  }
+
+  protected async gracefulShutdown(): Promise<void> {}
 
   protected restoreEventContexts(contexts: StoredEventContext[]): void {
     this.onEventContextsChanged?.(contexts);

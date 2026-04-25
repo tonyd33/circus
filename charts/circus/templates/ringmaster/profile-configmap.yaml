@@ -1,0 +1,11 @@
+{{- if and .Values.ringmaster.enabled .Values.ringmaster.profileTemplate -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "circus.fullname" . }}-profile-template
+  labels:
+    {{- include "circus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ringmaster
+data:
+  profiles.json: {{ .Values.ringmaster.profileTemplate | toJson | quote }}
+{{- end }}

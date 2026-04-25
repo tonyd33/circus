@@ -1,5 +1,9 @@
-import { type Logger, Protocol, Standards } from "@mnke/circus-shared";
-import type { ProfileStore, TopicRegistry } from "@mnke/circus-shared/lib";
+import { Protocol, Standards } from "@mnke/circus-shared";
+import type {
+  ProfileStore,
+  TopicRegistry,
+} from "@mnke/circus-shared/components";
+import type * as Logger from "@mnke/circus-shared/logger";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import type { NatsConnection } from "nats";
@@ -56,16 +60,25 @@ export class CircusMcp {
 
     server.tool(
       "chimp_request",
-      "Request creation of a new chimp agent with a specific profile and initial message",
+      "Request creation of a new chimp agent with a specific profile. " +
+        "Optionally hand off your current subscriptions and context to it " +
+        "by providing reason and summary.",
       {
         profile: z.string().describe("Profile name for the new chimp"),
         chimpId: z.string().describe("Unique ID for the new chimp"),
-        message: z
+        reason: z
           .string()
-          .describe("Initial message to send to the new chimp"),
+          .optional()
+          .describe("Why the new chimp is being created (for handoff)"),
+        summary: z
+          .string()
+          .optional()
+          .describe("Summary of work so far (for handoff)"),
       },
       async (args) => {
-        this.config.logger.info(
+        const { nc, chimpId, profile, topicRegistry, logger } = this.config;
+
+        logger.info(
           {
             tool: "chimp_request",
             targetProfile: args.profile,
@@ -73,12 +86,70 @@ export class CircusMcp {
           },
           "MCP tool called: chimp_request",
         );
+
+        // Publish chimp-request first so its NATS timestamp predates
+        // the direct commands — ringmaster uses this timestamp as
+        // startTime for the new consumer
         publish({
           type: "chimp-request",
           profile: args.profile,
           chimpId: args.chimpId,
-          message: args.message,
         });
+
+        // If reason+summary provided, send individual commands to
+        // transfer subscriptions, event contexts, and work summary
+        if (args.reason && args.summary && nc) {
+          const directSubject = Standards.Chimp.Naming.directSubject(
+            args.chimpId,
+          );
+
+          // Transfer topic subscriptions
+          const subscriptions = topicRegistry
+            ? await topicRegistry.listForChimp(chimpId)
+            : [];
+          for (const topic of subscriptions) {
+            nc.publish(
+              directSubject,
+              JSON.stringify({
+                command: "subscribe-topic",
+                args: { topic },
+              }),
+            );
+          }
+
+          // Transfer event contexts
+          for (const stored of this.eventContexts) {
+            nc.publish(
+              directSubject,
+              JSON.stringify({
+                command: "add-event-context",
+                args: { context: stored.context },
+              }),
+            );
+          }
+
+          // Send work summary as prompt
+          const prompt = [
+            `You are resuming work handed off from the "${profile}" profile.`,
+            `Reason: ${args.reason}`,
+            `Summary: ${args.summary}`,
+            "Continue the work described above.",
+          ].join("\n");
+          nc.publish(
+            directSubject,
+            JSON.stringify(Protocol.createAgentCommand(prompt)),
+          );
+
+          logger.info(
+            {
+              targetChimpId: args.chimpId,
+              subscriptionCount: subscriptions.length,
+              eventContextCount: this.eventContexts.length,
+            },
+            "Sent handoff commands to new chimp",
+          );
+        }
+
         return {
           content: [
             {
@@ -260,17 +331,7 @@ export class CircusMcp {
           };
         }
 
-        const success = await topicRegistry.subscribe(topic, chimpId);
-        if (!success) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: "Topic already claimed by another chimp",
-              },
-            ],
-          };
-        }
+        await topicRegistry.subscribe(topic, chimpId);
 
         const topicKey = Standards.Topic.serializeTopic(topic);
         logger.info({ topic: topicKey, chimpId }, "Subscribed to topic");
@@ -284,57 +345,8 @@ export class CircusMcp {
     );
 
     server.tool(
-      "transmogrify",
-      "Transform this chimp into a more powerful profile. Queues a handoff message for the new incarnation, then signals the platform to replace this pod. Use when the current profile is insufficient for the task.",
-      {
-        targetProfile: z.string().describe("Profile to transform into"),
-        reason: z.string().describe("Why the transformation is needed"),
-        summary: z
-          .string()
-          .describe("Summary of work done so far for the new incarnation"),
-      },
-      async (args) => {
-        const { nc, chimpId, profile, logger } = this.config;
-
-        if (!nc) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: "Transmogrify unavailable (no NATS)",
-              },
-            ],
-          };
-        }
-
-        logger.info(
-          { chimpId, targetProfile: args.targetProfile, reason: args.reason },
-          "Transmogrify initiated",
-        );
-
-        publish({
-          type: "transmogrify",
-          fromProfile: profile,
-          targetProfile: args.targetProfile,
-          reason: args.reason,
-          summary: args.summary,
-          eventContexts: this.eventContexts,
-        });
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Transmogrify initiated: ${profile} → ${args.targetProfile}. This pod will be replaced.`,
-            },
-          ],
-        };
-      },
-    );
-
-    server.tool(
       "list_profiles",
-      "List available chimp profiles with descriptions, brain type, and model. Use to decide which profile to transmogrify into.",
+      "List available chimp profiles with descriptions, brain type, and model.",
       {},
       async () => {
         const allProfiles = await this.config.profileStore.list();

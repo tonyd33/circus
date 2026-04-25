@@ -1,482 +1,299 @@
 import { describe, expect, test } from "bun:test";
-import {
-  type CoreState,
-  decide,
-  deriveChimpId,
-  deriveTransmogrifyChimpId,
-  type EventPayload,
-} from "./core.ts";
+import type { Action, Effect, Query } from "./core.ts";
+import { decide, deriveChimpId } from "./core.ts";
 
 const P = "default";
+const T = new Date("2026-04-22T00:00:00.000Z");
 
-function state(overrides: Partial<CoreState> = {}): CoreState {
-  return { now: Date.now(), pod: undefined, ...overrides };
+type QueryHandler = (query: Query) => unknown;
+
+function interpret(effect: Effect, handler: QueryHandler): Action[] {
+  switch (effect.type) {
+    case "pure":
+      return effect.actions;
+    case "query": {
+      const result = handler(effect.query);
+      // biome-ignore lint/suspicious/noExplicitAny: effect cont boundary erases query result type
+      const next = (effect.cont as (r: any) => Effect)(result);
+      return interpret(next, handler);
+    }
+  }
 }
+
+/** Default handler: no subscribers, no pods, no state, default profile */
+const emptyHandler: QueryHandler = (query) => {
+  switch (query.type) {
+    case "lookup_topic":
+      return [];
+    case "get_pod":
+      return undefined;
+    case "get_chimp_state":
+      return null;
+    case "get_chimp_profile":
+      return P;
+  }
+};
+
+function withPod(chimpId: string, pod: unknown): QueryHandler {
+  return (query) => {
+    if (query.type === "get_pod" && query.chimpId === chimpId) return pod;
+    return emptyHandler(query);
+  };
+}
+
+function withSubscribers(
+  subscribers: { chimpId: string; subscribedAt: string }[],
+  podForChimp?: Record<string, unknown>,
+): QueryHandler {
+  return (query) => {
+    if (query.type === "lookup_topic") return subscribers;
+    if (query.type === "get_pod" && podForChimp?.[query.chimpId])
+      return podForChimp[query.chimpId];
+    return emptyHandler(query);
+  };
+}
+
+const eventSubject = "events.github.tonyd33.circus.pr.42.comment";
+const topic = {
+  platform: "github" as const,
+  owner: "tonyd33",
+  repo: "circus",
+  type: "pr" as const,
+  number: 42,
+};
+
+const podWithPhase = (phase: string) => ({ status: { phase } }) as never;
 
 describe("pod_event", () => {
   test("DELETED: no actions", () => {
-    const pod: any = { status: { phase: "Succeeded" } };
-    const decision = decide(state(), {
-      type: "pod_event",
-      chimpId: "chimp-1",
-      profile: P,
-      eventType: "DELETED",
-      pod,
-    });
-
-    expect(decision.chimpId).toBe("chimp-1");
-    expect(decision.actions).toEqual([]);
+    const actions = interpret(
+      decide({
+        type: "pod_event",
+        chimpId: "chimp-1",
+        profile: P,
+        eventType: "DELETED",
+        pod: podWithPhase("Succeeded"),
+      }),
+      emptyHandler,
+    );
+    expect(actions).toEqual([]);
   });
 
   test("ADDED Running: upserts status", () => {
-    const pod: any = { status: { phase: "Running" } };
-    const decision = decide(state(), {
-      type: "pod_event",
-      chimpId: "chimp-1",
-      profile: P,
-      eventType: "ADDED",
-      pod,
-    });
-
-    expect(decision.actions).toEqual([
-      {
+    const actions = interpret(
+      decide({
+        type: "pod_event",
         chimpId: "chimp-1",
-        type: "upsert_status",
         profile: P,
-        status: "running",
-      },
+        eventType: "ADDED",
+        pod: podWithPhase("Running"),
+      }),
+      emptyHandler,
+    );
+    expect(actions).toEqual([
+      { chimpId: "chimp-1", type: "upsert_status", status: "running" },
     ]);
   });
 
-  test("Pending phase maps to pending", () => {
-    const pod: any = { status: { phase: "Pending" } };
-    const decision = decide(state(), {
-      type: "pod_event",
-      chimpId: "chimp-1",
-      profile: P,
-      eventType: "ADDED",
-      pod,
-    });
-
-    expect(decision.actions).toEqual([
-      {
+  test("Pending → pending", () => {
+    const actions = interpret(
+      decide({
+        type: "pod_event",
         chimpId: "chimp-1",
-        type: "upsert_status",
         profile: P,
-        status: "pending",
-      },
+        eventType: "ADDED",
+        pod: podWithPhase("Pending"),
+      }),
+      emptyHandler,
+    );
+    expect(actions).toEqual([
+      { chimpId: "chimp-1", type: "upsert_status", status: "pending" },
     ]);
   });
 
-  test("Failed phase maps to failed", () => {
-    const pod: any = { status: { phase: "Failed" } };
-    const decision = decide(state(), {
-      type: "pod_event",
-      chimpId: "chimp-1",
-      profile: P,
-      eventType: "MODIFIED",
-      pod,
-    });
-
-    expect(decision.actions).toEqual([
-      {
+  test("Failed → failed", () => {
+    const actions = interpret(
+      decide({
+        type: "pod_event",
         chimpId: "chimp-1",
-        type: "upsert_status",
         profile: P,
-        status: "failed",
-      },
+        eventType: "MODIFIED",
+        pod: podWithPhase("Failed"),
+      }),
+      emptyHandler,
+    );
+    expect(actions).toEqual([
+      { chimpId: "chimp-1", type: "upsert_status", status: "failed" },
     ]);
   });
 });
 
 describe("event_received", () => {
-  const eventSubject = "events.github.tonyd33.circus.pr.42.comment";
-  const topic = {
-    platform: "github" as const,
-    owner: "tonyd33",
-    repo: "circus",
-    type: "pr" as const,
-    number: 42,
-  };
-
-  test("topic claimed + pod alive → noop", () => {
-    const pod: any = { status: { phase: "Running" } };
-    const decision = decide(state({ pod }), {
-      type: "event_received",
-      chimpId: "existing-chimp",
-      profile: P,
-      eventSubject,
-      topic,
-      topicOwner: { chimpId: "existing-chimp" },
-      messageSequence: 42,
-    });
-
-    expect(decision.chimpId).toBe("existing-chimp");
-    expect(decision.actions).toEqual([{ type: "noop" }]);
-    expect(decision.reason).toContain("already claimed");
-  });
-
-  test("topic claimed + no pod → reclaim", () => {
-    const decision = decide(state(), {
-      type: "event_received",
-      chimpId: "stale-chimp",
-      profile: P,
-      eventSubject,
-      topic,
-      topicOwner: { chimpId: "stale-chimp" },
-      messageSequence: 42,
-    });
-
-    expect(decision.chimpId).toBe("stale-chimp");
-    expect(decision.actions.find((a) => a.type === "create_job")).toBeDefined();
-    expect(decision.actions.find((a) => a.type === "register_topic")).toEqual({
-      chimpId: "stale-chimp",
-      type: "register_topic",
-      topic,
-      force: true,
-    });
-  });
-
-  test("unclaimed, no pod → schedules chimp", () => {
+  test("unclaimed, no pod → schedules chimp with default profile", () => {
     const chimpId = deriveChimpId(topic, eventSubject);
-    const decision = decide(state(), {
-      type: "event_received",
-      chimpId,
-      profile: "fast",
-      eventSubject,
-      topic,
-      topicOwner: null,
-      messageSequence: 42,
-    });
+    const actions = interpret(
+      decide({ type: "event_received", subject: eventSubject, seq: 42 }),
+      emptyHandler,
+    );
 
-    expect(decision.chimpId).toBe(chimpId);
-    expect(decision.actions[0]).toEqual({
+    expect(actions[0]).toEqual({
       chimpId,
       type: "upsert_status",
-      profile: "fast",
       status: "scheduled",
     });
-    expect(decision.actions.find((a) => a.type === "register_topic")).toEqual({
+    expect(actions.find((a) => a.type === "register_topic")).toEqual({
       chimpId,
       type: "register_topic",
       topic,
-      force: false,
     });
-    expect(decision.actions.find((a) => a.type === "create_job")).toEqual({
+    expect(actions.find((a) => a.type === "create_job")).toEqual({
       chimpId,
       type: "create_job",
-      profile: "fast",
+      profile: P,
     });
   });
 
-  test("unclaimed, pod exists → no scheduled state", () => {
-    const pod: any = { status: { phase: "Running" } };
+  test("unclaimed, pod exists → no upsert_status but creates consumers + job", () => {
     const chimpId = deriveChimpId(topic, eventSubject);
-    const decision = decide(state({ pod }), {
-      type: "event_received",
-      chimpId,
-      profile: P,
-      eventSubject,
-      topic,
-      topicOwner: null,
-      messageSequence: 42,
-    });
-
-    expect(
-      decision.actions.find((a) => a.type === "upsert_status"),
-    ).toBeUndefined();
-    expect(
-      decision.actions.find((a) => a.type === "create_consumers"),
-    ).toBeDefined();
-  });
-
-  test("unclaimed, pod exists → create_job + create_consumers", () => {
-    const pod: any = { status: { phase: "Running" } };
-    const chimpId = deriveChimpId(topic, eventSubject);
-    const decision = decide(state({ pod }), {
-      type: "event_received",
-      chimpId,
-      profile: P,
-      eventSubject,
-      topic,
-      topicOwner: null,
-      messageSequence: 42,
-    });
-
-    expect(decision.actions.find((a) => a.type === "create_job")).toBeDefined();
-    expect(
-      decision.actions.find((a) => a.type === "create_consumers"),
-    ).toBeDefined();
-    expect(
-      decision.actions.find((a) => a.type === "register_topic"),
-    ).toBeDefined();
-  });
-
-  test("pod in Pending phase during event_received → creates consumers", () => {
-    const pod: any = { status: { phase: "Pending" } };
-    const chimpId = deriveChimpId(topic, eventSubject);
-    const decision = decide(state({ pod }), {
-      type: "event_received",
-      chimpId,
-      profile: P,
-      eventSubject,
-      topic,
-      topicOwner: null,
-      messageSequence: 42,
-    });
-
-    expect(
-      decision.actions.find((a) => a.type === "upsert_status"),
-    ).toBeUndefined();
-    expect(
-      decision.actions.find((a) => a.type === "create_consumers"),
-    ).toBeDefined();
-    expect(decision.actions.find((a) => a.type === "create_job")).toBeDefined();
-  });
-
-  test("pod in Failed phase during event_received → creates consumers", () => {
-    const pod: any = { status: { phase: "Failed" } };
-    const chimpId = deriveChimpId(topic, eventSubject);
-    const decision = decide(state({ pod }), {
-      type: "event_received",
-      chimpId,
-      profile: P,
-      eventSubject,
-      topic,
-      topicOwner: null,
-      messageSequence: 42,
-    });
-
-    expect(
-      decision.actions.find((a) => a.type === "upsert_status"),
-    ).toBeUndefined();
-    expect(
-      decision.actions.find((a) => a.type === "create_consumers"),
-    ).toBeDefined();
-    expect(decision.actions.find((a) => a.type === "create_job")).toBeDefined();
-  });
-
-  test("pod in Succeeded phase during event_received → creates consumers", () => {
-    const pod: any = { status: { phase: "Succeeded" } };
-    const chimpId = deriveChimpId(topic, eventSubject);
-    const decision = decide(state({ pod }), {
-      type: "event_received",
-      chimpId,
-      profile: P,
-      eventSubject,
-      topic,
-      topicOwner: null,
-      messageSequence: 42,
-    });
-
-    expect(
-      decision.actions.find((a) => a.type === "upsert_status"),
-    ).toBeUndefined();
-    expect(
-      decision.actions.find((a) => a.type === "create_consumers"),
-    ).toBeDefined();
-    expect(decision.actions.find((a) => a.type === "create_job")).toBeDefined();
-  });
-
-  test("forceClaimTopic: topic claimed by stale chimp, no pod → force claim with reclaim", () => {
-    const staleChimpId = "stale-chimp";
-    const decision = decide(state(), {
-      type: "event_received",
-      chimpId: staleChimpId,
-      profile: P,
-      eventSubject,
-      topic,
-      topicOwner: { chimpId: staleChimpId },
-      messageSequence: 42,
-    });
-
-    const registerTopicAction = decision.actions.find(
-      (a) => a.type === "register_topic",
+    const pod = { status: { phase: "Running" } };
+    const actions = interpret(
+      decide({ type: "event_received", subject: eventSubject, seq: 42 }),
+      withPod(chimpId, pod),
     );
-    expect(registerTopicAction).toBeDefined();
-    expect(registerTopicAction?.force).toBe(true);
+
+    expect(actions.find((a) => a.type === "upsert_status")).toBeUndefined();
+    expect(actions.find((a) => a.type === "create_consumers")).toBeDefined();
+    expect(actions.find((a) => a.type === "create_job")).toBeDefined();
   });
 
-  test("debug event (null topic) → no register_topic", () => {
-    const chimpId = deriveChimpId(null, "events.debug.abc123");
-    const decision = decide(state(), {
-      type: "event_received",
-      chimpId,
-      profile: P,
-      eventSubject: "events.debug.abc123",
-      topic: null,
-      topicOwner: null,
-      messageSequence: 10,
-    });
+  test("subscriber with running pod → no actions", () => {
+    const pod = { status: { phase: "Running" } };
+    const actions = interpret(
+      decide({ type: "event_received", subject: eventSubject, seq: 42 }),
+      withSubscribers(
+        [{ chimpId: "existing-chimp", subscribedAt: "2026-01-01" }],
+        { "existing-chimp": pod },
+      ),
+    );
 
-    expect(
-      decision.actions.find((a) => a.type === "register_topic"),
-    ).toBeUndefined();
-    expect(decision.actions.find((a) => a.type === "create_job")).toBeDefined();
+    expect(actions).toEqual([]);
+  });
+
+  test("subscriber without pod → reclaim", () => {
+    const actions = interpret(
+      decide({ type: "event_received", subject: eventSubject, seq: 42 }),
+      withSubscribers([{ chimpId: "stale-chimp", subscribedAt: "2026-01-01" }]),
+    );
+
+    expect(actions.find((a) => a.type === "create_job")).toBeDefined();
+    expect(actions.find((a) => a.type === "register_topic")).toEqual({
+      chimpId: "stale-chimp",
+      type: "register_topic",
+      topic,
+    });
+  });
+
+  test("direct subject with subscriber + pod → no actions", () => {
+    const pod = { status: { phase: "Running" } };
+    const actions = interpret(
+      decide({
+        type: "event_received",
+        subject: "events.direct.some-chimp.cmd",
+        seq: 1,
+      }),
+      withSubscribers([{ chimpId: "some-chimp", subscribedAt: "2026-01-01" }], {
+        "some-chimp": pod,
+      }),
+    );
+
+    expect(actions).toEqual([]);
+  });
+
+  test("debug event → registers debug topic", () => {
+    const actions = interpret(
+      decide({
+        type: "event_received",
+        subject: "events.debug.abc123.message",
+        seq: 10,
+      }),
+      emptyHandler,
+    );
+
+    expect(actions.find((a) => a.type === "register_topic")).toEqual({
+      chimpId: deriveChimpId({ platform: "debug", sessionId: "abc123" }, ""),
+      type: "register_topic",
+      topic: { platform: "debug", sessionId: "abc123" },
+    });
+    expect(actions.find((a) => a.type === "create_job")).toBeDefined();
+  });
+
+  test("multiple subscribers, some with pods → only reclaims podless ones", () => {
+    const pod = { status: { phase: "Running" } };
+    const actions = interpret(
+      decide({ type: "event_received", subject: eventSubject, seq: 42 }),
+      withSubscribers(
+        [
+          { chimpId: "alive-chimp", subscribedAt: "2026-01-01" },
+          { chimpId: "dead-chimp", subscribedAt: "2026-01-01" },
+        ],
+        { "alive-chimp": pod },
+      ),
+    );
+
+    const jobActions = actions.filter((a) => a.type === "create_job");
+    expect(jobActions).toHaveLength(1);
+    expect(jobActions[0]!.chimpId).toBe("dead-chimp");
   });
 });
 
 describe("chimp_output", () => {
-  test("transmogrify: new chimpId, transfers topics, sends resume command", () => {
-    const eventContexts = [
-      {
-        seenAt: "2026-04-20T01:00:00.000Z",
-        context: {
-          source: "discord" as const,
-          interactionToken: "tok",
-          applicationId: "app",
-          channelId: "ch",
+  test("chimp-request: creates job for requested chimp", () => {
+    const actions = interpret(
+      decide({
+        type: "chimp_output",
+        chimpId: "chimp-1",
+        timestamp: T,
+        message: {
+          type: "chimp-request",
+          profile: "worker",
+          chimpId: "new-chimp",
         },
-      },
-    ];
-    const decision = decide(state(), {
-      type: "chimp_output",
-      chimpId: "chimp-1",
-      message: {
-        type: "transmogrify",
-        fromProfile: "scout",
-        targetProfile: "powerful",
-        reason: "need more power",
-        summary: "working on X",
-        eventContexts,
-      },
-    });
+      }),
+      emptyHandler,
+    );
 
-    const newChimpId = deriveTransmogrifyChimpId("chimp-1", "powerful");
-
-    expect(decision.chimpId).toBe("chimp-1");
-    expect(decision.actions).toEqual([
-      { chimpId: "chimp-1", type: "delete_job" },
+    expect(actions).toEqual([
+      { chimpId: "new-chimp", type: "upsert_status", status: "scheduled" },
       {
-        type: "transfer_topics",
-        fromChimpId: "chimp-1",
-        toChimpId: newChimpId,
-      },
-      { chimpId: "chimp-1", type: "delete_state" },
-      {
-        chimpId: newChimpId,
-        type: "upsert_status",
-        profile: "powerful",
-        status: "scheduled",
+        chimpId: "new-chimp",
+        type: "create_consumers",
+        eventFilterSubjects: ["events.direct.new-chimp.>"],
+        deliverFrom: { type: "time", value: T },
       },
       {
-        chimpId: newChimpId,
-        type: "send_command",
-        command: {
-          command: "resume-transmogrify",
-          args: {
-            fromProfile: "scout",
-            reason: "need more power",
-            summary: "working on X",
-            eventContexts,
-          },
-        },
+        chimpId: "new-chimp",
+        type: "register_topic",
+        topic: { platform: "direct", chimpId: "new-chimp" },
       },
-      { chimpId: newChimpId, type: "create_job", profile: "powerful" },
+      { chimpId: "new-chimp", type: "create_job", profile: "worker" },
     ]);
   });
 
-  test("transmogrify: new chimpId is deterministic", () => {
-    const id1 = deriveTransmogrifyChimpId("chimp-1", "powerful");
-    const id2 = deriveTransmogrifyChimpId("chimp-1", "powerful");
-    const id3 = deriveTransmogrifyChimpId("chimp-1", "worker");
-
-    expect(id1).toBe(id2);
-    expect(id1).not.toBe(id3);
-    expect(id1).toMatch(/^evt-/);
-  });
-
-  test("other output types: noop", () => {
-    const decision = decide(state(), {
-      type: "chimp_output",
-      chimpId: "chimp-1",
-      message: {
-        type: "agent-message-response",
-        content: "hello",
-        sessionId: "s1",
-      },
-    });
-
-    expect(decision.actions).toEqual([{ type: "noop" }]);
-  });
-
-  test("chimp_output: agent-message-response type → noop", () => {
-    const decision = decide(state(), {
-      type: "chimp_output",
-      chimpId: "chimp-1",
-      message: {
-        type: "agent-message-response",
-        content: "task completed",
-        sessionId: "session-123",
-      },
-    });
-
-    expect(decision.chimpId).toBe("chimp-1");
-    expect(decision.actions).toEqual([{ type: "noop" }]);
-    expect(decision.reason).toBe("Output: agent-message-response");
-  });
-
-  test("chimp_output: dashboard-response type → noop", () => {
-    const decision = decide(state(), {
-      type: "chimp_output",
-      chimpId: "chimp-2",
-      message: {
-        type: "agent-message-response",
-        content: "status update",
-        sessionId: "dashboard-session",
-      },
-    });
-
-    expect(decision.actions).toEqual([{ type: "noop" }]);
-  });
-
-  test("transmogrify with stored event contexts → transfers all contexts", () => {
-    const eventContexts = [
-      {
-        seenAt: "2026-04-20T01:00:00.000Z",
-        context: {
-          source: "discord" as const,
-          interactionToken: "tok-1",
-          applicationId: "app-1",
-          channelId: "ch-1",
+  test("agent-message-response → no actions", () => {
+    const actions = interpret(
+      decide({
+        type: "chimp_output",
+        chimpId: "chimp-1",
+        timestamp: T,
+        message: {
+          type: "agent-message-response",
+          content: "hello",
+          sessionId: "s1",
         },
-      },
-      {
-        seenAt: "2026-04-20T02:00:00.000Z",
-        context: {
-          source: "github" as const,
-          repo: "owner/repo",
-          installationId: 123,
-          event: {
-            name: "issue_comment.created" as const,
-            issueNumber: 42,
-            isPR: false,
-            commentId: 456,
-            author: "user123",
-          },
-        },
-      },
-    ];
-    const decision = decide(state(), {
-      type: "chimp_output",
-      chimpId: "chimp-1",
-      message: {
-        type: "transmogrify",
-        fromProfile: "scout",
-        targetProfile: "powerful",
-        reason: "need more power",
-        summary: "working on X",
-        eventContexts,
-      },
-    });
+      }),
+      emptyHandler,
+    );
 
-    const newChimpId = deriveTransmogrifyChimpId("chimp-1", "powerful");
-    const sendCommandAction = decision.actions.find(
-      (a) => a.type === "send_command",
-    ) as any;
-
-    expect(sendCommandAction).toBeDefined();
-    expect(sendCommandAction.command.args.eventContexts).toEqual(eventContexts);
-    expect(sendCommandAction.command.args.eventContexts.length).toBe(2);
+    expect(actions).toEqual([]);
   });
 });

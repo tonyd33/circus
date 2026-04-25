@@ -1,6 +1,16 @@
-import { type Logger, Standards } from "@mnke/circus-shared";
+import { Standards } from "@mnke/circus-shared";
 import { NatsLib } from "@mnke/circus-shared/lib";
-import { AckPolicy, DeliverPolicy, type JetStreamManager } from "nats";
+import type * as Logger from "@mnke/circus-shared/logger";
+import {
+  AckPolicy,
+  type ConsumerConfig,
+  DeliverPolicy,
+  type JetStreamManager,
+} from "nats";
+
+export type DeliverFrom =
+  | { type: "sequence"; value: number }
+  | { type: "time"; value: Date };
 
 export class ConsumerManager {
   private jsm: JetStreamManager;
@@ -14,15 +24,10 @@ export class ConsumerManager {
   async ensureConsumer(
     chimpId: string,
     filterSubjects: string[],
-    startSequence: number,
+    deliverFrom: DeliverFrom,
   ): Promise<void> {
     const streamName = Standards.Chimp.Naming.eventsStreamName();
     const consumerName = Standards.Chimp.Naming.eventConsumerName(chimpId);
-    const directSubject = Standards.Chimp.Naming.directSubject(chimpId);
-
-    const subjects = filterSubjects.includes(directSubject)
-      ? filterSubjects
-      : [...filterSubjects, directSubject];
 
     try {
       await this.jsm.consumers.info(streamName, consumerName);
@@ -32,16 +37,26 @@ export class ConsumerManager {
       if (!NatsLib.isNatsNotFound(error)) throw error;
     }
 
+    const deliverConfig: Partial<ConsumerConfig> =
+      deliverFrom.type === "sequence"
+        ? {
+            deliver_policy: DeliverPolicy.StartSequence,
+            opt_start_seq: deliverFrom.value,
+          }
+        : {
+            deliver_policy: DeliverPolicy.StartTime,
+            opt_start_time: deliverFrom.value.toISOString(),
+          };
+
     try {
       await this.jsm.consumers.add(streamName, {
         durable_name: consumerName,
         ack_policy: AckPolicy.Explicit,
-        filter_subjects: subjects,
-        deliver_policy: DeliverPolicy.StartSequence,
-        opt_start_seq: startSequence,
+        filter_subjects: filterSubjects,
+        ...deliverConfig,
       });
       this.logger.info(
-        { consumerName, chimpId, filterSubjects: subjects, startSequence },
+        { consumerName, chimpId, filterSubjects, deliverFrom },
         "Created consumer",
       );
     } catch (error) {
