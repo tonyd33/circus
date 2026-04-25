@@ -29,20 +29,22 @@ spec:
               value: {{ .Values.externalServices.nats.url | quote }}
             - name: DATABASE_URL
               value: {{ .Values.externalServices.postgres.url | quote }}
+            - name: DEFAULT_PROFILE
+              value: {{ .Values.global.defaultProfile | quote }}
             - name: NODE_ENV
               value: "production"
             {{- with .Values.dashboard.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           ports:
-            - containerPort: 3000
+            - containerPort: 4772
               protocol: TCP
           resources:
             {{- toYaml .Values.dashboard.resources | nindent 12 }}
           readinessProbe:
             httpGet:
               path: /healthz
-              port: 3000
+              port: 4772
             initialDelaySeconds: 5
             periodSeconds: 3
             timeoutSeconds: 5
@@ -50,7 +52,7 @@ spec:
           livenessProbe:
             httpGet:
               path: /healthz
-              port: 3000
+              port: 4772
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
@@ -58,7 +60,7 @@ spec:
           startupProbe:
             httpGet:
               path: /healthz
-              port: 3000
+              port: 4772
             initialDelaySeconds: 0
             periodSeconds: 1
             timeoutSeconds: 5

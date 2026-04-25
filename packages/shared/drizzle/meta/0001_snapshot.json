@@ -1,0 +1,88 @@
+{
+  "id": "0bfbe97b-8b4b-484d-8fef-4e7b15113216",
+  "prevId": "c38b10c1-98f5-43ed-a6a5-080845790020",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.chimp_profiles": {
+      "name": "chimp_profiles",
+      "schema": "",
+      "columns": {
+        "chimp_id": {
+          "name": "chimp_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "profile": {
+          "name": "profile",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "assigned_at": {
+          "name": "assigned_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.topic_subscriptions": {
+      "name": "topic_subscriptions",
+      "schema": "",
+      "columns": {
+        "topic_key": {
+          "name": "topic_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "chimp_id": {
+          "name": "chimp_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subscribed_at": {
+          "name": "subscribed_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "topic_subscriptions_topic_key_chimp_id_pk": {
+          "name": "topic_subscriptions_topic_key_chimp_id_pk",
+          "columns": ["topic_key", "chimp_id"]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

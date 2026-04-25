@@ -1,12 +1,11 @@
-import { type Logger, Standards } from "@mnke/circus-shared";
-import type { TopicRegistry } from "@mnke/circus-shared/services";
+import { Standards } from "@mnke/circus-shared";
+import type * as Logger from "@mnke/circus-shared/logger";
 import {
   AckPolicy,
   type Consumer,
   DeliverPolicy,
   type NatsConnection,
 } from "nats";
-import { deriveChimpId } from "../core/core.ts";
 import type { EventHandler } from "../core/event-handler.ts";
 
 const EVENT_LISTENER_CONSUMER_NAME = "event-listener";
@@ -14,19 +13,16 @@ const EVENT_LISTENER_CONSUMER_NAME = "event-listener";
 export class EventListener {
   private nc: NatsConnection;
   private consumer: Consumer | null = null;
-  private topicRegistry: TopicRegistry;
   private eventHandler: EventHandler;
   private stopConsumer: (() => void) | null = null;
   private logger: Logger.Logger;
 
   constructor(
     nc: NatsConnection,
-    topicRegistry: TopicRegistry,
     eventHandler: EventHandler,
     logger: Logger.Logger,
   ) {
     this.nc = nc;
-    this.topicRegistry = topicRegistry;
     this.eventHandler = eventHandler;
     this.logger = logger;
   }
@@ -52,27 +48,10 @@ export class EventListener {
     (async () => {
       for await (const msg of messages) {
         try {
-          const subject = msg.subject;
-          const topic = Standards.Topic.eventSubjectToTopic(subject);
-          const profile =
-            msg.headers?.get("profile") ?? Standards.Chimp.DEFAULT_PROFILE;
-
-          const topicSubscribers = topic
-            ? await this.topicRegistry.lookup(topic)
-            : [];
-          const firstSubscriber = topicSubscribers[0];
-          const chimpId = firstSubscriber
-            ? firstSubscriber.chimpId
-            : deriveChimpId(topic, subject);
-
           await this.eventHandler.handleEvent({
             type: "event_received",
-            chimpId,
-            profile,
-            eventSubject: subject,
-            topic,
-            topicSubscribers,
-            messageSequence: msg.seq,
+            subject: msg.subject,
+            seq: msg.seq,
           });
 
           msg.ack();

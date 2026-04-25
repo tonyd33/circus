@@ -1,20 +1,13 @@
-import { type Logger, Protocol } from "@mnke/circus-shared";
-import type { ProfileStore } from "@mnke/circus-shared/services";
+import type { ProfileService } from "../services/profile-service";
 
 export class ProfileRouter {
-  private store: ProfileStore;
-  private logger: Logger.Logger;
-
-  constructor(store: ProfileStore, logger: Logger.Logger) {
-    this.store = store;
-    this.logger = logger;
-  }
+  constructor(private profileService: ProfileService) {}
 
   get routes() {
     return {
       "/api/profiles": {
         GET: async () => {
-          const profiles = await this.store.list();
+          const profiles = await this.profileService.list();
           return Response.json({ profiles });
         },
       },
@@ -23,14 +16,11 @@ export class ProfileRouter {
           req: Bun.BunRequest<"/api/profiles/:name">,
         ): Promise<Response> => {
           const name = req.params.name;
-          if (!name) {
-            return new Response("Missing name", { status: 400 });
-          }
+          if (!name) return new Response("Missing name", { status: 400 });
 
-          const profile = await this.store.get(name);
-          if (!profile) {
+          const profile = await this.profileService.get(name);
+          if (!profile)
             return Response.json({ error: "Not found" }, { status: 404 });
-          }
 
           return Response.json({ name, profile });
         },
@@ -38,33 +28,22 @@ export class ProfileRouter {
           req: Bun.BunRequest<"/api/profiles/:name">,
         ): Promise<Response> => {
           const name = req.params.name;
-          if (!name) {
-            return new Response("Missing name", { status: 400 });
-          }
+          if (!name) return new Response("Missing name", { status: 400 });
 
           const body = await req.json().catch(() => null);
-          const parsed = Protocol.ChimpProfileSchema.safeParse(body);
-          if (!parsed.success) {
-            return Response.json(
-              { error: parsed.error.flatten() },
-              { status: 400 },
-            );
+          const result = await this.profileService.save(name, body);
+          if ("error" in result) {
+            return Response.json({ error: result.error }, { status: 400 });
           }
-
-          await this.store.save(name, parsed.data);
-          this.logger.info({ name }, "Profile saved");
           return Response.json({ ok: true });
         },
         DELETE: async (
           req: Bun.BunRequest<"/api/profiles/:name">,
         ): Promise<Response> => {
           const name = req.params.name;
-          if (!name) {
-            return new Response("Missing name", { status: 400 });
-          }
+          if (!name) return new Response("Missing name", { status: 400 });
 
-          await this.store.delete(name);
-          this.logger.info({ name }, "Profile deleted");
+          await this.profileService.delete(name);
           return Response.json({ ok: true });
         },
       },

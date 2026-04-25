@@ -33,6 +33,8 @@ spec:
               value: {{ .Values.externalServices.nats.url | quote }}
             - name: DATABASE_URL
               value: {{ .Values.externalServices.postgres.url | quote }}
+            - name: DEFAULT_PROFILE
+              value: {{ .Values.global.defaultProfile | quote }}
             - name: NAMESPACE
               valueFrom:
                 fieldRef:

@@ -1,4 +1,5 @@
-import { type Logger, type Protocol, Standards } from "@mnke/circus-shared";
+import { type Protocol, Standards } from "@mnke/circus-shared";
+import type * as Logger from "@mnke/circus-shared/logger";
 import type { NatsConnection } from "nats";
 
 export class MetaPublisher {
@@ -11,21 +12,19 @@ export class MetaPublisher {
   }
 
   async publishStatus(
-    profile: string,
     chimpId: string,
     status: Standards.Chimp.ChimpStatus,
   ): Promise<void> {
     const event: Protocol.MetaEvent = {
       type: "status",
       timestamp: new Date().toISOString(),
-      profile,
       chimpId,
       status,
     };
     const subject = Standards.Chimp.Naming.metaSubject(chimpId);
     this.nc.publish(subject, JSON.stringify(event));
     this.logger.info(
-      { subject, chimpId, profile, status },
+      { subject, chimpId, status },
       "Published status meta event",
     );
   }

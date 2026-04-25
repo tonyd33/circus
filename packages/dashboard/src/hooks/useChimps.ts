@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { ChimpState, ChimpStatus } from "@/lib/chimp-api";
+import type { ChimpState, ChimpStatus } from "@/lib/chimp";
 
 interface StatusUpdate {
   profile: string;

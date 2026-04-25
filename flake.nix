@@ -43,6 +43,7 @@
               kustomize
               opentofu
               go-task
+              postgresql
             ];
           };
         }

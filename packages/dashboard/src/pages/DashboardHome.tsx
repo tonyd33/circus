@@ -1,4 +1,5 @@
-import type { Standards } from "@mnke/circus-shared";
+import { Standards } from "@mnke/circus-shared";
+import { Typing } from "@mnke/circus-shared/lib";
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
@@ -6,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useChimps } from "@/hooks/useChimps";
 import { useChimpTopics } from "@/hooks/useChimpTopics";
-import type { ChimpState } from "@/lib/chimp-api";
+import type { ChimpState } from "@/lib/chimp";
 
 const statusColors: Record<ChimpState["status"], string> = {
   scheduled: "bg-blue-400",
@@ -70,7 +71,7 @@ const statCards: Array<{
     key: "running",
     label: "Running",
     borderClass: statusBorders.running,
-    icon: "🎭",
+    icon: "🤹",
   },
   {
     key: "pending",
@@ -96,10 +97,7 @@ const statCards: Array<{
  * Displays subscribed topics for a chimp as badges.
  * Topics include GitHub PRs/issues and Discord channels the chimp is subscribed to.
  */
-function ChimpTopicsBadges({ chimpId }: { chimpId: string }) {
-  const { topicsByChimp } = useChimpTopics();
-  const topics = topicsByChimp[chimpId] ?? [];
-
+function ChimpTopicsBadges({ topics }: { topics: Standards.Topic.Topic[] }) {
   if (topics.length === 0) {
     return null;
   }
@@ -107,33 +105,52 @@ function ChimpTopicsBadges({ chimpId }: { chimpId: string }) {
   return (
     <div className="flex items-center gap-1.5">
       {topics.map((t: Standards.Topic.Topic) => {
-        const key =
-          t.platform === "github"
-            ? `${t.platform}.${t.owner}.${t.repo}.${t.type}.${t.number}`
-            : `${t.platform}.${t.guildId}.${t.channelId}.${t.interactionId}`;
+        const key = Standards.Topic.serializeTopic(t);
 
-        if (t.platform === "github") {
-          return (
-            <Badge
-              key={key}
-              variant="outline"
-              className="text-xs font-mono text-emerald-500 border-emerald-500/30"
-            >
-              {t.owner}/{t.repo}#{t.number}
-            </Badge>
-          );
+        switch (t.platform) {
+          case "github":
+            return (
+              <Badge
+                key={key}
+                variant="outline"
+                className="text-xs font-mono text-emerald-500 border-emerald-500/30"
+              >
+                {t.owner}/{t.repo}#{t.number}
+              </Badge>
+            );
+          case "discord":
+            return (
+              <Badge
+                key={key}
+                variant="outline"
+                className="text-xs font-mono text-indigo-500 border-indigo-500/30"
+              >
+                discord
+              </Badge>
+            );
+          case "direct":
+            return (
+              <Badge
+                key={key}
+                variant="outline"
+                className="text-xs font-mono text-muted-foreground border-muted-foreground/30"
+              >
+                direct:{t.chimpId}
+              </Badge>
+            );
+          case "debug":
+            return (
+              <Badge
+                key={key}
+                variant="outline"
+                className="text-xs font-mono text-amber-500 border-amber-500/30"
+              >
+                debug:{t.sessionId}
+              </Badge>
+            );
+          default:
+            return Typing.unreachable(t);
         }
-
-        // Discord topics - shown as simple badge
-        return (
-          <Badge
-            key={key}
-            variant="outline"
-            className="text-xs font-mono text-indigo-500 border-indigo-500/30"
-          >
-            discord
-          </Badge>
-        );
       })}
     </div>
   );
@@ -141,6 +158,7 @@ function ChimpTopicsBadges({ chimpId }: { chimpId: string }) {
 
 export function DashboardHome() {
   const { chimps, error } = useChimps();
+  const { topicsByChimp } = useChimpTopics();
 
   const counts = useMemo<StatusCounts>(() => {
     return chimps.reduce<StatusCounts>(
@@ -163,7 +181,6 @@ export function DashboardHome() {
         <h1 className="text-3xl font-bold text-circus-crimson">
           Ringmaster's View
         </h1>
-        <span className="text-sm text-muted-foreground">Auto-refresh: 5s</span>
       </div>
 
       {error && (
@@ -226,7 +243,9 @@ export function DashboardHome() {
                       {formatRelativeTime(chimp.updatedAt)}
                     </span>
                   </Link>
-                  <ChimpTopicsBadges chimpId={chimp.chimpId} />
+                  <ChimpTopicsBadges
+                    topics={topicsByChimp[chimp.chimpId] ?? []}
+                  />
                 </div>
               ))}
             </div>

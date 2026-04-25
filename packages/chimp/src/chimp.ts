@@ -1,7 +1,7 @@
-import type { Logger } from "@mnke/circus-shared";
+import { ProfileStore, TopicRegistry } from "@mnke/circus-shared/components";
 import { createDatabase } from "@mnke/circus-shared/db";
 import { Typing } from "@mnke/circus-shared/lib";
-import { ProfileStore, TopicRegistry } from "@mnke/circus-shared/services";
+import type * as Logger from "@mnke/circus-shared/logger";
 import Redis from "ioredis";
 import type { NatsConnection } from "nats";
 import { connect } from "nats";
@@ -119,12 +119,12 @@ export class Chimp {
     const onActivity = () => {
       this.lastActivity = Date.now();
     };
-    const onStopRequested = () => this.shutdown("explicit_stop");
+    const onStop = (reason: "explicit_stop" | "error") => this.shutdown(reason);
     const handler: MessageHandler = (command) => {
       return brain.handleCommand(command);
     };
 
-    this.input = this.createInput(handler, onActivity, onStopRequested);
+    this.input = this.createInput(handler, onActivity, onStop);
 
     this.startIdleCheck();
 
@@ -146,7 +146,7 @@ export class Chimp {
   private createInput(
     handler: MessageHandler,
     onActivity: () => void,
-    onStopRequested: () => Promise<void>,
+    onStop: (reason: "explicit_stop" | "error") => Promise<void>,
   ): ChimpInput {
     switch (this.config.inputMode) {
       case "nats":
@@ -156,7 +156,7 @@ export class Chimp {
           this.config.chimpId,
           handler,
           onActivity,
-          onStopRequested,
+          onStop,
           this.logger.child({ component: "NatsInput" }),
         );
       case "http":
@@ -164,7 +164,7 @@ export class Chimp {
           this.config.httpPort,
           handler,
           onActivity,
-          onStopRequested,
+          onStop,
           this.logger.child({ component: "HttpInput" }),
         );
       default:
@@ -219,7 +219,9 @@ export class Chimp {
     }, checkIntervalMs);
   }
 
-  private async shutdown(reason: string): Promise<void> {
+  private async shutdown(
+    reason: "explicit_stop" | "idle_timeout" | "error",
+  ): Promise<void> {
     if (this.isShuttingDown) return;
     this.isShuttingDown = true;
 
@@ -241,11 +243,6 @@ export class Chimp {
       await this.mcp.stop();
     }
 
-    if (this.topicRegistry) {
-      await this.topicRegistry.unsubscribeAll(this.config.chimpId);
-      this.logger.info("Cleaned up topic subscriptions");
-    }
-
     // Chimp owns NATS connection — drain and close last
     if (this.nc) {
       await this.nc.drain();
@@ -253,6 +250,6 @@ export class Chimp {
     }
 
     this.logger.info("Shutdown complete");
-    process.exit(0);
+    process.exit(reason === "error" ? 1 : 0);
   }
 }

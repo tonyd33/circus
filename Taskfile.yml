@@ -2,12 +2,16 @@
 
 version: "3"
 
+dotenv:
+  - .env
+
 includes:
   db:
     taskfile: taskfiles/db.yml
     dir: .
   lint:
     taskfile: taskfiles/lint.yml
+    dir: .
 
 tasks:
   test:
@@ -20,7 +24,7 @@ tasks:
 
   format:
     desc: Format all files
-    cmd: bun run biome format --write
+    cmd: bun run biome check --write
 
   build:
     desc: Build all packages

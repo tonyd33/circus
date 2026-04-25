@@ -9,3 +9,9 @@ export const topicSubscriptions = pgTable(
   },
   (t) => [primaryKey({ columns: [t.topicKey, t.chimpId] })],
 );
+
+export const chimpProfiles = pgTable("chimp_profiles", {
+  chimpId: text("chimp_id").primaryKey(),
+  profile: text("profile").notNull(),
+  assignedAt: timestamp("assigned_at").defaultNow().notNull(),
+});

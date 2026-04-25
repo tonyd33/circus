@@ -1,9 +1,11 @@
-import { type Logger, Protocol, Standards } from "@mnke/circus-shared";
+import { Protocol, Standards } from "@mnke/circus-shared";
+import type * as Logger from "@mnke/circus-shared/logger";
 import type { Consumer, NatsConnection } from "nats";
 import {
   type ActivityCallback,
   ChimpInput,
   type MessageHandler,
+  type StopCallback,
 } from "./input";
 
 export class NatsInput extends ChimpInput {
@@ -11,7 +13,7 @@ export class NatsInput extends ChimpInput {
   private chimpId: string;
   private handler: MessageHandler;
   private onActivity: ActivityCallback;
-  private onStopRequested: () => Promise<void>;
+  private onStop: StopCallback;
   private stopCallbacks: (() => void)[] = [];
   private logger: Logger.Logger;
 
@@ -20,7 +22,7 @@ export class NatsInput extends ChimpInput {
     chimpId: string,
     handler: MessageHandler,
     onActivity: ActivityCallback,
-    onStopRequested: () => Promise<void>,
+    onStop: StopCallback,
     logger: Logger.Logger,
   ) {
     super();
@@ -28,7 +30,7 @@ export class NatsInput extends ChimpInput {
     this.chimpId = chimpId;
     this.handler = handler;
     this.onActivity = onActivity;
-    this.onStopRequested = onStopRequested;
+    this.onStop = onStop;
     this.logger = logger;
   }
 
@@ -69,13 +71,13 @@ export class NatsInput extends ChimpInput {
           this.logger.info({ seq: msg.seq }, "Processed message");
 
           if (result === "stop") {
-            await this.onStopRequested();
+            await this.onStop("explicit_stop");
             return;
           }
         }
       } catch (error) {
         this.logger.error({ err: error }, "Error in message processing loop");
-        await this.onStopRequested();
+        await this.onStop("error");
       }
     })();
   }

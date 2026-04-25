@@ -4,7 +4,7 @@ import type { Database } from "../db/client";
 import { topicSubscriptions } from "../db/schema";
 import { Naming } from "../standards/chimp";
 import {
-  eventSubjectToTopic,
+  deserializeTopic,
   serializeTopic,
   type Topic,
   type TopicSubscription,
@@ -81,20 +81,33 @@ export class TopicRegistry {
       .where(eq(topicSubscriptions.chimpId, chimpId));
   }
 
-  async listForChimp(chimpId: string): Promise<Topic[]> {
-    if (!this.jsm) return [];
+  async listAll(): Promise<Record<string, Topic[]>> {
+    const rows = await this.db
+      .select({
+        chimpId: topicSubscriptions.chimpId,
+        topicKey: topicSubscriptions.topicKey,
+      })
+      .from(topicSubscriptions);
 
-    const streamName = Naming.eventsStreamName();
-    const consumerName = Naming.eventConsumerName(chimpId);
-
-    try {
-      const info = await this.jsm.consumers.info(streamName, consumerName);
-      const filterSubjects = info.config.filter_subjects ?? [];
-      return filterSubjects
-        .map((s) => eventSubjectToTopic(s))
-        .filter((t): t is Topic => t !== null);
-    } catch {
-      return [];
+    const result: Record<string, Topic[]> = {};
+    for (const row of rows) {
+      const topic = deserializeTopic(row.topicKey);
+      if (!topic) continue;
+      const list = result[row.chimpId] ?? [];
+      list.push(topic);
+      result[row.chimpId] = list;
     }
+    return result;
+  }
+
+  async listForChimp(chimpId: string): Promise<Topic[]> {
+    const rows = await this.db
+      .select({ topicKey: topicSubscriptions.topicKey })
+      .from(topicSubscriptions)
+      .where(eq(topicSubscriptions.chimpId, chimpId));
+
+    return rows
+      .map((r) => deserializeTopic(r.topicKey))
+      .filter((t): t is Topic => t !== null);
   }
 }

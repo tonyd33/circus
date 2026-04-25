@@ -22,7 +22,7 @@
   },
   "scripts": {
     "dev": "bun --watch src/index.ts",
-    "build": "bun build --target=node --outfile=index.js src/index.ts",
+    "build": "bun build --target=node --outfile=dist/index.js src/index.ts",
     "typecheck": "bun tsgo --noEmit",
     "start": "bun src/index.ts"
   }

@@ -5,6 +5,7 @@
 # Global settings
 global:
   namespace: default
+  defaultProfile: scout
 
 # External services configuration
 # These services are expected to be installed separately

@@ -1,5 +1,5 @@
 import * as k8s from "@kubernetes/client-node";
-import type { Logger } from "@mnke/circus-shared";
+import type * as Logger from "@mnke/circus-shared/logger";
 import { K8sLib } from "@/lib";
 
 const { CHIMP_ID, MANAGED_BY } = K8sLib.Labels;

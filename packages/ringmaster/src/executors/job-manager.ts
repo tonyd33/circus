@@ -1,8 +1,16 @@
 import * as k8s from "@kubernetes/client-node";
-import { type Logger, Standards } from "@mnke/circus-shared";
+import { Standards } from "@mnke/circus-shared";
+import type { ChimpProfileStore } from "@mnke/circus-shared/components";
+import type * as Logger from "@mnke/circus-shared/logger";
 import type { ProfileLoader } from "@/config";
-import type { RingmasterConfig } from "@/core";
 import { K8sLib } from "@/lib";
+
+export interface JobManagerConfig {
+  namespace: string;
+  natsUrl: string;
+  redisUrl: string;
+  databaseUrl: string;
+}
 
 export class JobManager {
   private k8sBatchApi: k8s.BatchV1Api;
@@ -11,11 +19,13 @@ export class JobManager {
   private redisUrl: string;
   private databaseUrl: string;
   private profileLoader: ProfileLoader;
+  private chimpProfileStore: ChimpProfileStore;
   private logger: Logger.Logger;
 
   constructor(
-    config: RingmasterConfig,
+    config: JobManagerConfig,
     profileLoader: ProfileLoader,
+    chimpProfileStore: ChimpProfileStore,
     logger: Logger.Logger,
   ) {
     const kc = new k8s.KubeConfig();
@@ -27,6 +37,7 @@ export class JobManager {
     this.redisUrl = config.redisUrl;
     this.databaseUrl = config.databaseUrl;
     this.profileLoader = profileLoader;
+    this.chimpProfileStore = chimpProfileStore;
     this.logger = logger;
   }
 
@@ -35,6 +46,8 @@ export class JobManager {
   async stop(): Promise<void> {}
 
   async createJob(chimpId: string, profile: string): Promise<void> {
+    await this.chimpProfileStore.setProfile(chimpId, profile);
+
     const jobName = Standards.Chimp.Naming.podName(chimpId);
     const profileData = await this.profileLoader.getProfile(profile);
 

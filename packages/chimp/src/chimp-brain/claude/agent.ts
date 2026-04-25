@@ -2,7 +2,8 @@
  * Claude Agent SDK integration and message processing
  */
 import * as ClaudeSDK from "@anthropic-ai/claude-agent-sdk";
-import { type Logger, Protocol } from "@mnke/circus-shared";
+import { Protocol } from "@mnke/circus-shared";
+import type * as Logger from "@mnke/circus-shared/logger";
 import type { PublishFn } from "@/chimp-brain/chimp-brain";
 
 type LogFn = (

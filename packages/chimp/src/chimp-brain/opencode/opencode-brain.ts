@@ -1,9 +1,8 @@
-import type { S3Client } from "@aws-sdk/client-s3";
 import { Protocol } from "@mnke/circus-shared";
 import { EnvReader as ER } from "@mnke/circus-shared/lib";
 import { Either as E } from "@mnke/circus-shared/lib/fp";
 import * as Opencode from "@opencode-ai/sdk";
-import { createS3Client, s3ConfigReader } from "@/lib/s3";
+import { configReader, createS3Client, type S3Client } from "@/lib/s3";
 import { ChimpBrain, type CommandResult } from "../chimp-brain";
 import {
   restoreOpencodeChimpStateFromS3,
@@ -24,7 +23,6 @@ export class OpencodeBrain extends ChimpBrain {
   private sessionId: string | null = null;
   private eventAbortController: AbortController | null = null;
   private s3Client: S3Client | null = null;
-  private s3Bucket: string | null = null;
 
   private async bindEventSubscription(directory: string): Promise<void> {
     if (this.eventAbortController) {
@@ -61,21 +59,15 @@ export class OpencodeBrain extends ChimpBrain {
   async onStartup(): Promise<void> {
     this.log("info", "OpencodeBrain starting up", { chimpId: this.chimpId });
 
-    const s3Result = s3ConfigReader.read(process.env).value;
+    const s3Result = configReader.read(process.env).value;
     if (E.isLeft(s3Result)) {
       this.log("error", ER.formatReadError(s3Result.value));
       throw new Error("S3 configuration missing");
     }
-    const s3Config = s3Result.value;
-    this.s3Client = createS3Client(s3Config);
-    this.s3Bucket = s3Config.bucket;
+    this.s3Client = createS3Client(s3Result.value);
 
     try {
-      await restoreOpencodeStateFromS3(
-        this.s3Client,
-        this.s3Bucket,
-        this.chimpId,
-      );
+      await restoreOpencodeStateFromS3(this.s3Client, this.chimpId);
       this.log("info", "Opencode state restored from S3");
     } catch {
       this.log("warn", "No existing opencode state found, starting fresh");
@@ -85,7 +77,6 @@ export class OpencodeBrain extends ChimpBrain {
     try {
       const savedState = await restoreOpencodeChimpStateFromS3(
         this.s3Client,
-        this.s3Bucket,
         this.chimpId,
       );
       if (savedState) {
@@ -159,20 +150,15 @@ export class OpencodeBrain extends ChimpBrain {
       this.log("info", "Opencode server closed");
     }
 
-    if (this.s3Client && this.s3Bucket) {
+    if (this.s3Client) {
       try {
-        await saveOpencodeChimpStateToS3(
-          this.s3Client,
-          this.s3Bucket,
-          this.chimpId,
-          {
-            sessionId: this.sessionId,
-            workingDir: this.workingDir,
-          },
-        );
+        await saveOpencodeChimpStateToS3(this.s3Client, this.chimpId, {
+          sessionId: this.sessionId,
+          workingDir: this.workingDir,
+        });
         this.log("info", "Chimp state saved to S3");
 
-        await saveOpencodeStateToS3(this.s3Client, this.s3Bucket, this.chimpId);
+        await saveOpencodeStateToS3(this.s3Client, this.chimpId);
         this.log("info", "Opencode state saved to S3");
       } catch (error) {
         this.log("error", "Failed to save state", { err: error });

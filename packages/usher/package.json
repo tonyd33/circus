@@ -24,6 +24,7 @@
   "scripts": {
     "dev": "bun --watch src/index.ts --route adapter=debug,path=/debug",
     "typecheck": "bun tsgo --noEmit",
-    "start": "bun src/index.ts"
+    "start": "bun src/index.ts",
+    "build": "bun build --target=bun --outfile=dist/index.js src/index.ts"
   }
 }

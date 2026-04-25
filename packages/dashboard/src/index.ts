@@ -1,19 +1,10 @@
 #!/usr/bin/env bun
 
-import { Logger } from "@mnke/circus-shared";
-import { createDatabase } from "@mnke/circus-shared/db";
+import { Standards } from "@mnke/circus-shared";
 import { EnvReader as ER } from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
-import { ProfileStore, TopicRegistry } from "@mnke/circus-shared/services";
-import { serve } from "bun";
-import Redis from "ioredis";
-import { connect } from "nats";
-import index from "./index.html";
-import { RedisStatusSource } from "./lib/status-source";
-import { ActivityRouter } from "./routes/activity";
-import { ChimpRouter } from "./routes/chimps";
-import { MessageRouter } from "./routes/messages";
-import { ProfileRouter } from "./routes/profiles";
+import * as Logger from "@mnke/circus-shared/logger";
+import { Dashboard } from "./dashboard";
 
 const logger = Logger.createLogger("dashboard");
 
@@ -24,6 +15,8 @@ async function main() {
     databaseUrl: ER.str("DATABASE_URL").fallback(
       "postgresql://circus:circus@localhost:5432/circus",
     ),
+    defaultProfile: ER.str(Standards.Profile.Env.defaultProfile),
+    port: ER.int("PORT").fallback(4772),
   }).read(process.env).value;
 
   if (Either.isLeft(result)) {
@@ -31,51 +24,16 @@ async function main() {
     process.exit(1);
   }
 
-  const config = result.value;
-
-  const redis = new Redis(config.redisUrl);
-  const statusSource = new RedisStatusSource(redis);
-
-  const nc = await connect({
-    servers: config.natsUrl,
-    maxReconnectAttempts: -1,
-    reconnectTimeWait: 2000,
-  });
-  logger.info({ url: config.natsUrl }, "Connected to NATS");
-
-  const db = createDatabase(config.databaseUrl);
-  const topicRegistry = new TopicRegistry(nc, db);
-  await topicRegistry.start();
-
-  const activityRouter = new ActivityRouter(
-    nc,
-    topicRegistry,
-    logger.child({ component: "ActivityRouter" }),
-  );
-  const chimpRouter = new ChimpRouter(
-    statusSource,
-    nc,
-    topicRegistry,
-    logger.child({ component: "ChimpRouter" }),
-  );
-  const profileStore = new ProfileStore(redis);
-  const profileRouter = new ProfileRouter(
-    profileStore,
-    logger.child({ component: "ProfileRouter" }),
-  );
-  const messageRouter = new MessageRouter(
-    nc,
-    logger.child({ component: "MessageRouter" }),
+  const dashboard = new Dashboard(
+    result.value,
+    logger.child({ component: "Dashboard" }),
   );
 
   const shutdown = async (signal: string) => {
-    logger.info(`Received ${signal}, shutting down...`);
-    await nc.drain();
-    await nc.close();
-    await redis.quit();
+    logger.info({ signal }, "Received shutdown signal");
+    await dashboard.stop();
     process.exit(0);
   };
-
   process.on("SIGINT", () =>
     shutdown("SIGINT").catch((e) => {
       logger.error({ err: e }, "Shutdown error");
@@ -89,23 +47,7 @@ async function main() {
     }),
   );
 
-  const server = serve({
-    routes: {
-      "/healthz": new Response("OK", { status: 200 }),
-      "/*": index,
-      ...activityRouter.routes,
-      ...chimpRouter.routes,
-      ...profileRouter.routes,
-      ...messageRouter.routes,
-    },
-
-    development: process.env.NODE_ENV !== "production" && {
-      hmr: true,
-      console: true,
-    },
-  });
-
-  logger.info({ url: server.url.toString() }, "Dashboard server started");
+  await dashboard.start();
 }
 
 main().catch((error) => {

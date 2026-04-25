@@ -1,4 +1,3 @@
-import type { S3Client } from "@aws-sdk/client-s3";
 import { Protocol } from "@mnke/circus-shared";
 import { EnvReader as ER } from "@mnke/circus-shared/lib";
 import { Either as E } from "@mnke/circus-shared/lib/fp";
@@ -13,7 +12,7 @@ import {
   composeSystemPromptWithEventContexts,
   type StoredEventContext,
 } from "@/chimp-brain/event-contexts";
-import { createS3Client, s3ConfigReader } from "@/lib/s3";
+import { configReader, createS3Client, type S3Client } from "@/lib/s3";
 import { ChimpBrain, type CommandResult } from "../chimp-brain";
 import { processWithClaude } from "./agent";
 
@@ -21,7 +20,6 @@ export class ClaudeChimp extends ChimpBrain {
   private messageCount = 0;
   private sessionId?: string;
   private s3Client: S3Client | null = null;
-  private s3Bucket: string | null = null;
   protected eventContexts: StoredEventContext[] = [];
 
   async onStartup(): Promise<void> {
@@ -38,32 +36,22 @@ export class ClaudeChimp extends ChimpBrain {
       );
     }
 
-    const s3Result = s3ConfigReader.read(process.env).value;
+    const s3Result = configReader.read(process.env).value;
     if (E.isLeft(s3Result)) {
       this.log("error", ER.formatReadError(s3Result.value));
       throw new Error("S3 configuration missing");
     }
-    const s3Config = s3Result.value;
-    this.s3Client = createS3Client(s3Config);
-    this.s3Bucket = s3Config.bucket;
+    this.s3Client = createS3Client(s3Result.value);
 
+    await this.restoreState(this.s3Client);
+  }
+
+  private async restoreState(client: S3Client): Promise<void> {
     try {
-      await restoreClaudeStateFromS3(
-        this.s3Client,
-        this.s3Bucket,
-        this.chimpId,
-      );
+      await restoreClaudeStateFromS3(client, this.chimpId);
       this.log("info", "Claude state restored from S3");
-    } catch (_error) {
-      this.log("warn", "No existing Claude state found, starting fresh");
-    }
 
-    try {
-      const savedState = await restoreChimpStateFromS3(
-        this.s3Client,
-        this.s3Bucket,
-        this.chimpId,
-      );
+      const savedState = await restoreChimpStateFromS3(client, this.chimpId);
       if (savedState) {
         this.sessionId = savedState.sessionId;
         this.workingDir = savedState.workingDir;
@@ -78,8 +66,8 @@ export class ClaudeChimp extends ChimpBrain {
           eventContextCount: this.eventContexts.length,
         });
       }
-    } catch (_error) {
-      this.log("warn", "Could not restore chimp state, using defaults");
+    } catch {
+      this.log("warn", "Could not restore state from S3, starting fresh");
     }
 
     this.onEventContextsChanged?.(this.eventContexts);
@@ -88,23 +76,27 @@ export class ClaudeChimp extends ChimpBrain {
   async onShutdown(): Promise<void> {
     this.log("info", "ClaudeChimp shutting down", { chimpId: this.chimpId });
 
-    if (this.sessionId && this.s3Client && this.s3Bucket) {
-      try {
-        await saveChimpStateToS3(this.s3Client, this.s3Bucket, this.chimpId, {
-          sessionId: this.sessionId,
-          workingDir: this.workingDir,
-          messageCount: this.messageCount,
-          model: this.model,
-          allowedTools: this.allowedTools,
-          eventContexts: this.eventContexts,
-        });
-        this.log("info", "Chimp state saved to S3");
+    if (this.sessionId && this.s3Client) {
+      await this.saveState(this.s3Client, this.sessionId);
+    }
+  }
 
-        await saveClaudeStateToS3(this.s3Client, this.s3Bucket, this.chimpId);
-        this.log("info", "Claude state saved to S3");
-      } catch (error) {
-        this.log("error", "Failed to save state", { err: error });
-      }
+  private async saveState(client: S3Client, sessionId: string): Promise<void> {
+    try {
+      await saveChimpStateToS3(client, this.chimpId, {
+        sessionId,
+        workingDir: this.workingDir,
+        messageCount: this.messageCount,
+        model: this.model,
+        allowedTools: this.allowedTools,
+        eventContexts: this.eventContexts,
+      });
+      this.log("info", "Chimp state saved to S3");
+
+      await saveClaudeStateToS3(client, this.chimpId);
+      this.log("info", "Claude state saved to S3");
+    } catch (error) {
+      this.log("error", "Failed to save state", { err: error });
     }
   }
 
@@ -151,15 +143,6 @@ export class ClaudeChimp extends ChimpBrain {
     this.onEventContextsChanged?.(this.eventContexts);
   }
 
-  /**
-   * Compose the effective system prompt for the next turn. Appends a
-   * `<known_event_contexts>` block describing every platform/channel
-   * the chimp has seen so far, so the agent can pick one to reply on
-   * even when it's not the turn's originating channel.
-   *
-   * Recomposed on every turn so restarts and new contexts flow through
-   * without mutating `this.systemPrompt`.
-   */
   protected composeSystemPrompt(): string | undefined {
     return composeSystemPromptWithEventContexts(
       this.systemPrompt,

@@ -8,8 +8,7 @@ import type {
   SDKMessage,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-import type { Protocol } from "@mnke/circus-shared";
-import { Typing } from "@mnke/circus-shared/lib";
+import { type Protocol, Standards } from "@mnke/circus-shared";
 import {
   AlertTriangle,
   ArrowDown,
@@ -68,34 +67,27 @@ import {
 } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { useSSE } from "@/hooks/useSSE";
+import type { ActivityEvent } from "@/lib/chimp";
 
-type ActivityMessage =
-  | {
-      id: string;
-      type: "event";
-      messageType: string;
-      timestamp: string;
-      data: Protocol.ChimpCommand;
-    }
-  | {
-      id: string;
-      type: "output";
-      messageType: string;
-      timestamp: string;
-      data: Protocol.ChimpOutputMessage;
-    }
-  | {
-      id: string;
-      type: "meta";
-      messageType: string;
-      timestamp: string;
-      data: Protocol.MetaEvent;
-    };
+type ActivityMessage = ActivityEvent;
+
+function getMessageType(msg: ActivityMessage): string {
+  switch (msg.type) {
+    case "event":
+      return msg.data.command;
+    case "output":
+      return msg.data.type;
+    case "meta":
+      return msg.data.type;
+    case "unknown":
+      return "unknown";
+  }
+}
 
 const messageTypeIcons: Record<string, React.ReactNode> = {
   "agent-message-response": <Brain className="h-3.5 w-3.5" />,
   "send-agent-message": <MessageSquare className="h-3.5 w-3.5" />,
-  log: <ScrollText className="h-3.5 w-3.5" />,
+  "command-received": <ScrollText className="h-3.5 w-3.5" />,
   error: <AlertTriangle className="h-3.5 w-3.5" />,
   progress: <Loader2 className="h-3.5 w-3.5" />,
   artifact: <FileBox className="h-3.5 w-3.5" />,
@@ -1092,15 +1084,7 @@ export function ChimpActivity() {
   const [selectedTypes, setSelectedTypes] = useState<Set<string>>(new Set());
   const [prompt, setPrompt] = useState("");
   const [sending, setSending] = useState(false);
-  const [topics, setTopics] = useState<
-    {
-      platform: string;
-      owner: string;
-      repo: string;
-      type: string;
-      number: number;
-    }[]
-  >([]);
+  const [topics, setTopics] = useState<Standards.Topic.Topic[]>([]);
 
   useEffect(() => {
     if (!chimpId) return;
@@ -1123,7 +1107,10 @@ export function ChimpActivity() {
   const dispatchedOutputIds = useMemo(() => {
     const ids = new Set<string>();
     for (const msg of messages) {
-      if (msg.type === "meta" && msg.messageType === "bullhorn-dispatched") {
+      if (
+        msg.type === "meta" &&
+        getMessageType(msg) === "bullhorn-dispatched"
+      ) {
         const seq = (msg.data as Record<string, unknown>).outputSequence;
         if (typeof seq === "number") ids.add(`output-${seq}`);
       }
@@ -1141,7 +1128,7 @@ export function ChimpActivity() {
     const output: string[] = [];
     for (const msg of visibleMessages) {
       const list = msg.type === "event" ? event : output;
-      if (!list.includes(msg.messageType)) list.push(msg.messageType);
+      if (!list.includes(getMessageType(msg))) list.push(getMessageType(msg));
     }
     return { event: event.sort(), output: output.sort() };
   }, [visibleMessages]);
@@ -1159,7 +1146,9 @@ export function ChimpActivity() {
     () =>
       selectedTypes.size === 0
         ? visibleMessages
-        : visibleMessages.filter((msg) => selectedTypes.has(msg.messageType)),
+        : visibleMessages.filter((msg) =>
+            selectedTypes.has(getMessageType(msg)),
+          ),
     [visibleMessages, selectedTypes],
   );
 
@@ -1329,29 +1318,16 @@ export function ChimpActivity() {
             )}
           </div>
         );
-      case "log":
+      case "command-received":
         return (
-          <div className="flex items-start gap-2">
+          <div className="flex items-center gap-2">
             <Badge
               variant="outline"
-              className={`text-xs shrink-0 ${
-                data.level === "error"
-                  ? "border-red-500 text-red-500"
-                  : data.level === "warn"
-                    ? "border-amber-500 text-amber-500"
-                    : "border-muted-foreground"
-              }`}
+              className="text-xs shrink-0 border-blue-500 text-blue-500"
             >
-              {data.level}
+              received
             </Badge>
-            <div className="flex-1 space-y-1">
-              <code className="text-xs font-mono bg-muted/30 rounded px-2 py-1 block break-all">
-                {data.message}
-              </code>
-              {data.data !== undefined && (
-                <ExpandableJSON data={data.data} label="Log data" />
-              )}
-            </div>
+            <code className="text-xs font-mono">{data.command}</code>
           </div>
         );
       case "artifact":
@@ -1447,8 +1423,8 @@ export function ChimpActivity() {
         return renderOutputContent(msg.data);
       case "meta":
         return null;
-      default:
-        return Typing.unreachable(msg);
+      case "unknown":
+        return <ExpandableJSON data={msg.data} label="Unknown event" />;
     }
   };
 
@@ -1473,15 +1449,29 @@ export function ChimpActivity() {
               </h1>
               {topics.length > 0 && (
                 <div className="flex items-center gap-1.5 ml-2">
-                  {topics.map((t) => (
-                    <Badge
-                      key={`${t.platform}.${t.owner}.${t.repo}.${t.type}.${t.number}`}
-                      variant="outline"
-                      className="text-xs font-mono text-emerald-500 border-emerald-500/30"
-                    >
-                      {t.owner}/{t.repo}#{t.number}
-                    </Badge>
-                  ))}
+                  {topics.map((t) => {
+                    const key = Standards.Topic.serializeTopic(t);
+                    if (t.platform === "github") {
+                      return (
+                        <Badge
+                          key={key}
+                          variant="outline"
+                          className="text-xs font-mono text-emerald-500 border-emerald-500/30"
+                        >
+                          {t.owner}/{t.repo}#{t.number}
+                        </Badge>
+                      );
+                    }
+                    return (
+                      <Badge
+                        key={key}
+                        variant="outline"
+                        className="text-xs font-mono text-muted-foreground border-muted-foreground/30"
+                      >
+                        {key}
+                      </Badge>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1623,10 +1613,10 @@ export function ChimpActivity() {
                           variant="outline"
                           className="font-mono text-xs gap-1"
                         >
-                          {messageTypeIcons[msg.messageType] ?? (
+                          {messageTypeIcons[getMessageType(msg)] ?? (
                             <Circle className="h-3.5 w-3.5" />
                           )}
-                          {msg.messageType}
+                          {getMessageType(msg)}
                         </Badge>
                       </div>
                       <div className="flex items-center gap-2">

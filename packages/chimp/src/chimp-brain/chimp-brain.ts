@@ -1,10 +1,13 @@
 import path from "node:path";
-import { type Logger, Protocol } from "@mnke/circus-shared";
+import { Protocol } from "@mnke/circus-shared";
+import type {
+  ProfileStore,
+  TopicRegistry,
+} from "@mnke/circus-shared/components";
 import { Typing } from "@mnke/circus-shared/lib";
-import type { ProfileStore, TopicRegistry } from "@mnke/circus-shared/services";
+import type * as Logger from "@mnke/circus-shared/logger";
 import type { StoredEventContext } from "@/chimp-brain/event-contexts";
-import { setupGithubAuth } from "@/lib/github-auth";
-import { cloneRepo, ghCloneRepo } from "@/lib/tooling";
+import { Tooling } from "@/lib";
 
 export type PublishFn = (message: Protocol.ChimpOutputMessage) => void;
 export type CommandResult = "continue" | "stop";
@@ -69,10 +72,11 @@ export abstract class ChimpBrain {
     } else {
       this.logger[level](message);
     }
-    this.publish(Protocol.createLogMessage(level, message, data));
   }
 
   async handleCommand(command: Protocol.ChimpCommand): Promise<CommandResult> {
+    this.publish(Protocol.createCommandReceived(command.command));
+
     switch (command.command) {
       case "send-agent-message":
         if (command.args.context) {
@@ -126,7 +130,7 @@ export abstract class ChimpBrain {
     branch?: string,
   ): Promise<CommandResult> {
     this.log("info", `Cloning repository: ${url}`);
-    const { repoPath, branch: actualBranch } = await cloneRepo(
+    const { repoPath, branch: actualBranch } = await Tooling.cloneRepo(
       url,
       targetPath,
       branch,
@@ -144,7 +148,7 @@ export abstract class ChimpBrain {
     branch?: string,
   ): Promise<CommandResult> {
     this.log("info", `Cloning repository via gh: ${repo}`);
-    const { repoPath, branch: actualBranch } = await ghCloneRepo(
+    const { repoPath, branch: actualBranch } = await Tooling.ghCloneRepo(
       repo,
       targetPath,
       branch,
@@ -186,7 +190,7 @@ export abstract class ChimpBrain {
   }
 
   protected async handleSetupGithubAuth(): Promise<CommandResult> {
-    await setupGithubAuth(this.logger);
+    await Tooling.setupGithubAuth(this.logger);
     return "continue";
   }
 
@@ -213,21 +217,7 @@ export abstract class ChimpBrain {
     return "continue";
   }
 
-  protected async gracefulShutdown(): Promise<void> {
-    if (!this.topicRegistry) {
-      this.log("warn", "TopicRegistry not available for graceful shutdown");
-      return;
-    }
-
-    try {
-      await this.topicRegistry.unsubscribeAll(this.chimpId);
-      this.log("info", "Unsubscribed from all topics");
-    } catch (error) {
-      this.log("error", "Error during graceful shutdown", {
-        err: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
+  protected async gracefulShutdown(): Promise<void> {}
 
   protected restoreEventContexts(contexts: StoredEventContext[]): void {
     this.onEventContextsChanged?.(contexts);

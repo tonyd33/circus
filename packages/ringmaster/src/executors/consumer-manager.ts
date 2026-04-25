@@ -1,5 +1,6 @@
-import { type Logger, Standards } from "@mnke/circus-shared";
+import { Standards } from "@mnke/circus-shared";
 import { NatsLib } from "@mnke/circus-shared/lib";
+import type * as Logger from "@mnke/circus-shared/logger";
 import {
   AckPolicy,
   type ConsumerConfig,
@@ -27,11 +28,6 @@ export class ConsumerManager {
   ): Promise<void> {
     const streamName = Standards.Chimp.Naming.eventsStreamName();
     const consumerName = Standards.Chimp.Naming.eventConsumerName(chimpId);
-    const directSubject = Standards.Chimp.Naming.directSubject(chimpId);
-
-    const subjects = filterSubjects.includes(directSubject)
-      ? filterSubjects
-      : [...filterSubjects, directSubject];
 
     try {
       await this.jsm.consumers.info(streamName, consumerName);
@@ -56,11 +52,11 @@ export class ConsumerManager {
       await this.jsm.consumers.add(streamName, {
         durable_name: consumerName,
         ack_policy: AckPolicy.Explicit,
-        filter_subjects: subjects,
+        filter_subjects: filterSubjects,
         ...deliverConfig,
       });
       this.logger.info(
-        { consumerName, chimpId, filterSubjects: subjects, deliverFrom },
+        { consumerName, chimpId, filterSubjects, deliverFrom },
         "Created consumer",
       );
     } catch (error) {

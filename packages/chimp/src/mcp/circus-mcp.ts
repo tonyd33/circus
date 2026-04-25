@@ -1,5 +1,9 @@
-import { type Logger, Protocol, Standards } from "@mnke/circus-shared";
-import type { ProfileStore, TopicRegistry } from "@mnke/circus-shared/services";
+import { Protocol, Standards } from "@mnke/circus-shared";
+import type {
+  ProfileStore,
+  TopicRegistry,
+} from "@mnke/circus-shared/components";
+import type * as Logger from "@mnke/circus-shared/logger";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import type { NatsConnection } from "nats";

@@ -1,9 +1,10 @@
 #!/usr/bin/env bun
 
 import * as Commander from "@commander-js/extra-typings";
-import { Logger } from "@mnke/circus-shared";
+import { Standards } from "@mnke/circus-shared";
 import { EnvReader as ER } from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
+import * as Logger from "@mnke/circus-shared/logger";
 import type { RingmasterConfig } from "@/core/types";
 import { Ringmaster } from "@/ringmaster";
 
@@ -24,6 +25,7 @@ async function main() {
     databaseUrl: ER.str("DATABASE_URL").fallback(
       "postgresql://circus:circus@localhost:5432/circus",
     ),
+    defaultProfile: ER.str(Standards.Profile.Env.defaultProfile),
     profileTemplatePath: ER.str("PROFILE_TEMPLATE_PATH").fallbackW(undefined),
   }).read(process.env).value;
 
@@ -38,6 +40,7 @@ async function main() {
     natsUrl: envConfig.natsUrl,
     redisUrl: envConfig.redisUrl,
     databaseUrl: envConfig.databaseUrl,
+    defaultProfile: envConfig.defaultProfile,
     namespace: opts.namespace,
     profileTemplatePath: envConfig.profileTemplatePath,
   };

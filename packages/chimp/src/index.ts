@@ -1,8 +1,9 @@
 #!/usr/bin/env bun
 
-import { Logger, Standards } from "@mnke/circus-shared";
+import { Standards } from "@mnke/circus-shared";
 import { EnvReader as ER } from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
+import * as Logger from "@mnke/circus-shared/logger";
 import { Chimp } from "./chimp";
 import { DefaultBrainFactory } from "./chimp-brain";
 

@@ -67,16 +67,16 @@ Chimps hand off work to a new chimp with a different profile using `chimp_reques
 | `src/standards/` | Constants, naming conventions, Zod schemas for domain types | Nothing (leaf) |
 | `src/protocol.ts` | Wire protocol — commands, outputs, meta events | `standards/` |
 | `src/db/` | Database schema (Drizzle), client factory | Nothing (leaf) |
-| `src/services/` | Data access + business logic (TopicRegistry, ProfileStore) | `db/`, `standards/`, external stores |
+| `src/components/` | Data access + business logic (TopicRegistry, ProfileStore) | `db/`, `standards/`, external stores |
 | `src/lib/` | Pure utilities — env reading, NATS helpers, parsers, typing | Nothing (leaf) |
 
 ### Principles
 
 1. **Leaf modules have no internal dependencies.** `standards/`, `db/`, `lib/` don't import each other. This keeps them independently testable and prevents cycles.
 
-2. **Services compose leaves.** `services/` imports from `db/`, `standards/`, and external packages (NATS, Redis). This is the only layer that talks to external stores.
+2. **Components compose leaves.** `components/` imports from `db/`, `standards/`, and external packages (NATS, Redis). This is the only layer that talks to external stores.
 
-3. **Export paths match purpose.** `@mnke/circus-shared/lib` for utilities, `@mnke/circus-shared/db` for persistence, `@mnke/circus-shared/services` for data access. Consumers import from the path that matches what they need — not a kitchen-sink re-export.
+3. **Export paths match purpose.** `@mnke/circus-shared/lib` for utilities, `@mnke/circus-shared/db` for persistence, `@mnke/circus-shared/components` for data access. Consumers import from the path that matches what they need — not a kitchen-sink re-export.
 
 4. **Don't put things where they don't belong.** A database client is not a "lib utility." A topic registry is not a "lib helper." If something talks to an external system, it's a service. If something defines table schemas, it's db. Misplacing code erodes the meaning of the structure over time.
 
@@ -203,7 +203,7 @@ test("hello world", () => {
 
 - Bun.serve for HTTP + WebSocket. Routes defined as object with path keys.
 - Use `Bun.BunRequest<"/path/:param">` for typed route params.
-- Type-safe env reading: Use `ER.str("VAR").fallback("default")` or `ER.int("PORT").fallback(3000)` from `@mnke/circus-shared/lib`
+- Type-safe env reading: Use `ER.str("VAR").fallback("default")` or `ER.int("PORT").fallback(8299)` from `@mnke/circus-shared/lib`
 - Workspace: `"@mnke/circus-shared": "workspace:*"` for internal packages.
 - Bun.serve routes: use explicit `routes: { ... }` object, NOT spread operator (causes type error with websocket required)
 
@@ -417,7 +417,7 @@ const profile: Protocol.ChimpProfile = ...;
 
 - `packages/shared/src/standards/chimp.ts` — NATS subject naming, stream names, consumer names, Redis keys
 - `packages/shared/src/standards/topic.ts` — topic schema, serialization, event subject parsing
-- `packages/shared/src/services/topic-registry.ts` — topic subscription registry (Postgres + NATS consumer management)
+- `packages/shared/src/components/topic-registry.ts` — topic subscription registry (Postgres + NATS consumer management)
 - `packages/shared/src/protocol.ts` — all Zod schemas (commands, outputs, meta events, event context)
 - `packages/ringmaster/src/core/core.ts` — pure decision logic (event routing, chimp spawning)
 - `packages/chimp/src/chimp-brain/chimp-brain.ts` — base brain class (command dispatch, overridable handlers)

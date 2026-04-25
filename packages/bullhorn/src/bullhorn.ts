@@ -1,5 +1,6 @@
-import { type Logger, Protocol, Standards } from "@mnke/circus-shared";
+import { Protocol, Standards } from "@mnke/circus-shared";
 import { Typing } from "@mnke/circus-shared/lib";
+import type * as Logger from "@mnke/circus-shared/logger";
 import {
   createMetrics,
   type ServiceMetrics,
@@ -136,10 +137,10 @@ export class Bullhorn {
         );
         break;
 
-      case "log":
-        this.logger[msg.level](
-          { chimpId, ...msg.data },
-          `[${chimpId}] ${msg.message}`,
+      case "command-received":
+        this.logger.info(
+          { chimpId, command: msg.command },
+          `[${chimpId}] Command received: ${msg.command}`,
         );
         break;
 

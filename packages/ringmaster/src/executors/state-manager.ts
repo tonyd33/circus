@@ -4,7 +4,8 @@
  * Manages chimp state in Redis
  */
 
-import { type Logger, Standards } from "@mnke/circus-shared";
+import { Standards } from "@mnke/circus-shared";
+import type * as Logger from "@mnke/circus-shared/logger";
 import Redis from "ioredis";
 
 type ChimpState = Standards.Chimp.ChimpState;
@@ -28,11 +29,7 @@ export class StateManager {
     await this.redis.quit();
   }
 
-  async upsert(
-    chimpId: string,
-    profile: string,
-    status: ChimpStatus,
-  ): Promise<void> {
+  async upsert(chimpId: string, status: ChimpStatus): Promise<void> {
     const key = Naming.redisChimpKey(chimpId);
     const now = Date.now();
 
@@ -45,7 +42,6 @@ export class StateManager {
 
     const state: ChimpState = {
       chimpId,
-      profile,
       status,
       createdAt,
       updatedAt: now,

@@ -6,12 +6,13 @@
   "private": true,
   "exports": {
     ".": "./src/index.ts",
+    "./logger": "./src/logger.ts",
     "./metrics": "./src/metrics.ts",
     "./lib": "./src/lib/index.ts",
     "./lib/fp": "./src/lib/fp/index.ts",
     "./standards": "./src/standards/index.ts",
     "./db": "./src/db/index.ts",
-    "./services": "./src/services/index.ts"
+    "./components": "./src/components/index.ts"
   },
   "scripts": {
     "typecheck": "bun tsgo --noEmit",
