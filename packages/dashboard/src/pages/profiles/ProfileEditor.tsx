@@ -118,16 +118,20 @@ export function ProfileEditor({
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="text-lg">{name}</CardTitle>
-            <CardDescription>{description || "No description"}</CardDescription>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="min-w-0">
+            <CardTitle className="text-lg truncate">{name}</CardTitle>
+            <CardDescription className="truncate">
+              {description || "No description"}
+            </CardDescription>
           </div>
-          <Badge variant="outline">{brain}</Badge>
+          <Badge variant="outline" className="self-start sm:self-auto shrink-0">
+            {brain}
+          </Badge>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <Label>Brain</Label>
             <Select
@@ -159,7 +163,7 @@ export function ProfileEditor({
             <Label>Image</Label>
             <Input value={image} onChange={(e) => setImage(e.target.value)} />
           </div>
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 md:col-span-2">
             <Label>Image Pull Policy</Label>
             <Input
               value={imagePullPolicy}
@@ -283,7 +287,7 @@ export function ProfileEditor({
           )}
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Button
             onClick={handleSave}
             disabled={saving || deleting}
@@ -324,8 +328,16 @@ export function ProfileEditor({
             )}
             Delete
           </Button>
-          {error && <span className="text-sm text-red-500">{error}</span>}
-          {success && <span className="text-sm text-emerald-500">Saved</span>}
+          {error && (
+            <span className="text-sm text-red-500 w-full sm:w-auto">
+              {error}
+            </span>
+          )}
+          {success && (
+            <span className="text-sm text-emerald-500 w-full sm:w-auto">
+              Saved
+            </span>
+          )}
         </div>
       </CardContent>
     </Card>

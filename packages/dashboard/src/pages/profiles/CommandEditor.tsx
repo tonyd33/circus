@@ -133,7 +133,7 @@ export function CommandEditor({
                 })
               }
             />
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <Input
                 placeholder="Branch (optional)"
                 value={command.args.branch ?? ""}
@@ -176,7 +176,7 @@ export function CommandEditor({
                 })
               }
             />
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <Input
                 placeholder="Branch (optional)"
                 value={command.args.branch ?? ""}
