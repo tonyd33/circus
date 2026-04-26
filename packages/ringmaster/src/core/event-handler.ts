@@ -121,6 +121,20 @@ export class EventHandler {
         );
         break;
 
+      case "set_profile":
+        await this.deps.metaPublisher.publishProfile(
+          action.chimpId,
+          action.profile,
+        );
+        break;
+
+      case "set_topics":
+        await this.deps.metaPublisher.publishTopics(
+          action.chimpId,
+          action.topics,
+        );
+        break;
+
       case "delete_state":
         await this.deps.stateManager.delete(action.chimpId);
         break;

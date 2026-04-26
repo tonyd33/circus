@@ -319,6 +319,16 @@ export const StatusMetaEventSchema = MetaEventBase.extend({
   ]),
 });
 
+export const ProfileMetaEventSchema = MetaEventBase.extend({
+  type: z.literal("profile"),
+  profile: z.string(),
+});
+
+export const TopicsMetaEventSchema = MetaEventBase.extend({
+  type: z.literal("topics"),
+  topics: z.array(TopicSchema),
+});
+
 export const BullhornDispatchedMetaEventSchema = MetaEventBase.extend({
   type: z.literal("bullhorn-dispatched"),
   outputSequence: z.number(),
@@ -326,6 +336,8 @@ export const BullhornDispatchedMetaEventSchema = MetaEventBase.extend({
 
 export const MetaEventSchema = z.discriminatedUnion("type", [
   StatusMetaEventSchema,
+  ProfileMetaEventSchema,
+  TopicsMetaEventSchema,
   BullhornDispatchedMetaEventSchema,
 ]);
 
@@ -344,6 +356,8 @@ export type Thought = z.infer<typeof ThoughtSchema>;
 export type ChimpOutputMessage = z.infer<typeof ChimpOutputMessageSchema>;
 export type InitConfig = z.infer<typeof InitConfigSchema>;
 export type MetaEvent = z.infer<typeof MetaEventSchema>;
+export type ProfileMetaEvent = z.infer<typeof ProfileMetaEventSchema>;
+export type TopicsMetaEvent = z.infer<typeof TopicsMetaEventSchema>;
 
 // ── Parse helpers ──────────────────────────────────────────────────────
 

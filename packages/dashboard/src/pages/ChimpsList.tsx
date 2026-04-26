@@ -36,10 +36,8 @@ function formatTime(ts: number): string {
  * Topics include GitHub PRs/issues and Discord channels the chimp is subscribed to.
  */
 function ChimpTopicsBadges({
-  chimpId,
   chimpTopics,
 }: {
-  chimpId: string;
   chimpTopics: Standards.Topic.Topic[];
 }) {
   if (chimpTopics.length === 0) {
@@ -102,8 +100,10 @@ function ChimpTopicsBadges({
 
 export function ChimpsList() {
   const { chimps, connected, error } = useChimps();
-  // Fetch topics for all chimps in a single API call
-  const { topicsByChimp, loading: topicsLoading } = useChimpTopics();
+  // Fetch topics for all chimps; re-fetches when a new chimp appears
+  const { topicsByChimp, loading: topicsLoading } = useChimpTopics(
+    chimps.map((c) => c.chimpId),
+  );
 
   return (
     <div className="container mx-auto p-8">
@@ -157,10 +157,11 @@ export function ChimpsList() {
                   <p className="text-sm text-muted-foreground">
                     Updated: {formatTime(chimp.updatedAt)}
                   </p>
-                  {!topicsLoading && topicsByChimp && (
+                  {!topicsLoading && (
                     <ChimpTopicsBadges
-                      chimpId={chimp.chimpId}
-                      chimpTopics={topicsByChimp[chimp.chimpId] ?? []}
+                      chimpTopics={
+                        chimp.topics ?? topicsByChimp[chimp.chimpId] ?? []
+                      }
                     />
                   )}
                 </CardContent>
