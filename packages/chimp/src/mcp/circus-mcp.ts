@@ -6,7 +6,6 @@ import type {
 import type * as Logger from "@mnke/circus-shared/logger";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import type { NatsConnection } from "nats";
 import { z } from "zod";
 import type { StoredEventContext } from "@/chimp-brain/event-contexts";
 
@@ -18,7 +17,6 @@ export interface CircusMcpConfig {
   profile: string;
   profileStore: ProfileStore;
   topicRegistry: TopicRegistry | null;
-  nc: NatsConnection | null;
   logger: Logger.Logger;
 }
 
@@ -76,7 +74,7 @@ export class CircusMcp {
           .describe("Summary of work so far (for handoff)"),
       },
       async (args) => {
-        const { nc, chimpId, profile, topicRegistry, logger } = this.config;
+        const { chimpId, profile, topicRegistry, logger } = this.config;
 
         logger.info(
           {
@@ -96,12 +94,9 @@ export class CircusMcp {
           chimpId: args.chimpId,
         });
 
-        // If reason+summary provided, send individual commands to
-        // transfer subscriptions, event contexts, and work summary
-        if (args.reason && args.summary && nc) {
-          const directSubject = Standards.Chimp.Naming.directSubject(
-            args.chimpId,
-          );
+        // Transfer subscriptions, event contexts, and work summary via output messages
+        if (args.reason && args.summary) {
+          const targetId = args.chimpId;
 
           // Transfer topic subscriptions (skip direct topics — new chimp gets its own)
           const subscriptions = topicRegistry
@@ -110,9 +105,8 @@ export class CircusMcp {
               )
             : [];
           for (const topic of subscriptions) {
-            nc.publish(
-              directSubject,
-              JSON.stringify({
+            publish(
+              Protocol.createChimpCommandOutput(targetId, {
                 command: "subscribe-topic",
                 args: { topic },
               }),
@@ -121,34 +115,35 @@ export class CircusMcp {
 
           // Transfer event contexts
           for (const stored of this.eventContexts) {
-            nc.publish(
-              directSubject,
-              JSON.stringify({
+            publish(
+              Protocol.createChimpCommandOutput(targetId, {
                 command: "add-event-context",
                 args: { context: stored.context },
               }),
             );
           }
 
-          // Send work summary as prompt
+          // Send work summary
           const prompt = [
             `You are resuming work handed off from the "${profile}" profile.`,
             `Reason: ${args.reason}`,
             `Summary: ${args.summary}`,
             "Continue the work described above.",
           ].join("\n");
-          nc.publish(
-            directSubject,
-            JSON.stringify(Protocol.createAgentCommand(prompt)),
+          publish(
+            Protocol.createChimpCommandOutput(
+              targetId,
+              Protocol.createAgentCommand(prompt),
+            ),
           );
 
           logger.info(
             {
-              targetChimpId: args.chimpId,
+              targetChimpId: targetId,
               subscriptionCount: subscriptions.length,
               eventContextCount: this.eventContexts.length,
             },
-            "Sent handoff commands to new chimp",
+            "Published handoff commands for new chimp",
           );
         }
 
@@ -320,15 +315,12 @@ export class CircusMcp {
       },
       async (args) => {
         const topic: Standards.Topic.Topic = args;
-        const { topicRegistry, nc, chimpId, profile, logger } = this.config;
+        const { topicRegistry, chimpId, logger } = this.config;
 
-        if (!topicRegistry || !nc) {
+        if (!topicRegistry) {
           return {
             content: [
-              {
-                type: "text" as const,
-                text: "Topic subscription unavailable (no NATS)",
-              },
+              { type: "text" as const, text: "Topic subscription unavailable" },
             ],
           };
         }
@@ -358,14 +350,14 @@ export class CircusMcp {
       },
       async (args) => {
         const topic: Standards.Topic.Topic = args;
-        const { topicRegistry, nc, chimpId, logger } = this.config;
+        const { topicRegistry, chimpId, logger } = this.config;
 
-        if (!topicRegistry || !nc) {
+        if (!topicRegistry) {
           return {
             content: [
               {
                 type: "text" as const,
-                text: "Topic unsubscription unavailable (no NATS)",
+                text: "Topic unsubscription unavailable",
               },
             ],
           };
