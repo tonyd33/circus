@@ -1,6 +1,9 @@
 import type { Protocol, Standards } from "@mnke/circus-shared";
 
-export type ChimpState = Standards.Chimp.ChimpState & { profile: string };
+export type ChimpState = Standards.Chimp.ChimpState & {
+  profile: string;
+  topics?: Standards.Topic.Topic[];
+};
 export type ChimpStatus = Standards.Chimp.ChimpStatus;
 
 export type ActivityEvent =

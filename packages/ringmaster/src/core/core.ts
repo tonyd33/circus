@@ -40,6 +40,8 @@ export type Action =
       type: "upsert_status";
       status: Standards.Chimp.ChimpStatus;
     }
+  | { chimpId: string; type: "set_profile"; profile: string }
+  | { chimpId: string; type: "set_topics"; topics: Topic[] }
   | { chimpId: string; type: "delete_job" }
   | { chimpId: string; type: "delete_state" }
   | {
@@ -144,10 +146,15 @@ function buildSpawnActions(
   const filterSubjects =
     topicFilter === directFilter ? [directFilter] : [topicFilter, directFilter];
 
+  // All topics this chimp will be registered for: always the direct topic,
+  // plus the triggering topic if it's different.
+  const topics: Topic[] = topic ? [topic, directTopic] : [directTopic];
   const actions: Action[] = [];
 
   if (!pod) {
     actions.push({ chimpId, type: "upsert_status", status: "scheduled" });
+    actions.push({ chimpId, type: "set_profile", profile });
+    actions.push({ chimpId, type: "set_topics", topics });
   }
 
   actions.push({
@@ -193,8 +200,11 @@ function decideOnPodEvent(
   }
 
   const status = podPhaseToStatus(payload.pod.status?.phase);
+  const actions: Action[] = [
+    { chimpId: payload.chimpId, type: "upsert_status", status },
+  ];
 
-  return Fx.pure([{ chimpId: payload.chimpId, type: "upsert_status", status }]);
+  return Fx.pure(actions);
 }
 
 function decideOnEventReceived(
@@ -294,6 +304,16 @@ function decideOnChimpOutput(
           chimpId: message.chimpId,
           type: "upsert_status",
           status: "scheduled",
+        },
+        {
+          chimpId: message.chimpId,
+          type: "set_profile",
+          profile: message.profile,
+        },
+        {
+          chimpId: message.chimpId,
+          type: "set_topics",
+          topics: [directTopic],
         },
         {
           chimpId: message.chimpId,

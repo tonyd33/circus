@@ -142,6 +142,18 @@ describe("event_received", () => {
       status: "scheduled",
     });
 
+    expect(actions.find((a) => a.type === "set_profile")).toEqual({
+      chimpId,
+      type: "set_profile",
+      profile: P,
+    });
+
+    expect(actions.find((a) => a.type === "set_topics")).toEqual({
+      chimpId,
+      type: "set_topics",
+      topics: [topic, { platform: "direct", chimpId }],
+    });
+
     const topicActions = actions.filter((a) => a.type === "register_topic");
     expect(topicActions).toEqual([
       {
@@ -315,7 +327,21 @@ describe("chimp_output", () => {
     );
 
     expect(actions).toEqual([
-      { chimpId: "new-chimp", type: "upsert_status", status: "scheduled" },
+      {
+        chimpId: "new-chimp",
+        type: "upsert_status",
+        status: "scheduled",
+      },
+      {
+        chimpId: "new-chimp",
+        type: "set_profile",
+        profile: "worker",
+      },
+      {
+        chimpId: "new-chimp",
+        type: "set_topics",
+        topics: [{ platform: "direct", chimpId: "new-chimp" }],
+      },
       {
         chimpId: "new-chimp",
         type: "create_consumers",
