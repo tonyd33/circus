@@ -75,7 +75,7 @@ export abstract class ChimpBrain {
   }
 
   async handleCommand(command: Protocol.ChimpCommand): Promise<CommandResult> {
-    this.publish(Protocol.createCommandReceived(command.command));
+    this.publish(Protocol.createCommandReceived(command));
 
     switch (command.command) {
       case "send-agent-message":

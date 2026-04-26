@@ -1904,14 +1904,21 @@ export function ChimpActivity() {
         );
       case "command-received":
         return (
-          <div className="flex items-center gap-2">
-            <Badge
-              variant="outline"
-              className="text-xs shrink-0 border-blue-500 text-blue-500"
-            >
-              received
-            </Badge>
-            <code className="text-xs font-mono">{data.command}</code>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Badge
+                variant="outline"
+                className="text-xs shrink-0 border-blue-500 text-blue-500"
+              >
+                received
+              </Badge>
+              <code className="text-xs font-mono">{data.command}</code>
+            </div>
+            {data.payload && (
+              <div className="ml-4 border-l-2 border-blue-500/30 pl-3">
+                {renderEventContent(data.payload)}
+              </div>
+            )}
           </div>
         );
       case "artifact":

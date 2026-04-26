@@ -232,6 +232,7 @@ export const ProgressMessageSchema = z.object({
 export const CommandReceivedSchema = z.object({
   type: z.literal("command-received"),
   command: z.string(),
+  payload: ChimpCommandSchema,
 });
 
 export const ErrorResponseSchema = z.object({
@@ -415,8 +416,8 @@ export function createProgressMessage(
   return { type: "progress", message, percentage };
 }
 
-export function createCommandReceived(command: string): CommandReceived {
-  return { type: "command-received", command };
+export function createCommandReceived(payload: ChimpCommand): CommandReceived {
+  return { type: "command-received", command: payload.command, payload };
 }
 
 export function createThought(brain: ChimpBrainType, event: unknown): Thought {

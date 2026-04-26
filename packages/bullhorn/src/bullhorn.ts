@@ -139,7 +139,7 @@ export class Bullhorn {
 
       case "command-received":
         this.logger.info(
-          { chimpId, command: msg.command },
+          { chimpId, command: msg.command, payload: msg.payload },
           `[${chimpId}] Command received: ${msg.command}`,
         );
         break;
