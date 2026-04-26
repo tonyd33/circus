@@ -1,5 +1,5 @@
+import { Standards } from "@mnke/circus-shared";
 import type { ChimpService } from "../services/chimp-service";
-import { TopicSchema } from "@mnke/circus-shared/standards/topic";
 
 const SSE_HEADERS = {
   "Content-Type": "text/event-stream",
@@ -37,7 +37,7 @@ export class ChimpRouter {
           if (!chimpId) return new Response("Missing chimpId", { status: 400 });
 
           const body = await req.json().catch(() => null);
-          const parsed = TopicSchema.safeParse(body);
+          const parsed = Standards.Topic.TopicSchema.safeParse(body);
           if (!parsed.success) {
             return Response.json(
               { error: "Invalid topic", details: parsed.error.issues },
@@ -53,7 +53,7 @@ export class ChimpRouter {
           if (!chimpId) return new Response("Missing chimpId", { status: 400 });
 
           const body = await req.json().catch(() => null);
-          const parsed = TopicSchema.safeParse(body);
+          const parsed = Standards.Topic.TopicSchema.safeParse(body);
           if (!parsed.success) {
             return Response.json(
               { error: "Invalid topic", details: parsed.error.issues },

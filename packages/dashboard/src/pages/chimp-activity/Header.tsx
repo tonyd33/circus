@@ -10,6 +10,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export const Header = memo(function Header({
   chimpId,
@@ -23,21 +30,38 @@ export const Header = memo(function Header({
   error: string | null;
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
-  const [newTopic, setNewTopic] = useState("");
+  const [newTopic, setNewTopic] = useState({
+    owner: "",
+    repo: "",
+    type: "pr" as "pr" | "issue",
+    number: "",
+  });
 
   const addTopic = async () => {
-    const parsed = parseTopicString(newTopic);
-    if (!parsed) return;
+    const parsed = Standards.Topic.TopicSchema.safeParse({
+      platform: "github",
+      owner: newTopic.owner,
+      repo: newTopic.repo,
+      type: newTopic.type,
+      number: parseInt(newTopic.number, 10),
+    });
+    if (!parsed.success) return;
 
     const res = await fetch(`/api/chimp/${chimpId}/topics`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(parsed),
+      body: JSON.stringify(parsed.data),
     });
     if (res.ok) {
       window.location.reload();
     }
   };
+
+  const isValid =
+    newTopic.owner.trim() !== "" &&
+    newTopic.repo.trim() !== "" &&
+    newTopic.number !== "" &&
+    !Number.isNaN(parseInt(newTopic.number, 10));
 
   const removeTopic = async (topic: Standards.Topic.Topic) => {
     const res = await fetch(`/api/chimp/${chimpId}/topics`, {
@@ -89,16 +113,65 @@ export const Header = memo(function Header({
                     <Plus className="h-3 w-3" />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-80">
+                <PopoverContent className="w-96">
                   <div className="space-y-4">
                     <h3 className="font-medium">Add Topic Subscription</h3>
-                    <Input
-                      placeholder="owner/repo#123 or owner/repo#123 (issue)"
-                      value={newTopic}
-                      onChange={(e) => setNewTopic(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && addTopic()}
-                    />
-                    <Button onClick={addTopic}>Subscribe</Button>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input
+                        placeholder="Owner (e.g. tonyd33)"
+                        value={newTopic.owner}
+                        onChange={(e) =>
+                          setNewTopic((prev) => ({
+                            ...prev,
+                            owner: e.target.value,
+                          }))
+                        }
+                      />
+                      <Input
+                        placeholder="Repo (e.g. circus)"
+                        value={newTopic.repo}
+                        onChange={(e) =>
+                          setNewTopic((prev) => ({
+                            ...prev,
+                            repo: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Select
+                        value={newTopic.type}
+                        onValueChange={(v) =>
+                          setNewTopic((prev) => ({
+                            ...prev,
+                            type: v as "pr" | "issue",
+                          }))
+                        }
+                      >
+                        <SelectTrigger className="w-32">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pr">PR</SelectItem>
+                          <SelectItem value="issue">Issue</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        type="number"
+                        placeholder="Number"
+                        value={newTopic.number}
+                        onChange={(e) =>
+                          setNewTopic((prev) => ({
+                            ...prev,
+                            number: e.target.value,
+                          }))
+                        }
+                        className="flex-1"
+                      />
+                    </div>
+                    <Button onClick={addTopic} disabled={!isValid}>
+                      Subscribe
+                    </Button>
                   </div>
                 </PopoverContent>
               </Popover>
@@ -119,21 +192,3 @@ export const Header = memo(function Header({
     </header>
   );
 });
-
-function parseTopicString(
-  input: string,
-): { platform: "github"; owner: string; repo: string; type: "pr" | "issue"; number: number } | null {
-  const match = input.match(/^([^/]+)\/([^#]+)#(\d+)(?:\s+\(issue\))?$/);
-  if (!match) return null;
-
-  const [, owner, repo, num] = match;
-  const type = input.includes("(issue)") ? "issue" : "pr";
-
-  return {
-    platform: "github",
-    owner,
-    repo,
-    type,
-    number: parseInt(num, 10),
-  };
-}
