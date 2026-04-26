@@ -20,6 +20,7 @@ import {
 export interface ChimpConfig {
   chimpId: string;
   profile: string;
+  provider: string;
   model: string;
   natsUrl: string;
   redisUrl: string;
@@ -97,6 +98,7 @@ export class Chimp {
 
     this.brain = this.brainFactory.create(
       this.config.chimpId,
+      this.config.provider,
       this.config.model,
       publishFn,
       this.logger.child({ component: "Brain" }),

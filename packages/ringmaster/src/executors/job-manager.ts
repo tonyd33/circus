@@ -94,6 +94,10 @@ export class JobManager {
                     value: profileData.brain,
                   },
                   {
+                    name: Standards.Chimp.Env.provider,
+                    value: profileData.provider,
+                  },
+                  {
                     name: Standards.Chimp.Env.model,
                     value: profileData.model,
                   },

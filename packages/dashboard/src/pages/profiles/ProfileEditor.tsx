@@ -36,6 +36,7 @@ export function ProfileEditor({
   onSaved: () => void;
 }) {
   const [brain, setBrain] = useState(profile.brain);
+  const [provider, setProvider] = useState(profile.provider);
   const [model, setModel] = useState(profile.model);
   const [image, setImage] = useState(profile.image);
   const [description, setDescription] = useState(profile.description ?? "");
@@ -67,6 +68,7 @@ export function ProfileEditor({
     try {
       const updated: ChimpProfile = {
         brain,
+        provider,
         model,
         image,
         ...(description && { description }),
@@ -90,6 +92,7 @@ export function ProfileEditor({
   function handleExport() {
     const data: ChimpProfile = {
       brain,
+      provider,
       model,
       image,
       ...(description && { description }),
@@ -138,6 +141,13 @@ export function ProfileEditor({
                 <SelectItem value="echo">echo</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Provider</Label>
+            <Input
+              value={provider}
+              onChange={(e) => setProvider(e.target.value)}
+            />
           </div>
           <div className="space-y-1.5">
             <Label>Model</Label>

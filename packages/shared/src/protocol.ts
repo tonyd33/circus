@@ -202,6 +202,7 @@ export const VolumeSchema = z.object({
 
 export const ChimpProfileSchema = z.object({
   brain: BrainTypeEnum,
+  provider: z.string(),
   model: z.string(),
   image: z.string(),
   description: z.string().optional(),

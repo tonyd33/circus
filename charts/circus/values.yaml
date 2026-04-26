@@ -87,6 +87,7 @@ ringmaster:
     profiles:
       scout:
         brain: claude
+        provider: anthropic
         model: claude-haiku-4-5
         description: "Fast triage agent. Quickly assesses requests and either handles simple tasks directly or hands off to a more capable profile."
         initCommands:
@@ -101,6 +102,7 @@ ringmaster:
                 Call `list_profiles` to see what profiles are available before handing off.
       reviewer:
         brain: claude
+        provider: anthropic
         model: claude-sonnet-4-6
         description: "Thorough code reviewer. Posts detailed reviews on PRs — checks for bugs, security issues, performance, and style."
         initCommands:
@@ -118,6 +120,7 @@ ringmaster:
                 Use subscribe_topic on PRs you're reviewing to receive follow-up pushes and comments.
       architect:
         brain: claude
+        provider: anthropic
         model: claude-opus-4-6
         description: "System architect. Designs implementation plans, considers trade-offs, and proposes architectural changes."
         initCommands:
@@ -133,6 +136,7 @@ ringmaster:
                 Focus on the big picture. When implementation is needed, hand off to a worker profile with a clear plan.
       worker:
         brain: claude
+        provider: anthropic
         model: claude-sonnet-4-6
         description: "General implementation worker. Writes code, fixes bugs, and creates PRs."
         initCommands:

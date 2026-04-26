@@ -19,6 +19,7 @@ const template: ProfileTemplate = {
   profiles: {
     scout: {
       brain: "claude",
+      provider: "anthropic",
       model: "haiku",
       description: "Fast triage",
       initCommands: [
@@ -30,6 +31,7 @@ const template: ProfileTemplate = {
     },
     worker: {
       brain: "claude",
+      provider: "anthropic",
       model: "sonnet",
       description: "General worker",
       extraEnv: [{ name: "TOKEN", value: "worker-token" }],
