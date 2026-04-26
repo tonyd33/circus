@@ -102,8 +102,10 @@ function ChimpTopicsBadges({
 
 export function ChimpsList() {
   const { chimps, connected, error } = useChimps();
-  // Fetch topics for all chimps in a single API call
-  const { topicsByChimp, loading: topicsLoading } = useChimpTopics();
+  // Fetch topics for all chimps; re-fetches when a new chimp appears
+  const { topicsByChimp, loading: topicsLoading } = useChimpTopics(
+    chimps.map((c) => c.chimpId),
+  );
 
   return (
     <div className="container mx-auto p-8">

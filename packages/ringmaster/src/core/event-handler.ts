@@ -118,6 +118,8 @@ export class EventHandler {
         await this.deps.metaPublisher.publishStatus(
           action.chimpId,
           action.status,
+          action.profile,
+          action.topics,
         );
         break;
 

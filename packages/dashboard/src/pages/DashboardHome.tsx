@@ -158,7 +158,7 @@ function ChimpTopicsBadges({ topics }: { topics: Standards.Topic.Topic[] }) {
 
 export function DashboardHome() {
   const { chimps, error } = useChimps();
-  const { topicsByChimp } = useChimpTopics();
+  const { topicsByChimp } = useChimpTopics(chimps.map((c) => c.chimpId));
 
   const counts = useMemo<StatusCounts>(() => {
     return chimps.reduce<StatusCounts>(

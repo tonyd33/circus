@@ -304,6 +304,8 @@ export const StatusMetaEventSchema = MetaEventBase.extend({
     "failed",
     "unknown",
   ]),
+  profile: z.string().optional(),
+  topics: z.array(TopicSchema).optional(),
 });
 
 export const BullhornDispatchedMetaEventSchema = MetaEventBase.extend({

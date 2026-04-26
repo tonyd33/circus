@@ -140,6 +140,8 @@ describe("event_received", () => {
       chimpId,
       type: "upsert_status",
       status: "scheduled",
+      profile: P,
+      topics: [topic, { platform: "direct", chimpId }],
     });
 
     const topicActions = actions.filter((a) => a.type === "register_topic");
@@ -315,7 +317,13 @@ describe("chimp_output", () => {
     );
 
     expect(actions).toEqual([
-      { chimpId: "new-chimp", type: "upsert_status", status: "scheduled" },
+      {
+        chimpId: "new-chimp",
+        type: "upsert_status",
+        status: "scheduled",
+        profile: "worker",
+        topics: [{ platform: "direct", chimpId: "new-chimp" }],
+      },
       {
         chimpId: "new-chimp",
         type: "create_consumers",

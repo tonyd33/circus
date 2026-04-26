@@ -83,6 +83,8 @@ export class ChimpService {
                   `event: status\ndata: ${JSON.stringify({
                     chimpId: event.chimpId,
                     status: event.status,
+                    profile: event.profile,
+                    topics: event.topics,
                     timestamp: event.timestamp,
                   })}\n\n`,
                 ),

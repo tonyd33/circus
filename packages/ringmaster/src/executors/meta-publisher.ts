@@ -14,12 +14,16 @@ export class MetaPublisher {
   async publishStatus(
     chimpId: string,
     status: Standards.Chimp.ChimpStatus,
+    profile?: string,
+    topics?: Standards.Topic.Topic[],
   ): Promise<void> {
     const event: Protocol.MetaEvent = {
       type: "status",
       timestamp: new Date().toISOString(),
       chimpId,
       status,
+      ...(profile !== undefined && { profile }),
+      ...(topics !== undefined && { topics }),
     };
     const subject = Standards.Chimp.Naming.metaSubject(chimpId);
     this.nc.publish(subject, JSON.stringify(event));

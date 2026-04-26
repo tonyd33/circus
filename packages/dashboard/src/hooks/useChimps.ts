@@ -1,10 +1,12 @@
+import type { Standards } from "@mnke/circus-shared";
 import { useEffect, useRef, useState } from "react";
 import type { ChimpState, ChimpStatus } from "@/lib/chimp";
 
 interface StatusUpdate {
-  profile: string;
+  profile?: string;
   chimpId: string;
   status: ChimpStatus;
+  topics?: Standards.Topic.Topic[];
   timestamp: string;
 }
 
@@ -54,6 +56,12 @@ export function useChimps(): UseChimpsResult {
               ...existing,
               status: update.status,
               updatedAt: Date.now(),
+              ...(update.profile !== undefined && {
+                profile: update.profile,
+              }),
+              ...(update.topics !== undefined && {
+                topics: update.topics,
+              }),
             };
             return next;
           }
@@ -61,8 +69,9 @@ export function useChimps(): UseChimpsResult {
             ...prev,
             {
               chimpId: update.chimpId,
-              profile: update.profile,
+              profile: update.profile ?? "",
               status: update.status,
+              topics: update.topics,
               createdAt: Date.now(),
               updatedAt: Date.now(),
             },
