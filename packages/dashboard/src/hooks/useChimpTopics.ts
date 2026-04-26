@@ -36,7 +36,7 @@ export function useChimpTopics(chimpIds: string[]): UseChimpTopicsResult {
   // Re-fetch whenever a new chimp ID appears in the list.
   // Sorting + joining gives a stable string key that only changes when
   // the set of IDs changes (not on every render).
-  const chimpIdKey = [...chimpIds].sort().join(",");
+  const _chimpIdKey = [...chimpIds].sort().join(",");
 
   useEffect(() => {
     setLoading(true);
@@ -55,8 +55,7 @@ export function useChimpTopics(chimpIds: string[]): UseChimpTopicsResult {
       .finally(() => {
         setLoading(false);
       });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chimpIdKey]);
+  }, []);
 
   return { topicsByChimp, loading, error };
 }
