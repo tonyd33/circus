@@ -1,3 +1,4 @@
+import { Standards } from "@mnke/circus-shared";
 import type { ChimpService } from "../services/chimp-service";
 
 const SSE_HEADERS = {
@@ -30,6 +31,52 @@ export class ChimpRouter {
 
           const topics = await this.chimpService.listChimpTopics(chimpId);
           return Response.json({ topics });
+        },
+        POST: async (req: Bun.BunRequest<"/api/chimp/:chimpId/topics">) => {
+          const chimpId = req.params.chimpId;
+          if (!chimpId) return new Response("Missing chimpId", { status: 400 });
+
+          const body = await req.json().catch(() => null);
+          const parsed = Standards.Topic.TopicSchema.safeParse(body);
+          if (!parsed.success) {
+            return Response.json(
+              { error: "Invalid topic", details: parsed.error.issues },
+              { status: 400 },
+            );
+          }
+
+          if (parsed.data.platform !== "github") {
+            return Response.json(
+              { error: "Only GitHub topics are supported" },
+              { status: 400 },
+            );
+          }
+
+          await this.chimpService.subscribeTopic(parsed.data, chimpId);
+          return Response.json({ success: true });
+        },
+        DELETE: async (req: Bun.BunRequest<"/api/chimp/:chimpId/topics">) => {
+          const chimpId = req.params.chimpId;
+          if (!chimpId) return new Response("Missing chimpId", { status: 400 });
+
+          const body = await req.json().catch(() => null);
+          const parsed = Standards.Topic.TopicSchema.safeParse(body);
+          if (!parsed.success) {
+            return Response.json(
+              { error: "Invalid topic", details: parsed.error.issues },
+              { status: 400 },
+            );
+          }
+
+          if (parsed.data.platform !== "github") {
+            return Response.json(
+              { error: "Only GitHub topics are supported" },
+              { status: 400 },
+            );
+          }
+
+          await this.chimpService.unsubscribeTopic(parsed.data, chimpId);
+          return Response.json({ success: true });
         },
       },
       "/api/chimp/:chimpId/status": {

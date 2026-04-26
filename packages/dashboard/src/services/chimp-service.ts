@@ -40,6 +40,14 @@ export class ChimpService {
     return this.topicRegistry.listForChimp(chimpId);
   }
 
+  async subscribeTopic(topic: Standards.Topic.Topic, chimpId: string) {
+    return this.topicRegistry.subscribe(topic, chimpId);
+  }
+
+  async unsubscribeTopic(topic: Standards.Topic.Topic, chimpId: string) {
+    return this.topicRegistry.unsubscribe(topic, chimpId);
+  }
+
   createLiveStream(): ReadableStream<Uint8Array> {
     const encoder = new TextEncoder();
     const nc = this.nc;
