@@ -25,10 +25,11 @@
       # Shared package list for dev shell and chimp Docker image
       devPackages = pkgs: with pkgs; [
         bun
+        git
+        curl
+        gh
         natscli
-        # buf
         go
-        # goimports, godoc, etc.
         gotools
         golangci-lint
         gitleaks
