@@ -141,11 +141,19 @@ describe("event_received", () => {
       type: "upsert_status",
       status: "scheduled",
     });
-    expect(actions.find((a) => a.type === "register_topic")).toEqual({
+
+    const topicActions = actions.filter((a) => a.type === "register_topic");
+    expect(topicActions).toContainEqual({
+      chimpId,
+      type: "register_topic",
+      topic: { platform: "direct", chimpId },
+    });
+    expect(topicActions).toContainEqual({
       chimpId,
       type: "register_topic",
       topic,
     });
+
     expect(actions.find((a) => a.type === "create_job")).toEqual({
       chimpId,
       type: "create_job",
@@ -186,7 +194,14 @@ describe("event_received", () => {
     );
 
     expect(actions.find((a) => a.type === "create_job")).toBeDefined();
-    expect(actions.find((a) => a.type === "register_topic")).toEqual({
+
+    const topicActions = actions.filter((a) => a.type === "register_topic");
+    expect(topicActions).toContainEqual({
+      chimpId: "stale-chimp",
+      type: "register_topic",
+      topic: { platform: "direct", chimpId: "stale-chimp" },
+    });
+    expect(topicActions).toContainEqual({
       chimpId: "stale-chimp",
       type: "register_topic",
       topic,
@@ -210,6 +225,10 @@ describe("event_received", () => {
   });
 
   test("debug event → registers debug topic", () => {
+    const chimpId = deriveChimpId(
+      { platform: "debug", sessionId: "abc123" },
+      "",
+    );
     const actions = interpret(
       decide({
         type: "event_received",
@@ -219,8 +238,14 @@ describe("event_received", () => {
       emptyHandler,
     );
 
-    expect(actions.find((a) => a.type === "register_topic")).toEqual({
-      chimpId: deriveChimpId({ platform: "debug", sessionId: "abc123" }, ""),
+    const topicActions = actions.filter((a) => a.type === "register_topic");
+    expect(topicActions).toContainEqual({
+      chimpId,
+      type: "register_topic",
+      topic: { platform: "direct", chimpId },
+    });
+    expect(topicActions).toContainEqual({
+      chimpId,
       type: "register_topic",
       topic: { platform: "debug", sessionId: "abc123" },
     });
@@ -243,6 +268,27 @@ describe("event_received", () => {
     const jobActions = actions.filter((a) => a.type === "create_job");
     expect(jobActions).toHaveLength(1);
     expect(jobActions[0]!.chimpId).toBe("dead-chimp");
+  });
+
+  test("every spawned chimp is always subscribed to its direct topic", () => {
+    const chimpId = deriveChimpId(topic, eventSubject);
+    const actions = interpret(
+      decide({ type: "event_received", subject: eventSubject, seq: 42 }),
+      emptyHandler,
+    );
+
+    expect(actions).toContainEqual({
+      chimpId,
+      type: "register_topic",
+      topic: { platform: "direct", chimpId },
+    });
+
+    const consumerAction = actions.find((a) => a.type === "create_consumers");
+    expect(consumerAction).toBeDefined();
+    expect(consumerAction).toHaveProperty(
+      "eventFilterSubjects",
+      expect.arrayContaining([`events.direct.${chimpId}.>`]),
+    );
   });
 });
 

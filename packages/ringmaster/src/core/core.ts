@@ -138,6 +138,12 @@ function buildSpawnActions(
     ? Standards.Topic.topicToEventSubject(topic)
     : eventSubject;
 
+  const directTopic: Topic = { platform: "direct", chimpId };
+  const directFilter = Standards.Topic.topicToEventSubject(directTopic);
+
+  const filterSubjects =
+    topicFilter === directFilter ? [directFilter] : [topicFilter, directFilter];
+
   const actions: Action[] = [];
 
   if (!pod) {
@@ -147,9 +153,11 @@ function buildSpawnActions(
   actions.push({
     chimpId,
     type: "create_consumers",
-    eventFilterSubjects: [topicFilter],
+    eventFilterSubjects: filterSubjects,
     deliverFrom: { type: "sequence", value: seq },
   });
+
+  actions.push({ chimpId, type: "register_topic", topic: directTopic });
 
   if (topic) {
     actions.push({ chimpId, type: "register_topic", topic });
