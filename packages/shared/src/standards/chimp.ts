@@ -41,7 +41,7 @@ export const Naming = {
   },
 
   directSubject(chimpId: string): string {
-    return `${Prefix.EVENTS}.direct.${chimpId}`;
+    return `${Prefix.EVENTS}.direct.${chimpId}.command`;
   },
   outputSubject(chimpId: string): string {
     return `${Prefix.OUTPUTS}.${chimpId}`;

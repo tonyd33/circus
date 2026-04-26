@@ -3,7 +3,9 @@ import { Naming } from "./chimp.ts";
 
 describe("Naming.directSubject", () => {
   test("builds direct subject", () => {
-    expect(Naming.directSubject("chimp-123")).toBe("events.direct.chimp-123");
+    expect(Naming.directSubject("chimp-123")).toBe(
+      "events.direct.chimp-123.command",
+    );
   });
 });
 
