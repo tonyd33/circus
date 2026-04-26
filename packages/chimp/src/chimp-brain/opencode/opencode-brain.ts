@@ -14,6 +14,7 @@ import {
 const IGNORED_EVENTS: Set<string> = new Set([
   "session.idle",
   "server.heartbeat",
+  "session.status",
 ]);
 
 export class OpencodeBrain extends ChimpBrain {
@@ -190,6 +191,7 @@ export class OpencodeBrain extends ChimpBrain {
           providerID: "opencode",
           modelID: this.model,
         },
+        system: this.systemPrompt,
       },
       throwOnError: true,
     });
