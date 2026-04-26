@@ -16,6 +16,8 @@ const IGNORED_EVENTS: Set<string> = new Set([
   "server.heartbeat",
   "session.status",
   "session.diff",
+  "session.updated",
+  "message.part.delta",
 ]);
 
 export class OpencodeBrain extends ChimpBrain {
@@ -117,8 +119,13 @@ export class OpencodeBrain extends ChimpBrain {
 
     await this.restoreState(this.s3Client);
 
+    const apiKey = await this.authResolver.resolve(this.provider);
+    const provider: Record<string, { options: { apiKey: string } }> = {};
+    provider[this.provider] = { options: { apiKey } };
+
     const opencode = await Opencode.createOpencode({
       config: {
+        provider,
         mcp: {
           circus: {
             type: "remote",

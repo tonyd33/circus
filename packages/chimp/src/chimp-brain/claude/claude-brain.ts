@@ -24,15 +24,12 @@ export class ClaudeChimp extends ChimpBrain {
   async onStartup(): Promise<void> {
     this.log("info", "ClaudeChimp starting up", { chimpId: this.chimpId });
 
-    const apiKeyResult = ER.record({
-      apiKey: ER.str("ANTHROPIC_API_KEY").fallbackW(null),
-      oauthToken: ER.str("CLAUDE_CODE_OAUTH_TOKEN").fallbackW(null),
-    }).read(process.env).value;
-    if (E.isLeft(apiKeyResult)) {
-      this.log("error", ER.formatReadError(apiKeyResult.value));
-      throw new Error(
-        "ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN environment variable is required",
-      );
+    const creds = await this.authResolver.resolveAll();
+    if (creds.anthropic) {
+      process.env.ANTHROPIC_API_KEY = creds.anthropic;
+    }
+    if (creds.claude) {
+      process.env.CLAUDE_CODE_OAUTH_TOKEN = creds.claude;
     }
 
     const s3Result = configReader.read(process.env).value;

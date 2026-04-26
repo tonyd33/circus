@@ -86,9 +86,9 @@ ringmaster:
               - Spawn new chimps with different profiles, optionally handing off your work and subscriptions
     profiles:
       scout:
-        brain: claude
-        provider: anthropic
-        model: claude-haiku-4-5
+        brain: opencode
+        provider: opencode-go
+        model: big-pickle
         description: "Fast triage agent. Quickly assesses requests and either handles simple tasks directly or hands off to a more capable profile."
         initCommands:
           - command: append-system-prompt
@@ -101,9 +101,9 @@ ringmaster:
                 Always respond first to acknowledge the request, then hand off if needed.
                 Call `list_profiles` to see what profiles are available before handing off.
       reviewer:
-        brain: claude
-        provider: anthropic
-        model: claude-sonnet-4-6
+        brain: opencode
+        provider: opencode-go
+        model: kimi-k2.6
         description: "Thorough code reviewer. Posts detailed reviews on PRs — checks for bugs, security issues, performance, and style."
         initCommands:
           - command: append-system-prompt
@@ -119,9 +119,9 @@ ringmaster:
                 Use gh CLI to check out branches and read files in context.
                 Use subscribe_topic on PRs you're reviewing to receive follow-up pushes and comments.
       architect:
-        brain: claude
-        provider: anthropic
-        model: claude-opus-4-6
+        brain: opencode
+        provider: opencode-go
+        model: kimi-k2.6
         description: "System architect. Designs implementation plans, considers trade-offs, and proposes architectural changes."
         initCommands:
           - command: append-system-prompt
@@ -135,9 +135,9 @@ ringmaster:
 
                 Focus on the big picture. When implementation is needed, hand off to a worker profile with a clear plan.
       worker:
-        brain: claude
-        provider: anthropic
-        model: claude-sonnet-4-6
+        brain: opencode
+        provider: opencode-go
+        model: kimi-k2.5
         description: "General implementation worker. Writes code, fixes bugs, and creates PRs."
         initCommands:
           - command: append-system-prompt

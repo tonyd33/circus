@@ -1,3 +1,4 @@
+import type { AuthResolver } from "@mnke/circus-shared/components";
 import type * as Logger from "@mnke/circus-shared/logger";
 import type { ChimpBrain, PublishFn } from "./chimp-brain";
 import { ClaudeChimp } from "./claude/claude-brain";
@@ -14,6 +15,7 @@ export interface BrainFactory {
     publish: PublishFn,
     logger: Logger.Logger,
     mcpUrl: string,
+    authResolver: AuthResolver,
   ): ChimpBrain;
 }
 
@@ -27,6 +29,7 @@ export class DefaultBrainFactory implements BrainFactory {
     publish: PublishFn,
     logger: Logger.Logger,
     mcpUrl: string,
+    authResolver: AuthResolver,
   ): ChimpBrain {
     switch (this.brainType) {
       case "claude":
@@ -37,6 +40,7 @@ export class DefaultBrainFactory implements BrainFactory {
           publish,
           logger,
           mcpUrl,
+          authResolver,
         );
       case "opencode":
         return new OpencodeBrain(
@@ -46,9 +50,18 @@ export class DefaultBrainFactory implements BrainFactory {
           publish,
           logger,
           mcpUrl,
+          authResolver,
         );
       case "echo":
-        return new EchoBrain(chimpId, provider, model, publish, logger, mcpUrl);
+        return new EchoBrain(
+          chimpId,
+          provider,
+          model,
+          publish,
+          logger,
+          mcpUrl,
+          authResolver,
+        );
     }
   }
 }

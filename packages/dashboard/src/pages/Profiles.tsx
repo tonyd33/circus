@@ -47,6 +47,7 @@ export function Profiles() {
         provider: "",
         model: "",
         image: "",
+        auth: {},
         extraEnv: [],
         volumeMounts: [],
         volumes: [],

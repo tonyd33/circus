@@ -15,6 +15,9 @@ const template: ProfileTemplate = {
         args: { prompt: "base prompt" },
       },
     ],
+    auth: {
+      anthropic: { source: "env", envVar: "ANTHROPIC_API_KEY" },
+    },
   },
   profiles: {
     scout: {
@@ -36,6 +39,9 @@ const template: ProfileTemplate = {
       description: "General worker",
       extraEnv: [{ name: "TOKEN", value: "worker-token" }],
       image: "chimp-custom",
+      auth: {
+        openai: { source: "env", envVar: "OPENAI_API_KEY" },
+      },
     },
   },
 };
@@ -87,5 +93,18 @@ describe("compileProfiles", () => {
     expect(compiled.scout?.brain).toBe("claude");
     expect(compiled.scout?.model).toBe("haiku");
     expect(compiled.scout?.description).toBe("Fast triage");
+  });
+
+  test("inherits base auth when no variant override", () => {
+    expect(compiled.scout?.auth).toEqual({
+      anthropic: { source: "env", envVar: "ANTHROPIC_API_KEY" },
+    });
+  });
+
+  test("merges auth: variant overrides by provider name", () => {
+    expect(compiled.worker?.auth).toEqual({
+      anthropic: { source: "env", envVar: "ANTHROPIC_API_KEY" },
+      openai: { source: "env", envVar: "OPENAI_API_KEY" },
+    });
   });
 });
