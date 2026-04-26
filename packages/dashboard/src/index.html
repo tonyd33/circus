@@ -6,7 +6,7 @@
     <link rel="icon" type="image/svg+xml" href="./logo.svg" />
     <title>Circus Dashboard</title>
     <script>
-      (function() {
+      (() => {
         var s = localStorage.getItem('circus-dashboard-theme');
         var d = s === 'dark' || (!s && window.matchMedia('(prefers-color-scheme: dark)').matches);
         if (d) document.documentElement.classList.add('dark');

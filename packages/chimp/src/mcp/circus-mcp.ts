@@ -1,6 +1,7 @@
 import { Protocol, Standards } from "@mnke/circus-shared";
 import type {
   ProfileStore,
+  StateManager,
   TopicRegistry,
 } from "@mnke/circus-shared/components";
 import type * as Logger from "@mnke/circus-shared/logger";
@@ -16,6 +17,7 @@ export interface CircusMcpConfig {
   chimpId: string;
   profile: string;
   profileStore: ProfileStore;
+  stateManager: StateManager;
   topicRegistry: TopicRegistry | null;
   logger: Logger.Logger;
 }
@@ -423,6 +425,129 @@ export class CircusMcp {
         }));
         return {
           content: [{ type: "text" as const, text: JSON.stringify(profiles) }],
+        };
+      },
+    );
+
+    server.tool(
+      "list_running_chimps",
+      "List all known chimps with their status, lifecycle timestamps, and " +
+        "current topic subscriptions. Includes this chimp. Useful for " +
+        "discovering peers and what they're working on.",
+      {},
+      async () => {
+        const { stateManager, topicRegistry, logger } = this.config;
+        const states = await stateManager.list();
+        const subsByChimp = topicRegistry ? await topicRegistry.listAll() : {};
+        const result = states.map((s) => ({
+          ...s,
+          subscriptions: subsByChimp[s.chimpId] ?? [],
+        }));
+        logger.info(
+          { tool: "list_running_chimps", count: result.length },
+          "MCP tool called: list_running_chimps",
+        );
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(result) }],
+        };
+      },
+    );
+
+    server.tool(
+      "list_chimp_subscriptions",
+      "List the topic subscriptions for a specific chimp by id.",
+      {
+        chimpId: z.string().describe("Target chimp id"),
+      },
+      async (args) => {
+        const { topicRegistry, logger } = this.config;
+        if (!topicRegistry) {
+          return {
+            content: [
+              { type: "text" as const, text: "Topic registry unavailable" },
+            ],
+          };
+        }
+        const topics = await topicRegistry.listForChimp(args.chimpId);
+        logger.info(
+          { tool: "list_chimp_subscriptions", target: args.chimpId },
+          "MCP tool called: list_chimp_subscriptions",
+        );
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(topics) }],
+        };
+      },
+    );
+
+    server.tool(
+      "list_topic_subscribers",
+      "List all chimps subscribed to a given topic. Use this to find peers " +
+        "working on the same PR/issue/channel before acting, so you can " +
+        "coordinate or hand off.",
+      {
+        platform: z.literal("github").describe("Platform"),
+        owner: z.string().describe("Repository owner"),
+        repo: z.string().describe("Repository name"),
+        type: z.enum(["pr", "issue"]).describe("PR or issue"),
+        number: z.number().describe("PR/issue number"),
+      },
+      async (args) => {
+        const topic: Standards.Topic.Topic = args;
+        const { topicRegistry, logger } = this.config;
+        if (!topicRegistry) {
+          return {
+            content: [
+              { type: "text" as const, text: "Topic registry unavailable" },
+            ],
+          };
+        }
+        const subs = await topicRegistry.lookup(topic);
+        logger.info(
+          {
+            tool: "list_topic_subscribers",
+            topic: Standards.Topic.serializeTopic(topic),
+            count: subs.length,
+          },
+          "MCP tool called: list_topic_subscribers",
+        );
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(subs) }],
+        };
+      },
+    );
+
+    server.tool(
+      "chimp_message",
+      "Send a message to another running chimp. The recipient receives it " +
+        "as an agent prompt and decides how to react. Include your own " +
+        "chimpId in the message text so the recipient knows who's writing.",
+      {
+        targetChimpId: z.string().describe("Recipient chimp id"),
+        message: z.string().describe("Message body"),
+      },
+      async (args) => {
+        const { chimpId, logger } = this.config;
+        publish(
+          Protocol.createChimpCommandOutput(
+            args.targetChimpId,
+            Protocol.createAgentCommand(args.message),
+          ),
+        );
+        logger.info(
+          {
+            tool: "chimp_message",
+            from: chimpId,
+            to: args.targetChimpId,
+          },
+          "MCP tool called: chimp_message",
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Message sent to ${args.targetChimpId}`,
+            },
+          ],
         };
       },
     );

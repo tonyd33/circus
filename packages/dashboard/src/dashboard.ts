@@ -1,15 +1,14 @@
 import {
   ChimpProfileStore,
   ProfileStore,
+  StateManager,
   TopicRegistry,
 } from "@mnke/circus-shared/components";
 import { createDatabase } from "@mnke/circus-shared/db";
 import type * as Logger from "@mnke/circus-shared/logger";
 import { serve } from "bun";
-import Redis from "ioredis";
 import { connect, type NatsConnection } from "nats";
 import index from "./index.html";
-import { RedisStatusSource } from "./lib/status-source";
 import { ActivityRouter } from "./routes/activity";
 import { ChimpRouter } from "./routes/chimps";
 import { MessageRouter } from "./routes/messages";
@@ -19,7 +18,6 @@ import { MessageService } from "./services/message-service";
 import { ProfileService } from "./services/profile-service";
 
 export interface DashboardConfig {
-  redisUrl: string;
   natsUrl: string;
   databaseUrl: string;
   defaultProfile: string;
@@ -30,7 +28,6 @@ export class Dashboard {
   private config: DashboardConfig;
   private logger: Logger.Logger;
   private nc: NatsConnection | null = null;
-  private redis: Redis | null = null;
   private server: ReturnType<typeof serve> | null = null;
   private shuttingDown = false;
 
@@ -40,9 +37,6 @@ export class Dashboard {
   }
 
   async start(): Promise<void> {
-    this.redis = new Redis(this.config.redisUrl);
-    const statusSource = new RedisStatusSource(this.redis);
-
     this.nc = await connect({
       servers: this.config.natsUrl,
       maxReconnectAttempts: -1,
@@ -57,7 +51,8 @@ export class Dashboard {
       db,
       this.config.defaultProfile,
     );
-    const profileStore = new ProfileStore(this.redis);
+    const profileStore = new ProfileStore(db);
+    const statusSource = new StateManager(db);
 
     const chimpService = new ChimpService(
       statusSource,
@@ -115,10 +110,6 @@ export class Dashboard {
     if (this.nc) {
       await this.nc.drain();
       await this.nc.close();
-    }
-
-    if (this.redis) {
-      await this.redis.quit();
     }
   }
 }

@@ -1,58 +1,71 @@
-import type Redis from "ioredis";
+import { eq } from "drizzle-orm";
+import type { Database } from "../db/client";
+import { chimpProfileDefinitions } from "../db/schema";
 import type { ChimpProfile } from "../protocol";
-import { Naming } from "../standards/chimp";
 
 export class ProfileStore {
-  constructor(private redis: Redis) {}
+  constructor(private db: Database) {}
 
   async get(name: string): Promise<ChimpProfile | null> {
-    const data = await this.redis.get(Naming.redisProfileKey(name));
-    if (!data) return null;
-    return JSON.parse(data) as ChimpProfile;
+    const rows = await this.db
+      .select({ definition: chimpProfileDefinitions.definition })
+      .from(chimpProfileDefinitions)
+      .where(eq(chimpProfileDefinitions.name, name))
+      .limit(1);
+    return rows[0]?.definition ?? null;
   }
 
   async save(name: string, profile: ChimpProfile): Promise<void> {
-    await this.redis.set(Naming.redisProfileKey(name), JSON.stringify(profile));
+    const now = new Date();
+    await this.db
+      .insert(chimpProfileDefinitions)
+      .values({ name, definition: profile, updatedAt: now })
+      .onConflictDoUpdate({
+        target: chimpProfileDefinitions.name,
+        set: { definition: profile, updatedAt: now },
+      });
   }
 
   async delete(name: string): Promise<boolean> {
-    const deleted = await this.redis.del(Naming.redisProfileKey(name));
-    return deleted > 0;
+    const rows = await this.db
+      .delete(chimpProfileDefinitions)
+      .where(eq(chimpProfileDefinitions.name, name))
+      .returning({ name: chimpProfileDefinitions.name });
+    return rows.length > 0;
   }
 
   async list(): Promise<Record<string, ChimpProfile>> {
-    const keys = await this.redis.keys(Naming.redisProfilePattern());
-    if (keys.length === 0) return {};
-
-    const pipeline = this.redis.pipeline();
-    for (const key of keys) {
-      pipeline.get(key);
-    }
-    const results = await pipeline.exec();
-    if (!results) return {};
-
+    const rows = await this.db
+      .select({
+        name: chimpProfileDefinitions.name,
+        definition: chimpProfileDefinitions.definition,
+      })
+      .from(chimpProfileDefinitions);
     const profiles: Record<string, ChimpProfile> = {};
-    for (let i = 0; i < keys.length; i++) {
-      const [err, data] = results[i] ?? [];
-      if (!err && data) {
-        const name = keys[i]?.replace("profile:", "");
-        if (name) {
-          profiles[name] = JSON.parse(data as string) as ChimpProfile;
-        }
-      }
+    for (const row of rows) {
+      profiles[row.name] = row.definition;
     }
     return profiles;
   }
 
   async seedDefaults(defaults: Record<string, ChimpProfile>): Promise<boolean> {
-    const keys = await this.redis.keys(Naming.redisProfilePattern());
-    if (keys.length > 0) return false;
+    const existing = await this.db
+      .select({ name: chimpProfileDefinitions.name })
+      .from(chimpProfileDefinitions)
+      .limit(1);
+    if (existing.length > 0) return false;
 
-    const pipeline = this.redis.pipeline();
-    for (const [name, profile] of Object.entries(defaults)) {
-      pipeline.set(Naming.redisProfileKey(name), JSON.stringify(profile));
-    }
-    await pipeline.exec();
+    const entries = Object.entries(defaults);
+    if (entries.length === 0) return false;
+
+    const now = new Date();
+    await this.db.insert(chimpProfileDefinitions).values(
+      entries.map(([name, profile]) => ({
+        name,
+        definition: profile,
+        updatedAt: now,
+      })),
+    );
     return true;
   }
 }

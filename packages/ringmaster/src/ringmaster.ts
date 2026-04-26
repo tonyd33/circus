@@ -2,12 +2,12 @@ import { Standards } from "@mnke/circus-shared";
 import {
   ChimpProfileStore,
   ProfileStore,
+  StateManager,
   TopicRegistry,
 } from "@mnke/circus-shared/components";
 import { createDatabase } from "@mnke/circus-shared/db";
 import { NatsLib } from "@mnke/circus-shared/lib";
 import type * as Logger from "@mnke/circus-shared/logger";
-import Redis from "ioredis";
 import {
   connect,
   type JetStreamManager,
@@ -17,12 +17,7 @@ import {
 } from "nats";
 import { ProfileLoader } from "@/config";
 import { EventHandler, type RingmasterConfig } from "@/core";
-import {
-  ConsumerManager,
-  JobManager,
-  MetaPublisher,
-  StateManager,
-} from "@/executors";
+import { ConsumerManager, JobManager, MetaPublisher } from "@/executors";
 import { EventListener, OutputListener, PodWatcher } from "@/listeners";
 import { PodCache } from "@/state";
 
@@ -67,10 +62,7 @@ export class Ringmaster {
     const topicRegistry = new TopicRegistry(this.nc, db);
     await topicRegistry.start();
 
-    this.stateManager = new StateManager(
-      this.config.redisUrl,
-      this.logger.child({ component: "StateManager" }),
-    );
+    this.stateManager = new StateManager(db);
     this.consumerManager = new ConsumerManager(
       this.jsm,
       this.logger.child({ component: "ConsumerManager" }),
@@ -79,8 +71,7 @@ export class Ringmaster {
       this.nc,
       this.logger.child({ component: "MetaPublisher" }),
     );
-    const profileRedis = new Redis(this.config.redisUrl);
-    const profileStore = new ProfileStore(profileRedis);
+    const profileStore = new ProfileStore(db);
     this.profileLoader = new ProfileLoader(
       profileStore,
       this.logger.child({ component: "ProfileLoader" }),
@@ -143,7 +134,6 @@ export class Ringmaster {
       this.eventListener.start(),
       this.outputListener.start(),
       this.podWatcher.start(),
-      this.stateManager.start(),
       this.jobManager.start(),
     ]);
     this.logger.info("Ringmaster started");
@@ -155,7 +145,6 @@ export class Ringmaster {
       this.podWatcher?.stop(),
       this.eventListener?.stop(),
       this.outputListener?.stop(),
-      this.stateManager?.stop(),
       this.jobManager?.stop(),
       this.profileLoader?.stop(),
     ]);

@@ -10,7 +10,6 @@ const logger = Logger.createLogger("dashboard");
 
 async function main() {
   const result = ER.record({
-    redisUrl: ER.str("REDIS_URL").fallback("redis://localhost:6379"),
     natsUrl: ER.str("NATS_URL").fallback("nats://localhost:4222"),
     databaseUrl: ER.str("DATABASE_URL").fallback(
       "postgresql://circus:circus@localhost:5432/circus",

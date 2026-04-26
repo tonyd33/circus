@@ -1,17 +1,13 @@
 import { Standards } from "@mnke/circus-shared";
 import type {
   ChimpProfileStore,
+  StateManager,
   TopicRegistry,
 } from "@mnke/circus-shared/components";
 import { Typing } from "@mnke/circus-shared/lib";
 import type * as Logger from "@mnke/circus-shared/logger";
 import type { NatsConnection } from "nats";
-import type {
-  ConsumerManager,
-  JobManager,
-  MetaPublisher,
-  StateManager,
-} from "@/executors";
+import type { ConsumerManager, JobManager, MetaPublisher } from "@/executors";
 import type { PodCache } from "@/state";
 import {
   type Action,

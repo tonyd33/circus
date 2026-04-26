@@ -58,17 +58,4 @@ export const Naming = {
     const hash = Bun.hash(chimpId).toString(36);
     return `chimp-${hash}`;
   },
-
-  redisChimpKey(chimpId: string): string {
-    return `chimp:${chimpId}:state`;
-  },
-  redisChimpPattern(): string {
-    return "chimp:*:state";
-  },
-  redisProfileKey(name: string): string {
-    return `profile:${name}`;
-  },
-  redisProfilePattern(): string {
-    return "profile:*";
-  },
 };

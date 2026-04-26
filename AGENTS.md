@@ -34,7 +34,8 @@ bun --watch packages/ringmaster/src/index.ts
 - **Event-centric NATS subjects**: Events describe what happened in the world (`events.github.{owner}.{repo}.pr.{number}.comment`). Chimps subscribe to topics they care about. Direct commands via `commands.{chimpId}`.
 - **Topic subscriptions**: Chimps register interest in topics (via MCP `subscribe_topic` tool). Postgres `topic_subscriptions` table maps topics to chimps (multiple chimps per topic). Enables cross-platform continuity (e.g. discord-triggered chimp receives github PR comments).
 - **Pure core**: Ringmaster's `core/core.ts` is pure decision logic. Side effects in event handler.
-- **Chimp state in Redis**: Key pattern `chimp:{id}:state` via `Standards.Chimp.Naming.redisChimpKey()`
+- **Chimp state in Postgres**: `chimp_states` table — chimpId, status, createdAt, updatedAt. Read/write via `StateManager` (`@mnke/circus-shared/components`).
+- **Chimp profiles in Postgres**: `chimp_profile_definitions` table — name + jsonb definition. Read/write via `ProfileStore`. Profile *assignments* (chimpId → profile name) live in `chimp_profiles` table via `ChimpProfileStore`.
 - **Types in shared**: Put types in `packages/shared/src/standards/`, not separate files.
 
 ### NATS Subject Topology
@@ -74,7 +75,7 @@ Chimps hand off work to a new chimp with a different profile using `chimp_reques
 
 1. **Leaf modules have no internal dependencies.** `standards/`, `db/`, `lib/` don't import each other. This keeps them independently testable and prevents cycles.
 
-2. **Components compose leaves.** `components/` imports from `db/`, `standards/`, and external packages (NATS, Redis). This is the only layer that talks to external stores.
+2. **Components compose leaves.** `components/` imports from `db/`, `standards/`, and external packages (NATS, Postgres, Redis). This is the only layer that talks to external stores.
 
 3. **Export paths match purpose.** `@mnke/circus-shared/lib` for utilities, `@mnke/circus-shared/db` for persistence, `@mnke/circus-shared/components` for data access. Consumers import from the path that matches what they need — not a kitchen-sink re-export.
 
@@ -415,9 +416,12 @@ const profile: Protocol.ChimpProfile = ...;
 
 ## Key Files
 
-- `packages/shared/src/standards/chimp.ts` — NATS subject naming, stream names, consumer names, Redis keys
+- `packages/shared/src/standards/chimp.ts` — NATS subject naming, stream names, consumer names, ChimpState type
 - `packages/shared/src/standards/topic.ts` — topic schema, serialization, event subject parsing
+- `packages/shared/src/db/schema.ts` — Drizzle tables: `topic_subscriptions`, `chimp_profiles`, `chimp_states`, `chimp_profile_definitions`
 - `packages/shared/src/components/topic-registry.ts` — topic subscription registry (Postgres + NATS consumer management)
+- `packages/shared/src/components/state-manager.ts` — chimp lifecycle state (Postgres)
+- `packages/shared/src/components/profile-store.ts` — chimp profile definitions (Postgres)
 - `packages/shared/src/protocol.ts` — all Zod schemas (commands, outputs, meta events, event context)
 - `packages/ringmaster/src/core/core.ts` — pure decision logic (event routing, chimp spawning)
 - `packages/chimp/src/chimp-brain/chimp-brain.ts` — base brain class (command dispatch, overridable handlers)

@@ -98,6 +98,8 @@ ringmaster:
                 1. Handle it directly if it's simple (answer a question, small fix)
                 2. Hand off to a more capable profile if it needs real work
 
+                NOTE: Your profile is incredibly incapable of serious work! Prefer handing off unless it's a trivial ask.
+
                 Always respond first to acknowledge the request, then hand off if needed.
                 Call `list_profiles` to see what profiles are available before handing off.
       reviewer:
@@ -137,7 +139,7 @@ ringmaster:
       worker:
         brain: opencode
         provider: opencode-go
-        model: kimi-k2.5
+        model: kimi-k2.6
         description: "General implementation worker. Writes code, fixes bugs, and creates PRs."
         initCommands:
           - command: append-system-prompt
@@ -151,6 +153,24 @@ ringmaster:
                 5. Create a PR with `gh pr create`
                 6. Call `subscribe_topic` with the PR details so you receive review comments
                 7. Respond to tell the user what you did and link the PR
+      designer:
+        brain: opencode
+        provider: opencode-go
+        model: kimi-k2.6
+        description: "Product designer / product manager. Shapes requirements, writes specs, considers UX trade-offs, and translates user needs into actionable tasks."
+        initCommands:
+          - command: append-system-prompt
+            args:
+              prompt: |
+                You are a product designer / product manager agent. Your job is to:
+                - Clarify user requirements and surface unstated assumptions
+                - Translate fuzzy requests into concrete, prioritized specs
+                - Consider UX trade-offs, user flows, edge cases, and accessibility
+                - Write product specs, user stories, and acceptance criteria
+                - Push back on scope creep; identify MVP vs nice-to-have
+                - Reference existing UI patterns in the codebase before proposing new ones
+
+                Focus on the user problem, not the implementation. When a spec is ready, hand off to architect (for design) or worker (for direct build) with clear acceptance criteria.
 
 # Usher configuration
 usher:
