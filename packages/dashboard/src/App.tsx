@@ -2,6 +2,8 @@ import { Moon, Sun } from "lucide-react";
 import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/hooks/useTheme";
+import { ChannelActivity } from "./pages/ChannelActivity";
+import { ChannelsList } from "./pages/ChannelsList";
 import { ChimpActivity } from "./pages/ChimpActivity";
 import { ChimpsList } from "./pages/ChimpsList";
 import { DashboardHome } from "./pages/DashboardHome";
@@ -28,6 +30,12 @@ function Header() {
             className="text-white/90 hover:text-circus-gold transition-colors text-xs md:text-sm font-medium"
           >
             Chimps
+          </Link>
+          <Link
+            to="/channels"
+            className="text-white/90 hover:text-circus-gold transition-colors text-xs md:text-sm font-medium"
+          >
+            Channels
           </Link>
           <Link
             to="/profiles"
@@ -59,6 +67,11 @@ export function App() {
       <Routes>
         <Route path="/" element={<DashboardHome />} />
         <Route path="/chimps" element={<ChimpsList />} />
+        <Route path="/channels" element={<ChannelsList />} />
+        <Route
+          path="/channels/:channelId/activity"
+          element={<ChannelActivity />}
+        />
         <Route path="/profiles" element={<Profiles />} />
         <Route path="/chimps/:chimpId/activity" element={<ChimpActivity />} />
       </Routes>

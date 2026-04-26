@@ -23,6 +23,10 @@ export const TopicSchema = z.discriminatedUnion("platform", [
     platform: z.literal("debug"),
     sessionId: z.string(),
   }),
+  z.object({
+    platform: z.literal("channel"),
+    channelId: z.string(),
+  }),
 ]);
 
 export type Topic = z.infer<typeof TopicSchema>;
@@ -42,6 +46,8 @@ export function serializeTopic(topic: Topic): string {
       return `direct.${topic.chimpId}`;
     case "debug":
       return `debug.${topic.sessionId}`;
+    case "channel":
+      return `channel.${topic.channelId}`;
   }
 }
 
@@ -121,11 +127,24 @@ const debugTopicParser = P.Do()
     }),
   );
 
+const channelTopicParser = P.Do()
+  .do(P.str("events."))
+  .do(P.str("channel"))
+  .do(dot)
+  .bind("channelId", segment)
+  .return(
+    (env): Topic => ({
+      platform: "channel",
+      channelId: env.channelId,
+    }),
+  );
+
 const eventSubjectParser = P.choice([
   githubTopicParser,
   discordTopicParser,
   directTopicParser,
   debugTopicParser,
+  channelTopicParser,
 ]);
 
 export function eventSubjectToTopic(subject: string): Topic | null {
@@ -191,11 +210,23 @@ const debugKeyParser = P.Do()
     }),
   );
 
+const channelKeyParser = P.Do()
+  .do(P.str("channel"))
+  .do(dot)
+  .bind("channelId", segment)
+  .return(
+    (env): Topic => ({
+      platform: "channel",
+      channelId: env.channelId,
+    }),
+  );
+
 const topicKeyParser = P.choice([
   githubKeyParser,
   discordKeyParser,
   directKeyParser,
   debugKeyParser,
+  channelKeyParser,
 ]);
 
 export function deserializeTopic(key: string): Topic | null {

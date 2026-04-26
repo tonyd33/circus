@@ -11,9 +11,11 @@ import { connect, type NatsConnection } from "nats";
 import index from "./index.html";
 import { RedisStatusSource } from "./lib/status-source";
 import { ActivityRouter } from "./routes/activity";
+import { ChannelRouter } from "./routes/channels";
 import { ChimpRouter } from "./routes/chimps";
 import { MessageRouter } from "./routes/messages";
 import { ProfileRouter } from "./routes/profiles";
+import { ChannelService } from "./services/channel-service";
 import { ChimpService } from "./services/chimp-service";
 import { MessageService } from "./services/message-service";
 import { ProfileService } from "./services/profile-service";
@@ -75,10 +77,16 @@ export class Dashboard {
       this.logger.child({ component: "ProfileService" }),
     );
 
+    const channelService = new ChannelService(topicRegistry);
     const activityRouter = new ActivityRouter(
       this.nc,
       topicRegistry,
       this.logger.child({ component: "ActivityRouter" }),
+    );
+    const channelRouter = new ChannelRouter(
+      channelService,
+      this.nc,
+      this.logger.child({ component: "ChannelRouter" }),
     );
     const chimpRouter = new ChimpRouter(chimpService);
     const messageRouter = new MessageRouter(messageService);
@@ -90,6 +98,7 @@ export class Dashboard {
         "/healthz": new Response("OK", { status: 200 }),
         "/*": index,
         ...activityRouter.routes,
+        ...channelRouter.routes,
         ...chimpRouter.routes,
         ...profileRouter.routes,
         ...messageRouter.routes,
