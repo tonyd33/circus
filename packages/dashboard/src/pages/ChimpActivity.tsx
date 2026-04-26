@@ -95,7 +95,7 @@ export function ChimpActivity() {
   }
 
   return (
-    <div className="max-h-screen bg-background">
+    <div className="h-screen bg-background flex flex-col">
       <Header
         chimpId={chimpId}
         topics={topics}
@@ -103,7 +103,7 @@ export function ChimpActivity() {
         error={error}
       />
 
-      <main className="container mx-auto px-3 md:px-4 py-4 md:py-6">
+      <main className="flex-1 container mx-auto px-3 md:px-4 py-4 md:py-6 overflow-hidden flex flex-col">
         {error && !connected && (
           <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-md">
             <p className="text-sm text-amber-500">{error}</p>
@@ -119,20 +119,22 @@ export function ChimpActivity() {
           totalCount={messages.length}
         />
 
-        <ActivityFeed
-          messages={filteredMessages}
-          dispatchedOutputIds={dispatchedOutputIds}
-          emptyText={
-            messages.length === 0
-              ? "The stage is empty"
-              : "No messages match filters"
-          }
-          emptySubtitle={
-            messages.length === 0
-              ? "Messages will appear here in real-time"
-              : undefined
-          }
-        />
+        <div className="flex-1 overflow-hidden">
+          <ActivityFeed
+            messages={filteredMessages}
+            dispatchedOutputIds={dispatchedOutputIds}
+            emptyText={
+              messages.length === 0
+                ? "The stage is empty"
+                : "No messages match filters"
+            }
+            emptySubtitle={
+              messages.length === 0
+                ? "Messages will appear here in real-time"
+                : undefined
+            }
+          />
+        </div>
       </main>
 
       <MessageInput chimpId={chimpId} />

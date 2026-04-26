@@ -23,7 +23,7 @@ export function MessageInput({ chimpId }: { chimpId: string }) {
   }
 
   return (
-    <footer className="sticky bottom-0 border-t border-border bg-card/80 backdrop-blur-sm p-4">
+    <footer className="sticky bottom-0 border-t border-border bg-card/80 backdrop-blur-sm p-3 md:p-4">
       <div className="container mx-auto flex gap-2">
         <Textarea
           value={prompt}

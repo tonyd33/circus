@@ -35,9 +35,9 @@ export const MessageCard = memo(function MessageCard({
         msg.type === "event" ? "border-l-amber-500" : "border-l-ring"
       }`}
     >
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
+      <CardContent className="p-3 md:p-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Badge
               variant="secondary"
               className={`gap-1 ${msg.type === "event" ? "bg-amber-500/20 text-amber-500" : ""}`}
@@ -52,7 +52,7 @@ export const MessageCard = memo(function MessageCard({
               {getMessageType(msg)}
             </Badge>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 sm:ml-auto">
             {dispatchedOutputIds.has(msg.id) && (
               <Megaphone className="h-3.5 w-3.5 text-circus-gold" />
             )}

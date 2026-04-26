@@ -51,11 +51,8 @@ export function ActivityFeed({
   }, [messages.length]);
 
   return (
-    <div className="relative">
-      <div
-        ref={containerRef}
-        className="space-y-3 max-h-[calc(100vh-350px)] overflow-y-auto"
-      >
+    <div className="relative h-full">
+      <div ref={containerRef} className="space-y-3 h-full overflow-y-auto">
         {messages.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
             <span className="text-4xl block mb-3">🎪</span>
