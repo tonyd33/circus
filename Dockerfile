@@ -42,16 +42,22 @@ COPY --from=nix-env /nix-closure/nix/store /nix/store
 COPY --from=nix-env /nix-closure/env-path /tmp/env-path
 RUN ln -s "$(cat /tmp/env-path)" /nix-env && rm /tmp/env-path
 ENV PATH="/nix-env/bin:${PATH}"
+ENV SSL_CERT_FILE="/nix-env/etc/ssl/certs/ca-bundle.crt"
+ENV NIX_SSL_CERT_FILE="/nix-env/etc/ssl/certs/ca-bundle.crt"
+ENV GIT_SSL_CAINFO="/nix-env/etc/ssl/certs/ca-bundle.crt"
+ENV CURL_CA_BUNDLE="/nix-env/etc/ssl/certs/ca-bundle.crt"
 ADD --unpack https://github.com/anomalyco/opencode/releases/download/v1.14.25/opencode-linux-x64.tar.gz /usr/local/bin/
 RUN bunx npm install -g @anthropic-ai/claude-code
+
+WORKDIR /app
+COPY --from=build --chown=root:root /usr/src/app/packages ./packages
+COPY --from=build --chown=root:root /usr/src/app/package.json ./
+# IMPROVE: How to share bun
+RUN bun ci
 
 RUN useradd -ms /bin/bash agent
 USER agent
 WORKDIR /home/agent/
-
-COPY --from=build --chown=root:root /usr/src/app/node_modules /app/node_modules
-COPY --from=build --chown=root:root /usr/src/app/packages /app/packages
-COPY --from=build --chown=root:root /usr/src/app/package.json /app/
 
 ENTRYPOINT ["bun", "run", "/app/packages/chimp/src/index.ts"]
 
