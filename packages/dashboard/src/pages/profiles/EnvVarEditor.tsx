@@ -27,18 +27,18 @@ export function EnvVarEditor({
 
   return (
     <div className="flex items-start gap-2 bg-muted/30 rounded-md p-2">
-      <div className="flex-1 space-y-2">
-        <div className="flex items-center gap-2">
+      <div className="flex-1 space-y-2 min-w-0">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
           <Input
             placeholder="ENV_VAR_NAME"
             value={env.name}
             onChange={(e) => onChange({ ...env, name: e.target.value })}
-            className="font-mono text-xs"
+            className="font-mono text-xs w-full sm:flex-1"
           />
           <Button
             variant="ghost"
             size="sm"
-            className="shrink-0 gap-1 text-xs"
+            className="shrink-0 gap-1 text-xs w-full sm:w-auto"
             onClick={() => {
               if (isSecret) {
                 onChange({ name: env.name, value: "" });
@@ -62,7 +62,7 @@ export function EnvVarEditor({
           </Button>
         </div>
         {isSecret ? (
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <Input
               placeholder="Secret name"
               value={env.valueFrom?.secretKeyRef?.name ?? ""}
@@ -110,7 +110,7 @@ export function EnvVarEditor({
       <button
         type="button"
         onClick={onRemove}
-        className="mt-2 text-muted-foreground hover:text-red-500"
+        className="mt-2 text-muted-foreground hover:text-red-500 shrink-0"
       >
         <X className="h-4 w-4" />
       </button>
