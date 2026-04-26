@@ -200,6 +200,21 @@ export const VolumeSchema = z.object({
     .optional(),
 });
 
+export const AuthProviderConfigSchema = z.discriminatedUnion("source", [
+  z.object({
+    source: z.literal("env"),
+    envVar: z.string(),
+  }),
+  z.object({
+    source: z.literal("redis"),
+    key: z.string(),
+  }),
+]);
+export type AuthProviderConfig = z.infer<typeof AuthProviderConfigSchema>;
+
+export const AuthConfigSchema = z.record(z.string(), AuthProviderConfigSchema);
+export type AuthConfig = z.infer<typeof AuthConfigSchema>;
+
 export const ChimpProfileSchema = z.object({
   brain: BrainTypeEnum,
   provider: z.string(),
@@ -211,6 +226,7 @@ export const ChimpProfileSchema = z.object({
   volumes: z.array(VolumeSchema).default([]),
   imagePullPolicy: z.string().optional(),
   initCommands: z.array(ChimpCommandSchema).default([]),
+  auth: AuthConfigSchema.default({}),
 });
 export type ChimpProfile = z.infer<typeof ChimpProfileSchema>;
 

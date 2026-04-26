@@ -1,6 +1,7 @@
 import path from "node:path";
 import { Protocol } from "@mnke/circus-shared";
 import type {
+  AuthResolver,
   ProfileStore,
   TopicRegistry,
 } from "@mnke/circus-shared/components";
@@ -22,6 +23,7 @@ export abstract class ChimpBrain {
   protected publish: PublishFn;
   protected logger: Logger.Logger;
   protected mcpUrl: string;
+  protected authResolver: AuthResolver;
   protected profileStore: ProfileStore | null = null;
   protected topicRegistry: TopicRegistry | null = null;
 
@@ -48,6 +50,7 @@ export abstract class ChimpBrain {
     publish: PublishFn,
     logger: Logger.Logger,
     mcpUrl: string,
+    authResolver: AuthResolver,
   ) {
     this.chimpId = chimpId;
     this.provider = provider;
@@ -55,6 +58,7 @@ export abstract class ChimpBrain {
     this.publish = publish;
     this.logger = logger;
     this.mcpUrl = mcpUrl;
+    this.authResolver = authResolver;
   }
 
   setProfileStore(profileStore: ProfileStore): void {
