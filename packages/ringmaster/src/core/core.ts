@@ -117,7 +117,10 @@ export function deriveChimpId(
 ): string {
   const key = topic
     ? Standards.Topic.serializeTopic(topic)
-    : eventSubject.slice(Standards.Chimp.Prefix.EVENTS.length + 1);
+    : Standards.Topic.parseEventSubject(eventSubject);
+  if (!key) {
+    return `evt-${Bun.hash(eventSubject).toString(36)}`;
+  }
   return `evt-${Bun.hash(key).toString(36)}`;
 }
 
