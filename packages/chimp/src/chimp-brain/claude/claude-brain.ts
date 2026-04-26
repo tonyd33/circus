@@ -66,8 +66,10 @@ export class ClaudeChimp extends ChimpBrain {
           eventContextCount: this.eventContexts.length,
         });
       }
-    } catch {
-      this.log("warn", "Could not restore state from S3, starting fresh");
+    } catch (err) {
+      this.log("warn", "Could not restore state from S3, starting fresh", {
+        err,
+      });
     }
 
     this.onEventContextsChanged?.(this.eventContexts);

@@ -67,7 +67,7 @@ async function main() {
       inputMode: config.inputMode,
       outputMode: config.outputMode,
       httpPort: config.httpPort,
-      idleTimeoutMs: 1 * 60 * 1000,
+      idleTimeoutMs: 5 * 60 * 1000,
       logger: logger.child({ component: "Chimp" }),
     },
     brainFactory,
