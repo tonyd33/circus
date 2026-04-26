@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   eventSubjectToTopic,
+  parseEventSubject,
   serializeTopic,
   topicToEventSubject,
 } from "./topic.ts";
@@ -80,5 +81,43 @@ describe("eventSubjectToTopic", () => {
 
   test("returns null for incomplete github subject", () => {
     expect(eventSubjectToTopic("events.github.tonyd33")).toBeNull();
+  });
+});
+
+describe("parseEventSubject", () => {
+  test("parses valid event subject", () => {
+    expect(
+      parseEventSubject("events.github.tonyd33.circus.pr.42.comment"),
+    ).toBe("github.tonyd33.circus.pr.42.comment");
+  });
+
+  test("parses direct event subject", () => {
+    expect(parseEventSubject("events.direct.chimp-123")).toBe(
+      "direct.chimp-123",
+    );
+  });
+
+  test("returns null for empty subject", () => {
+    expect(parseEventSubject("")).toBeNull();
+  });
+
+  test("returns null for subject missing events prefix", () => {
+    expect(parseEventSubject("commands.chimp-123")).toBeNull();
+  });
+
+  test("returns null for malformed subject (no dot after prefix)", () => {
+    expect(parseEventSubject("events")).toBeNull();
+  });
+
+  test("returns null for malformed subject (only prefix)", () => {
+    expect(parseEventSubject("events.")).toBe("");
+  });
+
+  test("handles discord platform", () => {
+    expect(
+      parseEventSubject(
+        "events.discord.guild123.channel456.interaction789.created",
+      ),
+    ).toBe("discord.guild123.channel456.interaction789.created");
   });
 });

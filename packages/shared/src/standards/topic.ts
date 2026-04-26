@@ -201,3 +201,16 @@ const topicKeyParser = P.choice([
 export function deserializeTopic(key: string): Topic | null {
   return topicKeyParser.parse(key).unwrapOr(null);
 }
+
+export const PREFIX = {
+  EVENTS: "events",
+};
+
+const eventsPrefixLength = PREFIX.EVENTS.length;
+
+export function parseEventSubject(subject: string): string | null {
+  if (!subject.startsWith(PREFIX.EVENTS + ".")) {
+    return null;
+  }
+  return subject.slice(eventsPrefixLength + 1);
+}
