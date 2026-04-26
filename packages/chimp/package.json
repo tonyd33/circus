@@ -18,7 +18,7 @@
     "@mnke/circus-shared": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@octokit/auth-app": "catalog:",
-    "@opencode-ai/sdk": "^1.4.3",
+    "@opencode-ai/sdk": "^1.14.25",
     "commander": "catalog:",
     "ioredis": "catalog:",
     "nats": "catalog:",

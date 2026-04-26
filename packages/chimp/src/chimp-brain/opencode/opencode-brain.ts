@@ -125,7 +125,6 @@ export class OpencodeBrain extends ChimpBrain {
 
     const opencode = await Opencode.createOpencode({
       config: {
-        provider,
         mcp: {
           circus: {
             type: "remote",
@@ -138,6 +137,11 @@ export class OpencodeBrain extends ChimpBrain {
 
     this.opencode = opencode;
     this.client = opencode.client;
+
+    await this.client.auth.set({
+      path: { id: this.provider },
+      body: { type: "api", key: apiKey },
+    });
 
     const sessionTitle = `Chimp ${this.chimpId} session`;
 
@@ -173,7 +177,7 @@ export class OpencodeBrain extends ChimpBrain {
       this.log("info", "Created new session", { sessionId: this.sessionId });
     }
 
-    await this.bindEventSubscription(this.workingDir ?? process.cwd());
+    await this.bindEventSubscription(this.workingDir);
 
     this.log("info", "Opencode server started", {
       serverUrl: opencode.server.url,
@@ -214,7 +218,7 @@ export class OpencodeBrain extends ChimpBrain {
     const { data } = await this.client.session.prompt({
       path: { id: this.sessionId },
       query: {
-        directory: this.workingDir ?? process.cwd(),
+        directory: this.workingDir,
       },
       body: {
         parts: [{ type: "text", text: prompt }],
