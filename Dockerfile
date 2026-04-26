@@ -25,7 +25,21 @@ COPY --chown=root:root packages ./packages
 # Build the project
 RUN bun run build
 
+# Nix builder stage - build development tools from flake
+FROM nixos/nix:latest AS nix-env
+RUN echo "experimental-features = nix-command flakes" >> /etc/nix/nix.conf
+COPY flake.nix flake.lock ./
+RUN nix build .#chimp-env && \
+    mkdir -p /nix-closure/nix/store && \
+    nix-store -qR result | xargs -I{} cp -a {} /nix-closure/nix/store/ && \
+    readlink -f result > /nix-closure/env-path
+
 FROM base AS chimp
+# Copy nix development environment (built from flake.nix)
+COPY --from=nix-env /nix-closure/nix/store /nix/store
+COPY --from=nix-env /nix-closure/env-path /tmp/env-path
+RUN ln -s "$(cat /tmp/env-path)" /nix-env && rm /tmp/env-path
+ENV PATH="/nix-env/bin:${PATH}"
 RUN apt update && \
     apt install -y git curl gpg && \
     curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg && \
