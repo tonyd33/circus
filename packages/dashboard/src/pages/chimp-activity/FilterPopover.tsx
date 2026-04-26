@@ -40,7 +40,7 @@ export const FilterPopover = memo(function FilterPopover({
             )}
           </Button>
         </PopoverTrigger>
-        <PopoverContent align="start" className="w-56 p-3">
+        <PopoverContent align="start" className="w-64 sm:w-56 p-3">
           {isFiltering && (
             <button
               type="button"
