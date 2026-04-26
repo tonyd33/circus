@@ -235,10 +235,28 @@ export class Bullhorn {
       );
       return;
     }
+
     try {
       const octokit = await this.githubApp.getInstallationOctokit(
         msg.installationId,
       );
+
+      try {
+        await octokit.request("GET /repos/{owner}/{repo}/installation", {
+          owner,
+          repo,
+        });
+      } catch {
+        this.logger.error(
+          {
+            installationId: msg.installationId,
+            repo: msg.repo,
+          },
+          "Installation does not have access to repo",
+        );
+        return;
+      }
+
       const res = await octokit.request(
         "POST /repos/{owner}/{repo}/issues/{issue_number}/comments",
         {
