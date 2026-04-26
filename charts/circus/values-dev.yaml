@@ -28,6 +28,11 @@ ringmaster:
             secretKeyRef:
               name: circus-secrets
               key: OPENCODE_GO_API_KEY
+        - name: OPENCODE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: circus-secrets
+              key: OPENCODE_API_KEY
         - name: OPENROUTER_API_KEY
           valueFrom:
             secretKeyRef:

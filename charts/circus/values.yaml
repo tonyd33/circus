@@ -87,7 +87,7 @@ ringmaster:
     profiles:
       scout:
         brain: opencode
-        provider: opencode-go
+        provider: opencode
         model: big-pickle
         description: "Fast triage agent. Quickly assesses requests and either handles simple tasks directly or hands off to a more capable profile."
         initCommands:

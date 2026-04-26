@@ -25,14 +25,24 @@ COPY --chown=root:root packages ./packages
 # Build the project
 RUN bun run build
 
+# Nix builder stage - build development tools from flake
+FROM nixos/nix:latest AS nix-env
+WORKDIR /build
+RUN echo "experimental-features = nix-command flakes" >> /etc/nix/nix.conf && \
+    echo "filter-syscalls = false" >> /etc/nix/nix.conf
+COPY flake.nix flake.lock ./
+RUN nix build .#chimp-env && \
+    mkdir -p /nix-closure/nix/store && \
+    nix-store -qR result | xargs -I{} cp -a {} /nix-closure/nix/store/ && \
+    readlink -f result > /nix-closure/env-path
+
 FROM base AS chimp
-RUN apt update && \
-    apt install -y git curl gpg && \
-    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg && \
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list && \
-    apt install -y gh && \
-    rm -rf /var/lib/apt/lists/*
-ADD --unpack https://github.com/anomalyco/opencode/releases/download/v1.4.3/opencode-linux-x64.tar.gz /usr/local/bin/
+# Copy nix development environment (built from flake.nix)
+COPY --from=nix-env /nix-closure/nix/store /nix/store
+COPY --from=nix-env /nix-closure/env-path /tmp/env-path
+RUN ln -s "$(cat /tmp/env-path)" /nix-env && rm /tmp/env-path
+ENV PATH="/nix-env/bin:${PATH}"
+ADD --unpack https://github.com/anomalyco/opencode/releases/download/v1.14.25/opencode-linux-x64.tar.gz /usr/local/bin/
 RUN bunx npm install -g @anthropic-ai/claude-code
 
 RUN useradd -ms /bin/bash agent
