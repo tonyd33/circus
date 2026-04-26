@@ -97,29 +97,29 @@ export function Profiles() {
 
   if (loading) {
     return (
-      <div className="container mx-auto p-8 flex justify-center">
+      <div className="container mx-auto p-4 md:p-8 flex justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto p-8">
-      <div className="flex items-end justify-between mb-8">
+    <div className="container mx-auto p-4 md:p-8">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-6 md:mb-8 gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-circus-crimson">
+          <h1 className="text-2xl md:text-3xl font-bold text-circus-crimson">
             🎩 Profiles
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-muted-foreground text-sm md:text-base">
             Configure chimp profiles. Changes take effect on next job creation.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder="New profile name"
-            className="w-48"
+            className="w-full sm:w-48"
             onKeyDown={(e) => {
               if (e.key === "Enter" && newName.trim()) {
                 handleCreate();
@@ -151,7 +151,7 @@ export function Profiles() {
             onClick={() => fileInputRef.current?.click()}
           >
             <Upload className="h-4 w-4" />
-            Import
+            <span className="hidden sm:inline">Import</span>
           </Button>
           <input
             ref={templateInputRef}
@@ -166,7 +166,7 @@ export function Profiles() {
             onClick={() => templateInputRef.current?.click()}
           >
             <FileUp className="h-4 w-4" />
-            Import Template
+            <span className="hidden sm:inline">Import Template</span>
           </Button>
         </div>
       </div>

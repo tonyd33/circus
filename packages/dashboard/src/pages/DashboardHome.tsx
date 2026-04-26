@@ -176,9 +176,9 @@ export function DashboardHome() {
   }, [chimps]);
 
   return (
-    <div className="container mx-auto p-8">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-circus-crimson">
+    <div className="container mx-auto p-4 md:p-8">
+      <div className="flex justify-between items-center mb-6 md:mb-8">
+        <h1 className="text-2xl md:text-3xl font-bold text-circus-crimson">
           Ringmaster's View
         </h1>
       </div>
@@ -189,7 +189,7 @@ export function DashboardHome() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4 mb-6 md:mb-8">
         {statCards.map(({ key, label, borderClass, icon }) => (
           <Card
             key={key}

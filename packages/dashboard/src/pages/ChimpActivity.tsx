@@ -88,7 +88,7 @@ export function ChimpActivity() {
 
   if (!chimpId) {
     return (
-      <div className="p-8 text-center text-muted-foreground">
+      <div className="p-4 md:p-8 text-center text-muted-foreground">
         Missing chimp ID
       </div>
     );
@@ -103,7 +103,7 @@ export function ChimpActivity() {
         error={error}
       />
 
-      <main className="container mx-auto px-4 py-6">
+      <main className="container mx-auto px-3 md:px-4 py-4 md:py-6">
         {error && !connected && (
           <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-md">
             <p className="text-sm text-amber-500">{error}</p>

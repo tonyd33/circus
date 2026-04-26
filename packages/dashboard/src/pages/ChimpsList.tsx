@@ -106,9 +106,11 @@ export function ChimpsList() {
   );
 
   return (
-    <div className="container mx-auto p-8">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-circus-crimson">🐒 Chimps</h1>
+    <div className="container mx-auto p-4 md:p-8">
+      <div className="flex justify-between items-center mb-6 md:mb-8">
+        <h1 className="text-2xl md:text-3xl font-bold text-circus-crimson">
+          🐒 Chimps
+        </h1>
         <div className="flex items-center gap-2">
           {connected ? (
             <CircleDot className="h-3 w-3 text-emerald-500 animate-pulse" />
