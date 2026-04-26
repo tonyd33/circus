@@ -13,6 +13,7 @@ async function main() {
   const result = ER.record({
     chimpId: ER.str(Standards.Chimp.Env.chimpId),
     profile: ER.str(Standards.Chimp.Env.profile),
+    provider: ER.str(Standards.Chimp.Env.provider),
     model: ER.str(Standards.Chimp.Env.model),
     natsUrl: ER.str(Standards.Chimp.Env.natsUrl).fallback(
       "nats://localhost:4222",
@@ -60,6 +61,7 @@ async function main() {
     {
       chimpId: config.chimpId,
       profile: config.profile,
+      provider: config.provider,
       model: config.model,
       natsUrl: config.natsUrl,
       redisUrl: config.redisUrl,

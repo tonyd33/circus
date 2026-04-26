@@ -4,12 +4,40 @@ ringmaster:
     repository: ringmaster
   profileTemplate:
     base:
+      auth:
+        claude:
+          source: env
+          envVar: CLAUDE_CODE_OAUTH_TOKEN
+        opencode:
+          source: env
+          envVar: OPENCODE_API_KEY
+        opencode-go:
+          source: env
+          envVar: OPENCODE_GO_API_KEY
+        openrouter:
+          source: env
+          envVar: OPENROUTER_API_KEY
       extraEnv:
         - name: CLAUDE_CODE_OAUTH_TOKEN
           valueFrom:
             secretKeyRef:
               name: circus-secrets
               key: CLAUDE_CODE_OAUTH_TOKEN
+        - name: OPENCODE_GO_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: circus-secrets
+              key: OPENCODE_GO_API_KEY
+        - name: OPENCODE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: circus-secrets
+              key: OPENCODE_API_KEY
+        - name: OPENROUTER_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: circus-secrets
+              key: OPENROUTER_API_KEY
         - name: GITHUB_APP_ID
           value: "3434984"
         - name: GITHUB_PRIVATE_KEY

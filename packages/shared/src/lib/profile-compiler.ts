@@ -1,4 +1,4 @@
-import type { ChimpProfile } from "../protocol";
+import type { AuthConfig, ChimpProfile } from "../protocol";
 
 export interface ProfileTemplateBase {
   image: string;
@@ -7,10 +7,12 @@ export interface ProfileTemplateBase {
   volumeMounts?: ChimpProfile["volumeMounts"];
   volumes?: ChimpProfile["volumes"];
   initCommands?: ChimpProfile["initCommands"];
+  auth?: AuthConfig;
 }
 
 export interface ProfileTemplateVariant {
   brain: ChimpProfile["brain"];
+  provider: string;
   model: string;
   description?: string;
   image?: string;
@@ -19,6 +21,7 @@ export interface ProfileTemplateVariant {
   volumeMounts?: ChimpProfile["volumeMounts"];
   volumes?: ChimpProfile["volumes"];
   initCommands?: ChimpProfile["initCommands"];
+  auth?: AuthConfig;
 }
 
 export interface ProfileTemplate {
@@ -40,8 +43,14 @@ export function compileProfiles(
     for (const env of baseEnv) envByName.set(env.name, env);
     for (const env of variantEnv) envByName.set(env.name, env);
 
+    // Merge auth: variant overrides base by provider name
+    const baseAuth = template.base.auth ?? {};
+    const variantAuth = variant.auth ?? {};
+    const auth = { ...baseAuth, ...variantAuth };
+
     result[name] = {
       brain: variant.brain,
+      provider: variant.provider,
       model: variant.model,
       image: variant.image ?? template.base.image,
       description: variant.description,
@@ -56,6 +65,7 @@ export function compileProfiles(
         ...(template.base.initCommands ?? []),
         ...(variant.initCommands ?? []),
       ],
+      auth,
     };
   }
 

@@ -1,11 +1,15 @@
 import * as os from "node:os";
 import * as path from "node:path";
+import { z } from "zod";
 import { downloadDirFromS3, type S3Client, uploadDirToS3 } from "@/lib/s3";
 
-export interface OpencodeChimpState {
-  sessionId: string | null;
-  workingDir: string;
-}
+export const OpencodeChimpStateSchema = z.object({
+  sessionId: z.string().nullable(),
+  workingDir: z.string(),
+  model: z.string(),
+  allowedTools: z.array(z.string()),
+});
+export type OpencodeChimpState = z.infer<typeof OpencodeChimpStateSchema>;
 
 const OPENCODE_DATA_DIR = path.join(
   os.homedir(),
@@ -58,7 +62,9 @@ export async function restoreOpencodeChimpStateFromS3(
 
   try {
     const text = await client.file(key).text();
-    return JSON.parse(text) as OpencodeChimpState;
+    const parsed = OpencodeChimpStateSchema.safeParse(JSON.parse(text));
+    if (!parsed.success) return null;
+    return parsed.data;
   } catch {
     return null;
   }

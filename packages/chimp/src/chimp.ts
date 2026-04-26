@@ -1,4 +1,9 @@
-import { ProfileStore, TopicRegistry } from "@mnke/circus-shared/components";
+import {
+  AuthResolver,
+  ProfileStore,
+  RedisTokenStore,
+  TopicRegistry,
+} from "@mnke/circus-shared/components";
 import { createDatabase } from "@mnke/circus-shared/db";
 import { Typing } from "@mnke/circus-shared/lib";
 import type * as Logger from "@mnke/circus-shared/logger";
@@ -20,6 +25,7 @@ import {
 export interface ChimpConfig {
   chimpId: string;
   profile: string;
+  provider: string;
   model: string;
   natsUrl: string;
   redisUrl: string;
@@ -85,6 +91,10 @@ export class Chimp {
     const profileRedis = new Redis(this.config.redisUrl);
     const profileStore = new ProfileStore(profileRedis);
 
+    const profile = await profileStore.get(this.config.profile);
+    const tokenStore = new RedisTokenStore(profileRedis);
+    const authResolver = new AuthResolver(profile?.auth ?? {}, tokenStore);
+
     this.mcp = new CircusMcp({
       publish: publishFn,
       chimpId: this.config.chimpId,
@@ -97,10 +107,12 @@ export class Chimp {
 
     this.brain = this.brainFactory.create(
       this.config.chimpId,
+      this.config.provider,
       this.config.model,
       publishFn,
       this.logger.child({ component: "Brain" }),
       mcpUrl,
+      authResolver,
     );
     const brain = this.brain;
     brain.setProfileStore(profileStore);

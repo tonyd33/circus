@@ -42,7 +42,7 @@ COPY --from=nix-env /nix-closure/nix/store /nix/store
 COPY --from=nix-env /nix-closure/env-path /tmp/env-path
 RUN ln -s "$(cat /tmp/env-path)" /nix-env && rm /tmp/env-path
 ENV PATH="/nix-env/bin:${PATH}"
-ADD --unpack https://github.com/anomalyco/opencode/releases/download/v1.4.3/opencode-linux-x64.tar.gz /usr/local/bin/
+ADD --unpack https://github.com/anomalyco/opencode/releases/download/v1.14.25/opencode-linux-x64.tar.gz /usr/local/bin/
 RUN bunx npm install -g @anthropic-ai/claude-code
 
 RUN useradd -ms /bin/bash agent

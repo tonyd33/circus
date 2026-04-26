@@ -44,8 +44,10 @@ export function Profiles() {
     try {
       const empty: ChimpProfile = {
         brain: "echo",
+        provider: "",
         model: "",
         image: "",
+        auth: {},
         extraEnv: [],
         volumeMounts: [],
         volumes: [],
