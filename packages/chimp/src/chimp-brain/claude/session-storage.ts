@@ -10,7 +10,6 @@ export type { StoredEventContext } from "@/chimp-brain/event-contexts";
 export const ClaudeChimpStateSchema = z.object({
   sessionId: z.string().optional(),
   workingDir: z.string(),
-  messageCount: z.number(),
   model: z.string(),
   allowedTools: z.array(z.string()),
   eventContexts: z.array(Protocol.StoredEventContextSchema).default([]),

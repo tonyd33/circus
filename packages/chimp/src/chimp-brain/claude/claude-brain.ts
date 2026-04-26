@@ -17,7 +17,6 @@ import { ChimpBrain, type CommandResult } from "../chimp-brain";
 import { processWithClaude } from "./agent";
 
 export class ClaudeChimp extends ChimpBrain {
-  private messageCount = 0;
   private sessionId?: string;
   private s3Client: S3Client | null = null;
   protected eventContexts: StoredEventContext[] = [];
@@ -55,14 +54,12 @@ export class ClaudeChimp extends ChimpBrain {
       if (savedState) {
         this.sessionId = savedState.sessionId;
         this.workingDir = savedState.workingDir;
-        this.messageCount = savedState.messageCount;
         this.model = savedState.model;
         this.allowedTools = savedState.allowedTools;
         this.eventContexts = savedState.eventContexts;
         this.log("info", "Chimp state restored from S3", {
           sessionId: this.sessionId,
           workingDir: this.workingDir,
-          messageCount: this.messageCount,
           eventContextCount: this.eventContexts.length,
         });
       }
@@ -88,7 +85,6 @@ export class ClaudeChimp extends ChimpBrain {
       await saveChimpStateToS3(client, this.chimpId, {
         sessionId,
         workingDir: this.workingDir,
-        messageCount: this.messageCount,
         model: this.model,
         allowedTools: this.allowedTools,
         eventContexts: this.eventContexts,
@@ -108,7 +104,6 @@ export class ClaudeChimp extends ChimpBrain {
     const { response: agentResponse, sessionId } = await processWithClaude(
       prompt,
       {
-        messageCount: this.messageCount,
         sessionId: this.sessionId,
         model: this.model,
         systemPrompt: this.composeSystemPrompt(),
@@ -124,7 +119,6 @@ export class ClaudeChimp extends ChimpBrain {
     this.log("info", "Session ID", { sessionId });
 
     this.sessionId = sessionId;
-    this.messageCount++;
 
     this.publish(Protocol.createAgentMessageResponse(agentResponse, sessionId));
 

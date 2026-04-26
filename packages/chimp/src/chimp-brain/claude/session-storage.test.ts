@@ -6,7 +6,6 @@ describe("ClaudeChimpStateSchema", () => {
     const state = {
       sessionId: "abc-123",
       workingDir: "/tmp/work",
-      messageCount: 7,
       model: "claude-sonnet-4-5",
       allowedTools: ["Read", "Write"],
       eventContexts: [
@@ -50,7 +49,6 @@ describe("ClaudeChimpStateSchema", () => {
     const legacy = {
       sessionId: "legacy-session",
       workingDir: "/tmp/legacy",
-      messageCount: 3,
       model: "claude-sonnet-4-5",
       allowedTools: [],
     };
@@ -66,7 +64,6 @@ describe("ClaudeChimpStateSchema", () => {
   test("legacy blob without sessionId parses (undefined)", () => {
     const legacy = {
       workingDir: "/tmp/fresh",
-      messageCount: 0,
       model: "claude-sonnet-4-5",
       allowedTools: [],
     };
@@ -83,7 +80,6 @@ describe("ClaudeChimpStateSchema", () => {
   test("rejects blob missing required non-defaulted fields", () => {
     const invalid = {
       sessionId: "x",
-      messageCount: 0,
       model: "claude-sonnet-4-5",
       allowedTools: [],
     };
@@ -97,7 +93,6 @@ describe("ClaudeChimpStateSchema", () => {
     const invalid = {
       sessionId: "x",
       workingDir: "/tmp",
-      messageCount: 0,
       model: "claude-sonnet-4-5",
       allowedTools: [],
       eventContexts: [
@@ -117,7 +112,6 @@ describe("ClaudeChimpStateSchema", () => {
     const state = {
       sessionId: "x",
       workingDir: "/tmp",
-      messageCount: 0,
       model: "claude-sonnet-4-5",
       allowedTools: [],
       eventContexts: [
