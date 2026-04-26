@@ -91,7 +91,6 @@ export class Chimp {
       profile: this.config.profile,
       profileStore,
       topicRegistry: this.topicRegistry,
-      nc: this.nc,
       logger: this.logger.child({ component: "MCP" }),
     });
     const mcpUrl = await this.mcp.start();

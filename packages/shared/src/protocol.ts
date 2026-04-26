@@ -123,6 +123,11 @@ const SubscribeTopicCommandSchema = z.object({
   args: z.object({ topic: TopicSchema }),
 });
 
+const UnsubscribeTopicCommandSchema = z.object({
+  command: z.literal("unsubscribe-topic"),
+  args: z.object({ topic: TopicSchema }),
+});
+
 const AddEventContextCommandSchema = z.object({
   command: z.literal("add-event-context"),
   args: z.object({ context: EventContextSchema }),
@@ -139,6 +144,7 @@ const ChimpCommandSchema = z.discriminatedUnion("command", [
   SetAllowedToolsCommandSchema,
   SetupGithubAuthCommandSchema,
   SubscribeTopicCommandSchema,
+  UnsubscribeTopicCommandSchema,
   AddEventContextCommandSchema,
 ]);
 
@@ -270,6 +276,12 @@ export const GithubCommentSchema = z.object({
   in_reply_to_id: z.number().optional(),
 });
 
+export const ChimpCommandOutputSchema = z.object({
+  type: z.literal("chimp-command"),
+  targetChimpId: z.string(),
+  command: ChimpCommandSchema,
+});
+
 export const ChimpOutputMessageSchema = z.discriminatedUnion("type", [
   AgentMessageResponseSchema,
   ArtifactMessageSchema,
@@ -278,6 +290,7 @@ export const ChimpOutputMessageSchema = z.discriminatedUnion("type", [
   ErrorResponseSchema,
   ThoughtSchema,
   ChimpRequestSchema,
+  ChimpCommandOutputSchema,
   DiscordResponseSchema,
   GithubCommentSchema,
 ]);
@@ -337,6 +350,7 @@ export type GithubComment = z.infer<typeof GithubCommentSchema>;
 export type ArtifactMessage = z.infer<typeof ArtifactMessageSchema>;
 export type ProgressMessage = z.infer<typeof ProgressMessageSchema>;
 export type CommandReceived = z.infer<typeof CommandReceivedSchema>;
+export type ChimpCommandOutput = z.infer<typeof ChimpCommandOutputSchema>;
 export type ErrorResponse = z.infer<typeof ErrorResponseSchema>;
 export type Thought = z.infer<typeof ThoughtSchema>;
 export type ChimpOutputMessage = z.infer<typeof ChimpOutputMessageSchema>;
@@ -432,6 +446,13 @@ export function createProgressMessage(
 
 export function createCommandReceived(payload: ChimpCommand): CommandReceived {
   return { type: "command-received", command: payload.command, payload };
+}
+
+export function createChimpCommandOutput(
+  targetChimpId: string,
+  command: ChimpCommand,
+): ChimpCommandOutput {
+  return { type: "chimp-command", targetChimpId, command };
 }
 
 export function createThought(brain: ChimpBrainType, event: unknown): Thought {

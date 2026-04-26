@@ -165,6 +165,23 @@ export class Bullhorn {
         );
         break;
 
+      case "chimp-command":
+        if (this.nc) {
+          const targetSubject = Standards.Chimp.Naming.directSubject(
+            msg.targetChimpId,
+          );
+          this.nc.publish(targetSubject, JSON.stringify(msg.command));
+          this.logger.info(
+            {
+              chimpId,
+              targetChimpId: msg.targetChimpId,
+              command: msg.command.command,
+            },
+            "Forwarded command to chimp",
+          );
+        }
+        break;
+
       case "discord-response":
         await this.handleDiscordResponse(msg);
         break;
