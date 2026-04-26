@@ -244,7 +244,7 @@ export function DashboardHome() {
                     </span>
                   </Link>
                   <ChimpTopicsBadges
-                    topics={topicsByChimp[chimp.chimpId] ?? []}
+                    topics={chimp.topics ?? topicsByChimp[chimp.chimpId] ?? []}
                   />
                 </div>
               ))}
