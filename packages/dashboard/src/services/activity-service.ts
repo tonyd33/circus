@@ -176,3 +176,107 @@ export async function createActivityStream(
 
   return stream;
 }
+
+export async function createChannelActivityStream(
+  channelId: string,
+  nc: NatsConnection,
+  logger: Logger.Logger,
+): Promise<ReadableStream> {
+  const js = nc.jetstream();
+  const jsm = await nc.jetstreamManager();
+
+  const encoder = new TextEncoder();
+  let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
+  let consumerMessages: ConsumerMessages | undefined;
+  let consumer: Consumer | undefined;
+  let pingInterval: ReturnType<typeof setInterval>;
+
+  const stream = new ReadableStream<Uint8Array>({
+    start(c) {
+      controller = c;
+      controller.enqueue(
+        encoder.encode(`event: connected\ndata: {"status":"connected"}\n\n`),
+      );
+      pingInterval = setInterval(() => {
+        controller?.enqueue(encoder.encode(`:ping\n\n`));
+      }, PING_INTERVAL_MS);
+    },
+    cancel() {
+      clearInterval(pingInterval);
+      consumerMessages?.stop();
+      if (consumer) {
+        consumer
+          .delete()
+          .catch((e) =>
+            logger.error(
+              { err: e },
+              "Failed to delete channel activity consumer",
+            ),
+          );
+      }
+    },
+  });
+
+  try {
+    const filterSubject = Standards.Topic.topicToEventSubject({
+      platform: "channel",
+      channelId,
+    });
+
+    const info = await jsm.consumers.add(
+      Standards.Chimp.Naming.eventsStreamName(),
+      {
+        ack_policy: AckPolicy.None,
+        deliver_policy: DeliverPolicy.All,
+        filter_subject: filterSubject,
+      },
+    );
+
+    consumer = await js.consumers.get(
+      Standards.Chimp.Naming.eventsStreamName(),
+      info.name,
+    );
+    consumerMessages = await consumer.consume();
+
+    (async () => {
+      try {
+        for await (const msg of consumerMessages!) {
+          const raw: unknown = msg.json();
+          const timestamp = new Date(
+            millis(msg.info.timestampNanos),
+          ).toISOString();
+
+          const parsed = Protocol.safeParseChimpCommand(raw);
+          const event: ActivityEvent = parsed.success
+            ? {
+                id: `event-${msg.seq}`,
+                type: "event",
+                timestamp,
+                data: parsed.data,
+              }
+            : {
+                id: `event-${msg.seq}`,
+                type: "unknown",
+                timestamp,
+                data: raw,
+              };
+
+          controller?.enqueue(
+            encoder.encode(`data: ${JSON.stringify(event)}\n\n`),
+          );
+        }
+      } catch (e) {
+        logger.error({ err: e, channelId }, "Channel activity stream error");
+        controller?.error(e);
+      }
+    })();
+  } catch (e) {
+    logger.error(
+      { err: e, channelId },
+      "Failed to subscribe to channel activity",
+    );
+    controller?.error(e instanceof Error ? e : new Error(String(e)));
+  }
+
+  return stream;
+}

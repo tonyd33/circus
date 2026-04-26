@@ -148,6 +148,16 @@ function ChimpTopicsBadges({ topics }: { topics: Standards.Topic.Topic[] }) {
                 debug:{t.sessionId}
               </Badge>
             );
+          case "channel":
+            return (
+              <Badge
+                key={key}
+                variant="outline"
+                className="text-xs font-mono text-cyan-500 border-cyan-500/30"
+              >
+                #{t.channelId}
+              </Badge>
+            );
           default:
             return Typing.unreachable(t);
         }

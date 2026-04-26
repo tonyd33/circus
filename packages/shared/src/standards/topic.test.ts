@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  deserializeTopic,
   eventSubjectToTopic,
   parseEventSubject,
   serializeTopic,
@@ -30,6 +31,15 @@ describe("serializeTopic", () => {
       }),
     ).toBe("github.acme.app.issue.7");
   });
+
+  test("serializes channel topic", () => {
+    expect(
+      serializeTopic({
+        platform: "channel",
+        channelId: "team-chat",
+      }),
+    ).toBe("channel.team-chat");
+  });
 });
 
 describe("topicToEventSubject", () => {
@@ -43,6 +53,15 @@ describe("topicToEventSubject", () => {
         number: 42,
       }),
     ).toBe("events.github.tonyd33.circus.pr.42.>");
+  });
+
+  test("converts channel topic to wildcard event subject", () => {
+    expect(
+      topicToEventSubject({
+        platform: "channel",
+        channelId: "team-chat",
+      }),
+    ).toBe("events.channel.team-chat.>");
   });
 });
 
@@ -82,6 +101,13 @@ describe("eventSubjectToTopic", () => {
   test("returns null for incomplete github subject", () => {
     expect(eventSubjectToTopic("events.github.tonyd33")).toBeNull();
   });
+
+  test("parses channel event subject", () => {
+    expect(eventSubjectToTopic("events.channel.team-chat.message")).toEqual({
+      platform: "channel",
+      channelId: "team-chat",
+    });
+  });
 });
 
 describe("parseEventSubject", () => {
@@ -119,5 +145,24 @@ describe("parseEventSubject", () => {
         "events.discord.guild123.channel456.interaction789.created",
       ),
     ).toBe("discord.guild123.channel456.interaction789.created");
+  });
+
+  test("handles channel platform", () => {
+    expect(parseEventSubject("events.channel.team-chat.message")).toBe(
+      "channel.team-chat.message",
+    );
+  });
+});
+
+describe("deserializeTopic", () => {
+  test("parses channel key", () => {
+    expect(deserializeTopic("channel.team-chat")).toEqual({
+      platform: "channel",
+      channelId: "team-chat",
+    });
+  });
+
+  test("returns null for unknown platform key", () => {
+    expect(deserializeTopic("slack.general")).toBeNull();
   });
 });
