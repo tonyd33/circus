@@ -103,9 +103,11 @@ export class CircusMcp {
             args.chimpId,
           );
 
-          // Transfer topic subscriptions
+          // Transfer topic subscriptions (skip direct topics — new chimp gets its own)
           const subscriptions = topicRegistry
-            ? await topicRegistry.listForChimp(chimpId)
+            ? (await topicRegistry.listForChimp(chimpId)).filter(
+                (t) => t.platform !== "direct",
+              )
             : [];
           for (const topic of subscriptions) {
             nc.publish(
