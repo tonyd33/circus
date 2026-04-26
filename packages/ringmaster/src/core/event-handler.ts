@@ -118,7 +118,19 @@ export class EventHandler {
         await this.deps.metaPublisher.publishStatus(
           action.chimpId,
           action.status,
+        );
+        break;
+
+      case "set_profile":
+        await this.deps.metaPublisher.publishProfile(
+          action.chimpId,
           action.profile,
+        );
+        break;
+
+      case "set_topics":
+        await this.deps.metaPublisher.publishTopics(
+          action.chimpId,
           action.topics,
         );
         break;

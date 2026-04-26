@@ -140,7 +140,17 @@ describe("event_received", () => {
       chimpId,
       type: "upsert_status",
       status: "scheduled",
+    });
+
+    expect(actions.find((a) => a.type === "set_profile")).toEqual({
+      chimpId,
+      type: "set_profile",
       profile: P,
+    });
+
+    expect(actions.find((a) => a.type === "set_topics")).toEqual({
+      chimpId,
+      type: "set_topics",
       topics: [topic, { platform: "direct", chimpId }],
     });
 
@@ -321,7 +331,15 @@ describe("chimp_output", () => {
         chimpId: "new-chimp",
         type: "upsert_status",
         status: "scheduled",
+      },
+      {
+        chimpId: "new-chimp",
+        type: "set_profile",
         profile: "worker",
+      },
+      {
+        chimpId: "new-chimp",
+        type: "set_topics",
         topics: [{ platform: "direct", chimpId: "new-chimp" }],
       },
       {

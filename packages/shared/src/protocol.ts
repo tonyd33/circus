@@ -304,8 +304,16 @@ export const StatusMetaEventSchema = MetaEventBase.extend({
     "failed",
     "unknown",
   ]),
-  profile: z.string().optional(),
-  topics: z.array(TopicSchema).optional(),
+});
+
+export const ProfileMetaEventSchema = MetaEventBase.extend({
+  type: z.literal("profile"),
+  profile: z.string(),
+});
+
+export const TopicsMetaEventSchema = MetaEventBase.extend({
+  type: z.literal("topics"),
+  topics: z.array(TopicSchema),
 });
 
 export const BullhornDispatchedMetaEventSchema = MetaEventBase.extend({
@@ -315,6 +323,8 @@ export const BullhornDispatchedMetaEventSchema = MetaEventBase.extend({
 
 export const MetaEventSchema = z.discriminatedUnion("type", [
   StatusMetaEventSchema,
+  ProfileMetaEventSchema,
+  TopicsMetaEventSchema,
   BullhornDispatchedMetaEventSchema,
 ]);
 

@@ -3,10 +3,20 @@ import { useEffect, useRef, useState } from "react";
 import type { ChimpState, ChimpStatus } from "@/lib/chimp";
 
 interface StatusUpdate {
-  profile?: string;
   chimpId: string;
   status: ChimpStatus;
-  topics?: Standards.Topic.Topic[];
+  timestamp: string;
+}
+
+interface ProfileUpdate {
+  chimpId: string;
+  profile: string;
+  timestamp: string;
+}
+
+interface TopicsUpdate {
+  chimpId: string;
+  topics: Standards.Topic.Topic[];
   timestamp: string;
 }
 
@@ -14,6 +24,23 @@ interface UseChimpsResult {
   chimps: ChimpState[];
   connected: boolean;
   error: string | null;
+}
+
+/**
+ * Updates an existing chimp in the list, or returns prev unchanged if not found.
+ */
+function updateChimp(
+  prev: ChimpState[],
+  chimpId: string,
+  updater: (existing: ChimpState) => ChimpState,
+): ChimpState[] {
+  const idx = prev.findIndex((c) => c.chimpId === chimpId);
+  if (idx < 0) return prev;
+  const existing = prev[idx];
+  if (!existing) return prev;
+  const next = [...prev];
+  next[idx] = updater(existing);
+  return next;
 }
 
 export function useChimps(): UseChimpsResult {
@@ -49,34 +76,45 @@ export function useChimps(): UseChimpsResult {
         setChimps((prev) => {
           const idx = prev.findIndex((c) => c.chimpId === update.chimpId);
           if (idx >= 0) {
-            const existing = prev[idx];
-            if (!existing) return prev;
-            const next = [...prev];
-            next[idx] = {
+            return updateChimp(prev, update.chimpId, (existing) => ({
               ...existing,
               status: update.status,
               updatedAt: Date.now(),
-              ...(update.profile !== undefined && {
-                profile: update.profile,
-              }),
-              ...(update.topics !== undefined && {
-                topics: update.topics,
-              }),
-            };
-            return next;
+            }));
           }
           return [
             ...prev,
             {
               chimpId: update.chimpId,
-              profile: update.profile ?? "",
+              profile: "",
               status: update.status,
-              topics: update.topics,
               createdAt: Date.now(),
               updatedAt: Date.now(),
             },
           ];
         });
+      });
+
+      es.addEventListener("profile", (event) => {
+        const update = JSON.parse(event.data) as ProfileUpdate;
+        setChimps((prev) =>
+          updateChimp(prev, update.chimpId, (existing) => ({
+            ...existing,
+            profile: update.profile,
+            updatedAt: Date.now(),
+          })),
+        );
+      });
+
+      es.addEventListener("topics", (event) => {
+        const update = JSON.parse(event.data) as TopicsUpdate;
+        setChimps((prev) =>
+          updateChimp(prev, update.chimpId, (existing) => ({
+            ...existing,
+            topics: update.topics,
+            updatedAt: Date.now(),
+          })),
+        );
       });
 
       es.onerror = () => {

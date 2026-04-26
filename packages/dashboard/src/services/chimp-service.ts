@@ -76,19 +76,42 @@ export class ChimpService {
               if (!parsed.success) continue;
 
               const event = parsed.data;
-              if (event.type !== "status") continue;
 
-              controller.enqueue(
-                encoder.encode(
-                  `event: status\ndata: ${JSON.stringify({
-                    chimpId: event.chimpId,
-                    status: event.status,
-                    profile: event.profile,
-                    topics: event.topics,
-                    timestamp: event.timestamp,
-                  })}\n\n`,
-                ),
-              );
+              switch (event.type) {
+                case "status":
+                  controller.enqueue(
+                    encoder.encode(
+                      `event: status\ndata: ${JSON.stringify({
+                        chimpId: event.chimpId,
+                        status: event.status,
+                        timestamp: event.timestamp,
+                      })}\n\n`,
+                    ),
+                  );
+                  break;
+                case "profile":
+                  controller.enqueue(
+                    encoder.encode(
+                      `event: profile\ndata: ${JSON.stringify({
+                        chimpId: event.chimpId,
+                        profile: event.profile,
+                        timestamp: event.timestamp,
+                      })}\n\n`,
+                    ),
+                  );
+                  break;
+                case "topics":
+                  controller.enqueue(
+                    encoder.encode(
+                      `event: topics\ndata: ${JSON.stringify({
+                        chimpId: event.chimpId,
+                        topics: event.topics,
+                        timestamp: event.timestamp,
+                      })}\n\n`,
+                    ),
+                  );
+                  break;
+              }
             }
           } catch (e) {
             log.error({ err: e }, "Chimps live stream error");

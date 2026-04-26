@@ -39,9 +39,9 @@ export type Action =
       chimpId: string;
       type: "upsert_status";
       status: Standards.Chimp.ChimpStatus;
-      profile?: string;
-      topics?: Topic[];
     }
+  | { chimpId: string; type: "set_profile"; profile: string }
+  | { chimpId: string; type: "set_topics"; topics: Topic[] }
   | { chimpId: string; type: "delete_job" }
   | { chimpId: string; type: "delete_state" }
   | {
@@ -152,13 +152,9 @@ function buildSpawnActions(
   const actions: Action[] = [];
 
   if (!pod) {
-    actions.push({
-      chimpId,
-      type: "upsert_status",
-      status: "scheduled",
-      profile,
-      topics,
-    });
+    actions.push({ chimpId, type: "upsert_status", status: "scheduled" });
+    actions.push({ chimpId, type: "set_profile", profile });
+    actions.push({ chimpId, type: "set_topics", topics });
   }
 
   actions.push({
@@ -308,7 +304,15 @@ function decideOnChimpOutput(
           chimpId: message.chimpId,
           type: "upsert_status",
           status: "scheduled",
+        },
+        {
+          chimpId: message.chimpId,
+          type: "set_profile",
           profile: message.profile,
+        },
+        {
+          chimpId: message.chimpId,
+          type: "set_topics",
           topics: [directTopic],
         },
         {
