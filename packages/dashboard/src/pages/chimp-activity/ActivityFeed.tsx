@@ -19,12 +19,12 @@ export function ActivityFeed({
   const prevCountRef = useRef(0);
   const [showScrollButton, setShowScrollButton] = useState(false);
 
-  // Scroll tracking — 100px threshold from bottom
+  // Scroll tracking — 300px threshold from bottom
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const check = () => {
-      const atBottom = el.scrollHeight - el.clientHeight - el.scrollTop < 100;
+      const atBottom = el.scrollHeight - el.clientHeight - el.scrollTop < 300;
       isAtBottomRef.current = atBottom;
       setShowScrollButton(!atBottom);
     };

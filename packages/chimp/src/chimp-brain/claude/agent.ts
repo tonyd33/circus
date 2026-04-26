@@ -13,7 +13,6 @@ type LogFn = (
 ) => void;
 
 interface ClaudeAgentState {
-  messageCount: number;
   sessionId?: string;
   model: string;
   systemPrompt?: string;

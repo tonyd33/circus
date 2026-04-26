@@ -15,6 +15,7 @@ const IGNORED_EVENTS: Set<string> = new Set([
   "session.idle",
   "server.heartbeat",
   "session.status",
+  "session.diff",
 ]);
 
 export class OpencodeBrain extends ChimpBrain {
@@ -57,6 +58,53 @@ export class OpencodeBrain extends ChimpBrain {
     })();
   }
 
+  private async restoreState(client: S3Client): Promise<void> {
+    try {
+      await restoreOpencodeStateFromS3(client, this.chimpId);
+      this.log("info", "Opencode state restored from S3");
+    } catch {
+      this.log("warn", "No existing opencode state found, starting fresh");
+    }
+
+    try {
+      const savedState = await restoreOpencodeChimpStateFromS3(
+        client,
+        this.chimpId,
+      );
+      if (savedState) {
+        this.sessionId = savedState.sessionId;
+        this.workingDir = savedState.workingDir;
+        this.model = savedState.model;
+        this.allowedTools = savedState.allowedTools;
+        this.log("info", "Chimp state restored from S3", {
+          sessionId: this.sessionId,
+          workingDir: this.workingDir,
+        });
+      }
+    } catch (err) {
+      this.log("warn", "Could not restore chimp state, starting fresh", {
+        err,
+      });
+    }
+  }
+
+  private async saveState(client: S3Client): Promise<void> {
+    try {
+      await saveOpencodeChimpStateToS3(client, this.chimpId, {
+        sessionId: this.sessionId,
+        workingDir: this.workingDir,
+        model: this.model,
+        allowedTools: this.allowedTools,
+      });
+      this.log("info", "Chimp state saved to S3");
+
+      await saveOpencodeStateToS3(client, this.chimpId);
+      this.log("info", "Opencode state saved to S3");
+    } catch (error) {
+      this.log("error", "Failed to save state", { err: error });
+    }
+  }
+
   async onStartup(): Promise<void> {
     this.log("info", "OpencodeBrain starting up", { chimpId: this.chimpId });
 
@@ -67,42 +115,29 @@ export class OpencodeBrain extends ChimpBrain {
     }
     this.s3Client = createS3Client(s3Result.value);
 
-    try {
-      await restoreOpencodeStateFromS3(this.s3Client, this.chimpId);
-      this.log("info", "Opencode state restored from S3");
-    } catch {
-      this.log("warn", "No existing opencode state found, starting fresh");
-    }
+    await this.restoreState(this.s3Client);
 
-    let savedSessionId: string | null = null;
-    try {
-      const savedState = await restoreOpencodeChimpStateFromS3(
-        this.s3Client,
-        this.chimpId,
-      );
-      if (savedState) {
-        this.workingDir = savedState.workingDir;
-        savedSessionId = savedState.sessionId;
-        this.log("info", "Chimp state restored from S3", {
-          workingDir: this.workingDir,
-          savedSessionId,
-        });
-      }
-    } catch {
-      this.log("warn", "Could not restore chimp state, using defaults");
-    }
-
-    const opencode = await Opencode.createOpencode({});
+    const opencode = await Opencode.createOpencode({
+      config: {
+        mcp: {
+          circus: {
+            type: "remote",
+            url: this.mcpUrl,
+            enabled: true,
+          },
+        },
+      },
+    });
 
     this.opencode = opencode;
     this.client = opencode.client;
 
     const sessionTitle = `Chimp ${this.chimpId} session`;
 
-    if (savedSessionId !== null) {
+    if (this.sessionId !== null) {
       try {
         const getResult = await this.client.session.get({
-          path: { id: savedSessionId },
+          path: { id: this.sessionId },
           throwOnError: true,
         });
         this.sessionId = getResult.data.id;
@@ -113,7 +148,7 @@ export class OpencodeBrain extends ChimpBrain {
         this.log(
           "warn",
           "Saved session ID no longer valid, creating new session",
-          { savedSessionId },
+          { savedSessionId: this.sessionId },
         );
         const createResult = await this.client.session.create({
           body: { title: sessionTitle },
@@ -152,18 +187,7 @@ export class OpencodeBrain extends ChimpBrain {
     }
 
     if (this.s3Client) {
-      try {
-        await saveOpencodeChimpStateToS3(this.s3Client, this.chimpId, {
-          sessionId: this.sessionId,
-          workingDir: this.workingDir,
-        });
-        this.log("info", "Chimp state saved to S3");
-
-        await saveOpencodeStateToS3(this.s3Client, this.chimpId);
-        this.log("info", "Opencode state saved to S3");
-      } catch (error) {
-        this.log("error", "Failed to save state", { err: error });
-      }
+      await this.saveState(this.s3Client);
     }
   }
 
