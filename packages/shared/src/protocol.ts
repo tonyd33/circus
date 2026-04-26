@@ -342,6 +342,8 @@ export type Thought = z.infer<typeof ThoughtSchema>;
 export type ChimpOutputMessage = z.infer<typeof ChimpOutputMessageSchema>;
 export type InitConfig = z.infer<typeof InitConfigSchema>;
 export type MetaEvent = z.infer<typeof MetaEventSchema>;
+export type ProfileMetaEvent = z.infer<typeof ProfileMetaEventSchema>;
+export type TopicsMetaEvent = z.infer<typeof TopicsMetaEventSchema>;
 
 // ── Parse helpers ──────────────────────────────────────────────────────
 
