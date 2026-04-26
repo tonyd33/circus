@@ -150,7 +150,9 @@ export async function createActivityStream(
     );
 
     // Meta events (plain NATS — no stream, live only)
-    const metaSub = nc.subscribe(Standards.Chimp.Naming.metaSubject(chimpId));
+    const metaSub = nc.subscribe(
+      Standards.Chimp.Naming.lifecycleSubject(chimpId),
+    );
     allSubscriptions.push(metaSub);
     (async () => {
       for await (const msg of metaSub) {

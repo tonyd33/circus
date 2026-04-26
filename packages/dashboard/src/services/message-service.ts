@@ -19,7 +19,7 @@ export class MessageService {
   createMetaEventStream(): ReadableStream<Uint8Array> {
     const nc = this.nc;
     const log = this.logger;
-    const sub = nc.subscribe(`${Standards.Chimp.Prefix.META}.>`);
+    const sub = nc.subscribe(Standards.Chimp.Naming.lifecycleFilter());
 
     return new ReadableStream<Uint8Array>({
       start(controller) {

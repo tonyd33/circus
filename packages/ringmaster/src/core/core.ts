@@ -34,6 +34,8 @@ export type Action =
         | { type: "time"; value: Date };
     }
   | { chimpId: string; type: "register_topic"; topic: Topic }
+  | { chimpId: string; type: "unregister_topic"; topic: Topic }
+  | { chimpId: string; type: "unregister_all_topics" }
   | { chimpId: string; type: "delete_consumers" }
   | {
       chimpId: string;
@@ -88,9 +90,8 @@ export type EventPayload =
       seq: number;
     }
   | {
-      type: "chimp_output";
-      chimpId: string;
-      message: Protocol.ChimpOutputMessage;
+      type: "orchestration_action";
+      action: Protocol.OrchestrationAction;
       timestamp: Date;
     };
 
@@ -288,55 +289,99 @@ function buildSubscriberEffects(
   });
 }
 
-function decideOnChimpOutput(
-  payload: EventPayload & { type: "chimp_output" },
+function decideOnOrchestrationAction(
+  payload: EventPayload & { type: "orchestration_action" },
 ): Effect {
-  const { message, timestamp } = payload;
+  const { action, timestamp } = payload;
 
-  switch (message.type) {
-    case "chimp-request": {
-      const directTopic: Topic = {
-        platform: "direct",
-        chimpId: message.chimpId,
-      };
+  switch (action.type) {
+    case "set-profile":
       return Fx.pure([
         {
-          chimpId: message.chimpId,
+          chimpId: action.chimpId,
           type: "upsert_status",
           status: "scheduled",
         },
         {
-          chimpId: message.chimpId,
+          chimpId: action.chimpId,
           type: "set_profile",
-          profile: message.profile,
-        },
-        {
-          chimpId: message.chimpId,
-          type: "set_topics",
-          topics: [directTopic],
-        },
-        {
-          chimpId: message.chimpId,
-          type: "create_consumers",
-          eventFilterSubjects: [
-            Standards.Topic.topicToEventSubject(directTopic),
-          ],
-          deliverFrom: { type: "time", value: timestamp },
-        },
-        {
-          chimpId: message.chimpId,
-          type: "register_topic",
-          topic: directTopic,
-        },
-        {
-          chimpId: message.chimpId,
-          type: "create_job",
-          profile: message.profile,
+          profile: action.profile,
         },
       ]);
+
+    case "subscribe-topic":
+      return Fx.pure([
+        {
+          chimpId: action.chimpId,
+          type: "register_topic",
+          topic: action.topic,
+        },
+      ]);
+
+    case "set-topics":
+      return Fx.pure([
+        {
+          chimpId: action.chimpId,
+          type: "set_topics",
+          topics: action.topics,
+        },
+      ]);
+
+    case "unsubscribe-topic":
+      return Fx.pure([
+        {
+          chimpId: action.chimpId,
+          type: "unregister_topic",
+          topic: action.topic,
+        },
+      ]);
+
+    case "ensure-consumers": {
+      const directTopic: Topic = {
+        platform: "direct",
+        chimpId: action.chimpId,
+      };
+      return Fx.query({ type: "lookup_topic", topic: directTopic }, () => {
+        // Build filter subjects from all topics this chimp subscribes to
+        // For now, derive from direct topic + use deliverFrom from the action
+        // (or fallback to timestamp). Topics are already registered via
+        // separate subscribe-topic actions.
+        return Fx.pure([
+          {
+            chimpId: action.chimpId,
+            type: "create_consumers",
+            eventFilterSubjects: [
+              Standards.Topic.topicToEventSubject(directTopic),
+            ],
+            deliverFrom: action.deliverFrom ?? {
+              type: "time",
+              value: timestamp,
+            },
+          },
+        ]);
+      });
     }
-    default:
-      return Fx.pure([]);
+
+    case "ensure-job":
+      return Fx.query(
+        { type: "get_chimp_profile", chimpId: action.chimpId },
+        (profile) =>
+          Fx.pure([
+            {
+              chimpId: action.chimpId,
+              type: "create_job",
+              profile,
+            },
+          ]),
+      );
+
+    case "delete-chimp":
+      return Fx.pure([
+        { chimpId: action.chimpId, type: "delete_consumers" },
+        { chimpId: action.chimpId, type: "delete_job" },
+        { chimpId: action.chimpId, type: "delete_state" },
+        { chimpId: action.chimpId, type: "unregister_all_topics" },
+      ]);
   }
 }
 
@@ -348,7 +393,7 @@ export function decide(payload: EventPayload): Effect {
       return decideOnPodEvent(payload);
     case "event_received":
       return decideOnEventReceived(payload);
-    case "chimp_output":
-      return decideOnChimpOutput(payload);
+    case "orchestration_action":
+      return decideOnOrchestrationAction(payload);
   }
 }

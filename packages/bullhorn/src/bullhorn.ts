@@ -6,7 +6,14 @@ import {
   type ServiceMetrics,
 } from "@mnke/circus-shared/metrics";
 import { App } from "@octokit/app";
-import { AckPolicy, connect, DeliverPolicy, type NatsConnection } from "nats";
+import {
+  AckPolicy,
+  connect,
+  DeliverPolicy,
+  millis,
+  type NatsConnection,
+} from "nats";
+import { expandChimpRequest } from "./expand-chimp-request";
 
 export interface BullhornConfig {
   logger: Logger.Logger;
@@ -82,8 +89,9 @@ export class Bullhorn {
           }
 
           const rawMessage = msg.json();
+          const timestamp = new Date(millis(msg.info.timestampNanos));
 
-          await this.handleMessage(chimpId, rawMessage);
+          await this.handleMessage(chimpId, rawMessage, timestamp);
           this.publishMetaEvent(chimpId, msg.seq);
           msg.ack();
 
@@ -103,7 +111,11 @@ export class Bullhorn {
     await new Promise(() => {});
   }
 
-  private async handleMessage(chimpId: string, raw: unknown): Promise<void> {
+  private async handleMessage(
+    chimpId: string,
+    raw: unknown,
+    timestamp: Date,
+  ): Promise<void> {
     const result = Protocol.safeParseChimpOutputMessage(raw);
     if (!result.success) {
       this.logger.error(
@@ -161,8 +173,9 @@ export class Bullhorn {
       case "chimp-request":
         this.logger.info(
           { chimpId, targetChimpId: msg.chimpId, targetProfile: msg.profile },
-          "Chimp request (handled by ringmaster)",
+          "Chimp request: dispatching to orchestration",
         );
+        await this.dispatchChimpRequest(msg, timestamp);
         break;
 
       case "chimp-command":
@@ -268,6 +281,29 @@ export class Bullhorn {
     }
   }
 
+  private async dispatchChimpRequest(
+    request: Protocol.ChimpOutputMessage & { type: "chimp-request" },
+    timestamp: Date,
+  ): Promise<void> {
+    if (!this.nc) return;
+    const js = this.nc.jetstream();
+    const actions = expandChimpRequest(request, timestamp);
+    for (const action of actions) {
+      const subject = Standards.Chimp.Naming.orchestrationSubject(
+        action.type,
+        action.chimpId,
+      );
+      try {
+        await js.publish(subject, JSON.stringify(action));
+      } catch (error) {
+        this.logger.error(
+          { err: error, subject, action: action.type },
+          "Failed to publish orchestration action",
+        );
+      }
+    }
+  }
+
   private publishMetaEvent(chimpId: string, outputSequence: number): void {
     if (!this.nc) return;
 
@@ -278,7 +314,7 @@ export class Bullhorn {
       outputSequence,
     };
 
-    const subject = Standards.Chimp.Naming.metaSubject(chimpId);
+    const subject = Standards.Chimp.Naming.lifecycleSubject(chimpId);
     try {
       this.nc.publish(subject, JSON.stringify(metaEvent));
     } catch (error) {

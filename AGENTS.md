@@ -41,21 +41,33 @@ bun --watch packages/ringmaster/src/index.ts
 ### NATS Subject Topology
 
 ```
-events.{platform}.{...path}   — world events (usher publishes)
-commands.{chimpId}             — direct commands to chimps (dashboard, chimp-to-chimp)
-outputs.{chimpId}              — chimp output messages
-meta.{chimpId}                 — chimp lifecycle events
+events.{platform}.{...path}              — world events (usher publishes)
+commands.{chimpId}                       — direct commands to chimps (dashboard, chimp-to-chimp)
+outputs.{chimpId}                        — chimp output messages (data-plane)
+meta.lifecycle.{chimpId}                 — chimp lifecycle broadcasts (status/profile/topics/dispatch)
+meta.orchestration.{action}.{chimpId}    — orchestration control plane (set-profile, subscribe-topic, ensure-job, ...)
 ```
 
-Streams: `events`, `commands`, `outputs`
+Streams: `events`, `commands`, `outputs`, `orchestration` (all JetStream).
 
 Each chimp has:
 - Events consumer: `chimp-{chimpId}` on `events` stream (filtered to subscribed topics)
 - Commands consumer: `chimp-{chimpId}-commands` on `commands` stream
 
+Ringmaster has:
+- `event-listener` consumer on `events.>` — dispatch
+- `ringmaster-orchestration` consumer on `meta.orchestration.>` — control plane
+- (Used to listen on `outputs.>` for `chimp-request`; that coupling was removed — bullhorn now translates `chimp-request` outputs into orchestration actions.)
+
+## Orchestration Control Plane
+
+`meta.orchestration.>` is durable JetStream. Producers (currently bullhorn; future: usher, dashboard) publish discrete `OrchestrationAction` messages — `set-profile`, `subscribe-topic`, `set-topics`, `unsubscribe-topic`, `ensure-consumers`, `ensure-job`, `delete-chimp`. Ringmaster's core decides what internal Actions each one maps to.
+
+Action `type` strings are kebab-case; internal core `Action` types stay snake_case for now (pending project-wide migration).
+
 ## Chimp Handoff
 
-Chimps hand off work to a new chimp with a different profile using `chimp_request`. The old chimp asks ringmaster to spawn the new chimp, then sends it individual commands (subscribe to topics, add event contexts, continue work). No special handoff orchestration — just regular commands.
+Chimps hand off work to a new chimp with a different profile using `chimp_request`. The old chimp publishes a single `chimp-request` output. Bullhorn expands it into a 4-message orchestration sequence (`set-profile` + `subscribe-topic` + `ensure-consumers` + `ensure-job`) on `meta.orchestration.>`. The old chimp also publishes follow-up `chimp-command` outputs (subscribe-topic init command, add-event-context, continue work) — those are data-plane and bullhorn forwards them to the new chimp's `events.direct.{chimpId}.command` subject.
 
 ## Project Structure
 

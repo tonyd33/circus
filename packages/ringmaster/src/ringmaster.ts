@@ -18,7 +18,7 @@ import {
 import { ProfileLoader } from "@/config";
 import { EventHandler, type RingmasterConfig } from "@/core";
 import { ConsumerManager, JobManager, MetaPublisher } from "@/executors";
-import { EventListener, OutputListener, PodWatcher } from "@/listeners";
+import { EventListener, OrchestrationListener, PodWatcher } from "@/listeners";
 import { PodCache } from "@/state";
 
 export class Ringmaster {
@@ -39,7 +39,7 @@ export class Ringmaster {
   private eventHandler: EventHandler | null = null;
 
   private eventListener: EventListener | null = null;
-  private outputListener: OutputListener | null = null;
+  private orchestrationListener: OrchestrationListener | null = null;
   private podWatcher: PodWatcher | null = null;
 
   constructor(config: RingmasterConfig, logger: Logger.Logger) {
@@ -123,16 +123,16 @@ export class Ringmaster {
       this.eventHandler,
       this.logger.child({ component: "EventListener" }),
     );
-    this.outputListener = new OutputListener(
+    this.orchestrationListener = new OrchestrationListener(
       this.nc,
       this.eventHandler,
-      this.logger.child({ component: "OutputListener" }),
+      this.logger.child({ component: "OrchestrationListener" }),
     );
 
     await Promise.all([
       this.podCache.start(),
       this.eventListener.start(),
-      this.outputListener.start(),
+      this.orchestrationListener.start(),
       this.podWatcher.start(),
       this.jobManager.start(),
     ]);
@@ -144,13 +144,13 @@ export class Ringmaster {
       this.podCache?.stop(),
       this.podWatcher?.stop(),
       this.eventListener?.stop(),
-      this.outputListener?.stop(),
+      this.orchestrationListener?.stop(),
       this.jobManager?.stop(),
       this.profileLoader?.stop(),
     ]);
     this.podWatcher = null;
     this.eventListener = null;
-    this.outputListener = null;
+    this.orchestrationListener = null;
     this.stateManager = null;
     this.jobManager = null;
     this.profileLoader = null;
@@ -183,6 +183,11 @@ export class Ringmaster {
         ...streamDefaults,
         name: Standards.Chimp.Naming.outputsStreamName(),
         subjects: [`${Standards.Chimp.Prefix.OUTPUTS}.>`],
+      }),
+      NatsLib.ensureStream(jsm, {
+        ...streamDefaults,
+        name: Standards.Chimp.Naming.orchestrationStreamName(),
+        subjects: [Standards.Chimp.Naming.orchestrationFilter()],
       }),
     ]);
   }

@@ -101,6 +101,14 @@ export class EventHandler {
         await this.deps.topicRegistry.subscribe(action.topic, action.chimpId);
         break;
 
+      case "unregister_topic":
+        await this.deps.topicRegistry.unsubscribe(action.topic, action.chimpId);
+        break;
+
+      case "unregister_all_topics":
+        await this.deps.topicRegistry.unsubscribeAll(action.chimpId);
+        break;
+
       case "delete_consumers":
         await this.deps.consumerManager.deleteConsumer(action.chimpId);
         break;
@@ -118,6 +126,10 @@ export class EventHandler {
         break;
 
       case "set_profile":
+        await this.deps.chimpProfileStore.setProfile(
+          action.chimpId,
+          action.profile,
+        );
         await this.deps.metaPublisher.publishProfile(
           action.chimpId,
           action.profile,

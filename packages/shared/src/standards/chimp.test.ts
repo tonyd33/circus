@@ -15,15 +15,37 @@ describe("Naming.outputSubject", () => {
   });
 });
 
-describe("Naming.metaSubject", () => {
-  test("builds meta subject", () => {
-    expect(Naming.metaSubject("chimp-xyz")).toBe("meta.chimp-xyz");
+describe("Naming.lifecycleSubject", () => {
+  test("builds lifecycle subject", () => {
+    expect(Naming.lifecycleSubject("chimp-xyz")).toBe(
+      "meta.lifecycle.chimp-xyz",
+    );
+  });
+  test("lifecycle filter", () => {
+    expect(Naming.lifecycleFilter()).toBe("meta.lifecycle.>");
+  });
+});
+
+describe("Naming.orchestration", () => {
+  test("orchestration subject", () => {
+    expect(Naming.orchestrationSubject("set-profile", "chimp-1")).toBe(
+      "meta.orchestration.set-profile.chimp-1",
+    );
+  });
+  test("orchestration filter", () => {
+    expect(Naming.orchestrationFilter()).toBe("meta.orchestration.>");
+  });
+  test("orchestration stream name", () => {
+    expect(Naming.orchestrationStreamName()).toBe("orchestration");
   });
 });
 
 describe("Naming.consumerNames", () => {
   test("event consumer name", () => {
     expect(Naming.eventConsumerName("abc")).toBe("chimp-abc");
+  });
+  test("orchestration consumer name", () => {
+    expect(Naming.orchestrationConsumerName()).toBe("ringmaster-orchestration");
   });
 });
 

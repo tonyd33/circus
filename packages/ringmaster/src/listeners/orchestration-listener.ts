@@ -9,12 +9,10 @@ import {
 } from "nats";
 import type { EventHandler } from "../core/event-handler.ts";
 
-const OUTPUT_LISTENER_CONSUMER_NAME = "output-listener";
-
-export class OutputListener {
+export class OrchestrationListener {
   private nc: NatsConnection;
-  private eventHandler: EventHandler;
   private consumer: Consumer | null = null;
+  private eventHandler: EventHandler;
   private stopConsumer: (() => void) | null = null;
   private logger: Logger.Logger;
 
@@ -31,48 +29,47 @@ export class OutputListener {
   async start(): Promise<void> {
     const js = this.nc.jetstream();
     const jsm = await this.nc.jetstreamManager();
-    const streamName = Standards.Chimp.Naming.outputsStreamName();
+    const streamName = Standards.Chimp.Naming.orchestrationStreamName();
 
-    const consumerInfo = await jsm.consumers.add(streamName, {
-      durable_name: OUTPUT_LISTENER_CONSUMER_NAME,
+    const consumer = await jsm.consumers.add(streamName, {
+      durable_name: Standards.Chimp.Naming.orchestrationConsumerName(),
       ack_policy: AckPolicy.Explicit,
-      filter_subject: `${Standards.Chimp.Prefix.OUTPUTS}.>`,
-      deliver_policy: DeliverPolicy.New,
+      filter_subject: Standards.Chimp.Naming.orchestrationFilter(),
+      deliver_policy: DeliverPolicy.All,
     });
-    this.consumer = await js.consumers.get(streamName, consumerInfo.name);
+
+    this.consumer = js.consumers.getPullConsumerFor(consumer);
+    this.logger.info("Created consumer for meta.orchestration.>");
+
     const messages = await this.consumer.consume();
     this.stopConsumer = () => messages.stop();
-    this.logger.info("Consuming outputs via JetStream");
 
     (async () => {
       for await (const msg of messages) {
         try {
-          const chimpId = msg.subject.slice(
-            Standards.Chimp.Prefix.OUTPUTS.length + 1,
-          );
-          if (!chimpId) {
-            msg.ack();
-            continue;
-          }
-
-          const parsed = Protocol.safeParseChimpOutputMessage(msg.json());
+          const raw = msg.json();
+          const parsed = Protocol.safeParseOrchestrationAction(raw);
           if (!parsed.success) {
+            this.logger.warn(
+              { subject: msg.subject, issues: parsed.error.issues },
+              "Invalid orchestration action",
+            );
             msg.ack();
             continue;
           }
-
-          const timestamp = new Date(millis(msg.info.timestampNanos));
 
           await this.eventHandler.handleEvent({
-            type: "chimp_output",
-            chimpId,
-            message: parsed.data,
-            timestamp,
+            type: "orchestration_action",
+            action: parsed.data,
+            timestamp: new Date(millis(msg.info.timestampNanos)),
           });
-
           msg.ack();
         } catch (error) {
-          this.logger.error({ err: error }, "Error processing output");
+          this.logger.error(
+            { err: error, subject: msg.subject },
+            "Error processing orchestration action",
+          );
+          msg.ack();
         }
       }
     })();

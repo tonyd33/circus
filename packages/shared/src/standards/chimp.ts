@@ -47,12 +47,27 @@ export const Naming = {
   outputSubject(chimpId: string): string {
     return `${Prefix.OUTPUTS}.${chimpId}`;
   },
-  metaSubject(chimpId: string): string {
-    return `${Prefix.META}.${chimpId}`;
+  lifecycleSubject(chimpId: string): string {
+    return `${Prefix.META}.lifecycle.${chimpId}`;
+  },
+  lifecycleFilter(): string {
+    return `${Prefix.META}.lifecycle.>`;
+  },
+  orchestrationStreamName(): string {
+    return "orchestration";
+  },
+  orchestrationSubject(action: string, chimpId: string): string {
+    return `${Prefix.META}.orchestration.${action}.${chimpId}`;
+  },
+  orchestrationFilter(): string {
+    return `${Prefix.META}.orchestration.>`;
   },
 
   eventConsumerName(chimpId: string): string {
     return `chimp-${chimpId}`;
+  },
+  orchestrationConsumerName(): string {
+    return "ringmaster-orchestration";
   },
   podName(chimpId: string): string {
     const hash = Bun.hash(chimpId).toString(36);

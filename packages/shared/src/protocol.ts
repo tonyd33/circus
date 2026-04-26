@@ -358,6 +358,63 @@ export const MetaEventSchema = z.discriminatedUnion("type", [
   BullhornDispatchedMetaEventSchema,
 ]);
 
+// ── Orchestration actions ──────────────────────────────────────────────
+
+const DeliverFromSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("sequence"), value: z.number() }),
+  z.object({ type: z.literal("time"), value: z.coerce.date() }),
+]);
+
+export const SetProfileActionSchema = z.object({
+  type: z.literal("set-profile"),
+  chimpId: z.string(),
+  profile: z.string(),
+});
+
+export const SubscribeTopicActionSchema = z.object({
+  type: z.literal("subscribe-topic"),
+  chimpId: z.string(),
+  topic: TopicSchema,
+});
+
+export const SetTopicsActionSchema = z.object({
+  type: z.literal("set-topics"),
+  chimpId: z.string(),
+  topics: z.array(TopicSchema),
+});
+
+export const UnsubscribeTopicActionSchema = z.object({
+  type: z.literal("unsubscribe-topic"),
+  chimpId: z.string(),
+  topic: TopicSchema,
+});
+
+export const EnsureConsumersActionSchema = z.object({
+  type: z.literal("ensure-consumers"),
+  chimpId: z.string(),
+  deliverFrom: DeliverFromSchema.optional(),
+});
+
+export const EnsureJobActionSchema = z.object({
+  type: z.literal("ensure-job"),
+  chimpId: z.string(),
+});
+
+export const DeleteChimpActionSchema = z.object({
+  type: z.literal("delete-chimp"),
+  chimpId: z.string(),
+});
+
+export const OrchestrationActionSchema = z.discriminatedUnion("type", [
+  SetProfileActionSchema,
+  SubscribeTopicActionSchema,
+  SetTopicsActionSchema,
+  UnsubscribeTopicActionSchema,
+  EnsureConsumersActionSchema,
+  EnsureJobActionSchema,
+  DeleteChimpActionSchema,
+]);
+
 // ── Types ──────────────────────────────────────────────────────────────
 
 export type ChimpCommand = z.infer<typeof ChimpCommandSchema>;
@@ -375,6 +432,16 @@ export type InitConfig = z.infer<typeof InitConfigSchema>;
 export type MetaEvent = z.infer<typeof MetaEventSchema>;
 export type ProfileMetaEvent = z.infer<typeof ProfileMetaEventSchema>;
 export type TopicsMetaEvent = z.infer<typeof TopicsMetaEventSchema>;
+export type OrchestrationAction = z.infer<typeof OrchestrationActionSchema>;
+export type SetProfileAction = z.infer<typeof SetProfileActionSchema>;
+export type SubscribeTopicAction = z.infer<typeof SubscribeTopicActionSchema>;
+export type SetTopicsAction = z.infer<typeof SetTopicsActionSchema>;
+export type UnsubscribeTopicAction = z.infer<
+  typeof UnsubscribeTopicActionSchema
+>;
+export type EnsureConsumersAction = z.infer<typeof EnsureConsumersActionSchema>;
+export type EnsureJobAction = z.infer<typeof EnsureJobActionSchema>;
+export type DeleteChimpAction = z.infer<typeof DeleteChimpActionSchema>;
 
 // ── Parse helpers ──────────────────────────────────────────────────────
 
@@ -400,6 +467,10 @@ export function parseInitConfig(config: unknown): InitConfig {
 
 export function safeParseInitConfig(config: unknown) {
   return InitConfigSchema.safeParse(config);
+}
+
+export function safeParseOrchestrationAction(payload: unknown) {
+  return OrchestrationActionSchema.safeParse(payload);
 }
 
 // ── Factory helpers ────────────────────────────────────────────────────

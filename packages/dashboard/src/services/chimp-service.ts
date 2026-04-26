@@ -54,7 +54,7 @@ export class ChimpService {
     const log = this.logger;
     const self = this;
 
-    const sub = nc.subscribe(`${Standards.Chimp.Prefix.META}.>`);
+    const sub = nc.subscribe(Standards.Chimp.Naming.lifecycleFilter());
     let pingInterval: ReturnType<typeof setInterval>;
 
     return new ReadableStream<Uint8Array>({
