@@ -129,12 +129,13 @@ export async function createActivityStream(
   }
 
   try {
-    // Events + direct commands (single stream)
+    const directFilter = Standards.Topic.topicToEventSubject({
+      platform: "direct",
+      chimpId,
+    });
     const topics = await topicRegistry.listForChimp(chimpId);
-    const eventFilters = [
-      Standards.Chimp.Naming.directSubject(chimpId),
-      ...topics.map(Standards.Topic.topicToEventSubject),
-    ];
+    const topicFilters = topics.map(Standards.Topic.topicToEventSubject);
+    const eventFilters = [...new Set([directFilter, ...topicFilters])];
     await addConsumer(
       Standards.Chimp.Naming.eventsStreamName(),
       eventFilters,

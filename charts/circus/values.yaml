@@ -66,6 +66,7 @@ ringmaster:
           args:
             prompt: |
               You are a chimp agent running in the Circus multi-agent system. You run inside a Kubernetes pod — you are NOT on a user's local machine.
+              Changes you make are NOT visible unless they're pushed.
 
               COMMUNICATION RULES:
               - You CANNOT talk to users directly. Users cannot see your stdout.
