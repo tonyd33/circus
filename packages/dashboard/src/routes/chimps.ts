@@ -45,6 +45,13 @@ export class ChimpRouter {
             );
           }
 
+          if (parsed.data.platform !== "github") {
+            return Response.json(
+              { error: "Only GitHub topics are supported" },
+              { status: 400 },
+            );
+          }
+
           await this.chimpService.subscribeTopic(parsed.data, chimpId);
           return Response.json({ success: true });
         },
@@ -57,6 +64,13 @@ export class ChimpRouter {
           if (!parsed.success) {
             return Response.json(
               { error: "Invalid topic", details: parsed.error.issues },
+              { status: 400 },
+            );
+          }
+
+          if (parsed.data.platform !== "github") {
+            return Response.json(
+              { error: "Only GitHub topics are supported" },
               { status: 400 },
             );
           }

@@ -91,22 +91,22 @@ export const Header = memo(function Header({
               🐒 {chimpId}
             </h1>
             <div className="flex items-center gap-1.5 ml-2">
-              {topics.map((t) => {
-                const key = Standards.Topic.serializeTopic(t);
-                return (
-                  <Badge
-                    key={key}
-                    variant="outline"
-                    className="text-xs font-mono cursor-pointer hover:bg-destructive/20 hover:border-destructive/50 hover:text-destructive transition-colors"
-                    onClick={() => removeTopic(t)}
-                  >
-                    {t.platform === "github"
-                      ? `${t.owner}/${t.repo}#${t.number}`
-                      : key}
-                    <X className="ml-1 h-3 w-3" />
-                  </Badge>
-                );
-              })}
+              {topics
+                .filter((t) => t.platform === "github")
+                .map((t) => {
+                  const key = Standards.Topic.serializeTopic(t);
+                  return (
+                    <Badge
+                      key={key}
+                      variant="outline"
+                      className="text-xs font-mono cursor-pointer hover:bg-destructive/20 hover:border-destructive/50 hover:text-destructive transition-colors"
+                      onClick={() => removeTopic(t)}
+                    >
+                      {t.owner}/{t.repo}#{t.number}
+                      <X className="ml-1 h-3 w-3" />
+                    </Badge>
+                  );
+                })}
               <Popover open={showAddForm} onOpenChange={setShowAddForm}>
                 <PopoverTrigger asChild>
                   <Button variant="ghost" size="sm" className="ml-1 h-6 px-2">
