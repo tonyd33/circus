@@ -14,6 +14,7 @@ export type CommandResult = "continue" | "stop";
 
 export abstract class ChimpBrain {
   protected chimpId: string;
+  protected provider: string;
   protected model: string;
   protected systemPrompt: string | undefined;
   protected allowedTools: string[] = [];
@@ -42,12 +43,14 @@ export abstract class ChimpBrain {
 
   constructor(
     chimpId: string,
+    provider: string,
     model: string,
     publish: PublishFn,
     logger: Logger.Logger,
     mcpUrl: string,
   ) {
     this.chimpId = chimpId;
+    this.provider = provider;
     this.model = model;
     this.publish = publish;
     this.logger = logger;

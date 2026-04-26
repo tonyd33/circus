@@ -212,7 +212,7 @@ export class OpencodeBrain extends ChimpBrain {
       body: {
         parts: [{ type: "text", text: prompt }],
         model: {
-          providerID: "opencode",
+          providerID: this.provider,
           modelID: this.model,
         },
         system: this.systemPrompt,

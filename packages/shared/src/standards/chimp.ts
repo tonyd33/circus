@@ -4,6 +4,7 @@ export const Env = {
   redisUrl: "REDIS_URL",
   databaseUrl: "DATABASE_URL",
   brainType: "CHIMP_BRAIN_TYPE",
+  provider: "CHIMP_PROVIDER",
   model: "CHIMP_MODEL",
   profile: "CHIMP_PROFILE",
   inputMode: "CHIMP_INPUT_MODE",

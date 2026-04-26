@@ -11,6 +11,7 @@ export interface ProfileTemplateBase {
 
 export interface ProfileTemplateVariant {
   brain: ChimpProfile["brain"];
+  provider: string;
   model: string;
   description?: string;
   image?: string;
@@ -42,6 +43,7 @@ export function compileProfiles(
 
     result[name] = {
       brain: variant.brain,
+      provider: variant.provider,
       model: variant.model,
       image: variant.image ?? template.base.image,
       description: variant.description,
