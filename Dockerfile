@@ -32,7 +32,7 @@ RUN apt update && \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list && \
     apt install -y gh && \
     rm -rf /var/lib/apt/lists/*
-ADD --unpack https://github.com/anomalyco/opencode/releases/download/v1.4.3/opencode-linux-x64.tar.gz /usr/local/bin/
+ADD --unpack https://github.com/anomalyco/opencode/releases/download/v1.14.25/opencode-linux-x64.tar.gz /usr/local/bin/
 RUN bunx npm install -g @anthropic-ai/claude-code
 
 RUN useradd -ms /bin/bash agent
