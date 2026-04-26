@@ -1,4 +1,5 @@
 import type { ChimpService } from "../services/chimp-service";
+import { TopicSchema } from "@mnke/circus-shared/standards/topic";
 
 const SSE_HEADERS = {
   "Content-Type": "text/event-stream",
@@ -30,6 +31,38 @@ export class ChimpRouter {
 
           const topics = await this.chimpService.listChimpTopics(chimpId);
           return Response.json({ topics });
+        },
+        POST: async (req: Bun.BunRequest<"/api/chimp/:chimpId/topics">) => {
+          const chimpId = req.params.chimpId;
+          if (!chimpId) return new Response("Missing chimpId", { status: 400 });
+
+          const body = await req.json().catch(() => null);
+          const parsed = TopicSchema.safeParse(body);
+          if (!parsed.success) {
+            return Response.json(
+              { error: "Invalid topic", details: parsed.error.issues },
+              { status: 400 },
+            );
+          }
+
+          await this.chimpService.subscribeTopic(parsed.data, chimpId);
+          return Response.json({ success: true });
+        },
+        DELETE: async (req: Bun.BunRequest<"/api/chimp/:chimpId/topics">) => {
+          const chimpId = req.params.chimpId;
+          if (!chimpId) return new Response("Missing chimpId", { status: 400 });
+
+          const body = await req.json().catch(() => null);
+          const parsed = TopicSchema.safeParse(body);
+          if (!parsed.success) {
+            return Response.json(
+              { error: "Invalid topic", details: parsed.error.issues },
+              { status: 400 },
+            );
+          }
+
+          await this.chimpService.unsubscribeTopic(parsed.data, chimpId);
+          return Response.json({ success: true });
         },
       },
       "/api/chimp/:chimpId/status": {

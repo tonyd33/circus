@@ -1,8 +1,15 @@
 import { Standards } from "@mnke/circus-shared";
-import { ArrowLeft, CircleDot, Loader2 } from "lucide-react";
-import { memo } from "react";
+import { ArrowLeft, CircleDot, Loader2, Plus, X } from "lucide-react";
+import { memo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 export const Header = memo(function Header({
   chimpId,
@@ -15,6 +22,34 @@ export const Header = memo(function Header({
   connected: boolean;
   error: string | null;
 }) {
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newTopic, setNewTopic] = useState("");
+
+  const addTopic = async () => {
+    const parsed = parseTopicString(newTopic);
+    if (!parsed) return;
+
+    const res = await fetch(`/api/chimp/${chimpId}/topics`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(parsed),
+    });
+    if (res.ok) {
+      window.location.reload();
+    }
+  };
+
+  const removeTopic = async (topic: Standards.Topic.Topic) => {
+    const res = await fetch(`/api/chimp/${chimpId}/topics`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(topic),
+    });
+    if (res.ok) {
+      window.location.reload();
+    }
+  };
+
   return (
     <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
       <div className="container mx-auto px-4 py-4">
@@ -31,33 +66,43 @@ export const Header = memo(function Header({
             <h1 className="text-xl font-bold text-circus-crimson">
               🐒 {chimpId}
             </h1>
-            {topics.length > 0 && (
-              <div className="flex items-center gap-1.5 ml-2">
-                {topics.map((t) => {
-                  const key = Standards.Topic.serializeTopic(t);
-                  if (t.platform === "github") {
-                    return (
-                      <Badge
-                        key={key}
-                        variant="outline"
-                        className="text-xs font-mono text-emerald-500 border-emerald-500/30"
-                      >
-                        {t.owner}/{t.repo}#{t.number}
-                      </Badge>
-                    );
-                  }
-                  return (
-                    <Badge
-                      key={key}
-                      variant="outline"
-                      className="text-xs font-mono text-muted-foreground border-muted-foreground/30"
-                    >
-                      {key}
-                    </Badge>
-                  );
-                })}
-              </div>
-            )}
+            <div className="flex items-center gap-1.5 ml-2">
+              {topics.map((t) => {
+                const key = Standards.Topic.serializeTopic(t);
+                return (
+                  <Badge
+                    key={key}
+                    variant="outline"
+                    className="text-xs font-mono cursor-pointer hover:bg-destructive/20 hover:border-destructive/50 hover:text-destructive transition-colors"
+                    onClick={() => removeTopic(t)}
+                  >
+                    {t.platform === "github"
+                      ? `${t.owner}/${t.repo}#${t.number}`
+                      : key}
+                    <X className="ml-1 h-3 w-3" />
+                  </Badge>
+                );
+              })}
+              <Popover open={showAddForm} onOpenChange={setShowAddForm}>
+                <PopoverTrigger asChild>
+                  <Button variant="ghost" size="sm" className="ml-1 h-6 px-2">
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80">
+                  <div className="space-y-4">
+                    <h3 className="font-medium">Add Topic Subscription</h3>
+                    <Input
+                      placeholder="owner/repo#123 or owner/repo#123 (issue)"
+                      value={newTopic}
+                      onChange={(e) => setNewTopic(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && addTopic()}
+                    />
+                    <Button onClick={addTopic}>Subscribe</Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {connected ? (
@@ -74,3 +119,21 @@ export const Header = memo(function Header({
     </header>
   );
 });
+
+function parseTopicString(
+  input: string,
+): { platform: "github"; owner: string; repo: string; type: "pr" | "issue"; number: number } | null {
+  const match = input.match(/^([^/]+)\/([^#]+)#(\d+)(?:\s+\(issue\))?$/);
+  if (!match) return null;
+
+  const [, owner, repo, num] = match;
+  const type = input.includes("(issue)") ? "issue" : "pr";
+
+  return {
+    platform: "github",
+    owner,
+    repo,
+    type,
+    number: parseInt(num, 10),
+  };
+}

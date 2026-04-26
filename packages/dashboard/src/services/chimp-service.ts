@@ -4,6 +4,7 @@ import type {
   TopicRegistry,
 } from "@mnke/circus-shared/components";
 import type * as Logger from "@mnke/circus-shared/logger";
+import type { Topic } from "@mnke/circus-shared/standards/topic";
 import type { NatsConnection } from "nats";
 import type { RedisStatusSource } from "../lib/status-source";
 
@@ -38,6 +39,14 @@ export class ChimpService {
 
   async listChimpTopics(chimpId: string) {
     return this.topicRegistry.listForChimp(chimpId);
+  }
+
+  async subscribeTopic(topic: Topic, chimpId: string) {
+    return this.topicRegistry.subscribe(topic, chimpId);
+  }
+
+  async unsubscribeTopic(topic: Topic, chimpId: string) {
+    return this.topicRegistry.unsubscribe(topic, chimpId);
   }
 
   createLiveStream(): ReadableStream<Uint8Array> {
