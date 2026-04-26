@@ -24,6 +24,7 @@
 
       # Shared package list for dev shell and chimp Docker image
       devPackages = pkgs: with pkgs; [
+        cacert
         bun
         git
         curl
@@ -57,7 +58,7 @@
           chimp-env = pkgs.buildEnv {
             name = "chimp-env";
             paths = devPackages pkgs;
-            pathsToLink = [ "/bin" "/lib" "/share" ];
+            pathsToLink = [ "/bin" "/lib" "/share" "/etc" ];
           };
         }
       );
