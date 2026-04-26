@@ -28,7 +28,8 @@ RUN bun run build
 # Nix builder stage - build development tools from flake
 FROM nixos/nix:latest AS nix-env
 WORKDIR /build
-RUN echo "experimental-features = nix-command flakes" >> /etc/nix/nix.conf
+RUN echo "experimental-features = nix-command flakes" >> /etc/nix/nix.conf && \
+    echo "filter-syscalls = false" >> /etc/nix/nix.conf
 COPY flake.nix flake.lock ./
 RUN nix build .#chimp-env && \
     mkdir -p /nix-closure/nix/store && \
