@@ -206,6 +206,22 @@ export class CircusMcp {
           .describe("Comment ID to reply to (creates a threaded reply)"),
       },
       async (args) => {
+        const valid = this.eventContexts.some(
+          (ctx) =>
+            ctx.context.source === "github" &&
+            ctx.context.installationId === args.installationId,
+        );
+        if (!valid) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Invalid installationId ${args.installationId}: not in event contexts`,
+              },
+            ],
+          };
+        }
+
         this.config.logger.info(
           {
             tool: "github_respond",
@@ -251,6 +267,23 @@ export class CircusMcp {
         content: z.string().describe("Reply content"),
       },
       async (args) => {
+        const valid = this.eventContexts.some(
+          (ctx) =>
+            ctx.context.source === "discord" &&
+            ctx.context.applicationId === args.applicationId &&
+            ctx.context.interactionToken === args.interactionToken,
+        );
+        if (!valid) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Invalid Discord context: applicationId or interactionToken not in event contexts`,
+              },
+            ],
+          };
+        }
+
         this.config.logger.info(
           { tool: "discord_respond", applicationId: args.applicationId },
           "MCP tool called: discord_respond",
