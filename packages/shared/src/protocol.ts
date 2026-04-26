@@ -123,6 +123,11 @@ const SubscribeTopicCommandSchema = z.object({
   args: z.object({ topic: TopicSchema }),
 });
 
+const UnsubscribeTopicCommandSchema = z.object({
+  command: z.literal("unsubscribe-topic"),
+  args: z.object({ topic: TopicSchema }),
+});
+
 const AddEventContextCommandSchema = z.object({
   command: z.literal("add-event-context"),
   args: z.object({ context: EventContextSchema }),
@@ -139,6 +144,7 @@ const ChimpCommandSchema = z.discriminatedUnion("command", [
   SetAllowedToolsCommandSchema,
   SetupGithubAuthCommandSchema,
   SubscribeTopicCommandSchema,
+  UnsubscribeTopicCommandSchema,
   AddEventContextCommandSchema,
 ]);
 

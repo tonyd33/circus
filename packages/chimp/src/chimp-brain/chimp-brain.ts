@@ -109,6 +109,8 @@ export abstract class ChimpBrain {
         return this.handleSetupGithubAuth();
       case "subscribe-topic":
         return this.handleSubscribeTopic(command.args.topic);
+      case "unsubscribe-topic":
+        return this.handleUnsubscribeTopic(command.args.topic);
       case "add-event-context":
         return this.handleAddEventContext(command.args.context);
       default:
@@ -204,6 +206,19 @@ export abstract class ChimpBrain {
 
     await this.topicRegistry.subscribe(topic, this.chimpId);
     this.log("info", "Subscribed to topic via command", { topic });
+    return "continue";
+  }
+
+  protected async handleUnsubscribeTopic(
+    topic: Parameters<TopicRegistry["unsubscribe"]>[0],
+  ): Promise<CommandResult> {
+    if (!this.topicRegistry) {
+      this.log("warn", "TopicRegistry not available for unsubscribe-topic");
+      return "continue";
+    }
+
+    await this.topicRegistry.unsubscribe(topic, this.chimpId);
+    this.log("info", "Unsubscribed from topic via command", { topic });
     return "continue";
   }
 

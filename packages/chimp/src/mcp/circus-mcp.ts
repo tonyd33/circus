@@ -347,6 +347,44 @@ export class CircusMcp {
     );
 
     server.tool(
+      "unsubscribe_topic",
+      "Unsubscribe from a topic so this chimp no longer receives events for it. Use after handing off work to another chimp.",
+      {
+        platform: z.literal("github").describe("Platform"),
+        owner: z.string().describe("Repository owner"),
+        repo: z.string().describe("Repository name"),
+        type: z.enum(["pr", "issue"]).describe("PR or issue"),
+        number: z.number().describe("PR/issue number"),
+      },
+      async (args) => {
+        const topic: Standards.Topic.Topic = args;
+        const { topicRegistry, nc, chimpId, logger } = this.config;
+
+        if (!topicRegistry || !nc) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: "Topic unsubscription unavailable (no NATS)",
+              },
+            ],
+          };
+        }
+
+        await topicRegistry.unsubscribe(topic, chimpId);
+
+        const topicKey = Standards.Topic.serializeTopic(topic);
+        logger.info({ topic: topicKey, chimpId }, "Unsubscribed from topic");
+
+        return {
+          content: [
+            { type: "text" as const, text: `Unsubscribed from ${topicKey}` },
+          ],
+        };
+      },
+    );
+
+    server.tool(
       "list_profiles",
       "List available chimp profiles with descriptions, brain type, and model.",
       {},
