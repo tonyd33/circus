@@ -37,7 +37,7 @@
   "devDependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.92",
     "@opencode-ai/sdk": "^1.14.25",
-    "@playwright/mcp": "^0.0.70",
+    "@playwright/mcp": "^0.0.71",
     "@playwright/test": "^1.59.1",
     "@types/bun": "latest",
     "@types/react": "^19",
