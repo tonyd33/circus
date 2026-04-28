@@ -1,5 +1,6 @@
 import type { Standards } from "@mnke/circus-shared";
 import { useEffect, useRef, useState } from "react";
+import { API_URL } from "@/lib/api";
 import type { ChimpState, ChimpStatus } from "@/lib/chimp";
 
 interface StatusUpdate {
@@ -51,14 +52,13 @@ export function useChimps(): UseChimpsResult {
   const retryTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   );
-
   useEffect(() => {
     let closed = false;
 
     function connect() {
       if (closed) return;
 
-      const es = new EventSource("/api/chimps/live");
+      const es = new EventSource(`${API_URL}/api/chimps/live`);
 
       es.onopen = () => {
         setConnected(true);

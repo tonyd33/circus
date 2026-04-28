@@ -231,3 +231,24 @@ dashboard:
     limits:
       memory: "512Mi"
       cpu: "500m"
+
+# API configuration
+api:
+  enabled: true
+  image:
+    repository: api
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  service:
+    type: ClusterIP
+    port: 4773
+  dashboardOrigin: "http://localhost:4772"
+  extraEnv: []
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"

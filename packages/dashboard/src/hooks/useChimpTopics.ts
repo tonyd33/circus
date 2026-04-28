@@ -1,5 +1,6 @@
 import type { Standards } from "@mnke/circus-shared";
 import { useEffect, useState } from "react";
+import { api } from "@/lib/api";
 
 interface UseChimpTopicsResult {
   topicsByChimp: Record<string, Standards.Topic.Topic[]>;
@@ -41,14 +42,17 @@ export function useChimpTopics(chimpIds: string[]): UseChimpTopicsResult {
   useEffect(() => {
     setLoading(true);
 
-    fetch("/api/topics")
-      .then((r) => r.json())
-      .then((data) => {
-        setTopicsByChimp(data.topics ?? {});
+    api.api.topics
+      .get()
+      .then(({ data, error }) => {
+        if (error) {
+          setTopicsByChimp({});
+        } else {
+          setTopicsByChimp(data.topics ?? {});
+        }
         setError(null);
       })
       .catch(() => {
-        // Silent error handling - matches dashboard pattern
         setTopicsByChimp({});
         setError(null);
       })

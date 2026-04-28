@@ -2,6 +2,7 @@ import { Loader2, Send } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { api } from "@/lib/api";
 
 export function MessageInput({ chimpId }: { chimpId: string }) {
   const [prompt, setPrompt] = useState("");
@@ -11,12 +12,10 @@ export function MessageInput({ chimpId }: { chimpId: string }) {
     if (!prompt.trim() || sending) return;
     setSending(true);
     try {
-      const res = await fetch(`/api/chimp/${chimpId}/message`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: prompt.trim() }),
+      const { error } = await api.api.chimps({ chimpId }).messages.post({
+        prompt: prompt.trim(),
       });
-      if (res.ok) setPrompt("");
+      if (!error) setPrompt("");
     } finally {
       setSending(false);
     }

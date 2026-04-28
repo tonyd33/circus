@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { api } from "@/lib/api";
 
 export const Header = memo(function Header({
   chimpId,
@@ -47,12 +48,10 @@ export const Header = memo(function Header({
     });
     if (!parsed.success) return;
 
-    const res = await fetch(`/api/chimp/${chimpId}/topics`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(parsed.data),
-    });
-    if (res.ok) {
+    const { error } = await api.api
+      .chimps({ chimpId })
+      .topics.post(parsed.data);
+    if (!error) {
       window.location.reload();
     }
   };
@@ -64,12 +63,8 @@ export const Header = memo(function Header({
     !Number.isNaN(parseInt(newTopic.number, 10));
 
   const removeTopic = async (topic: Standards.Topic.Topic) => {
-    const res = await fetch(`/api/chimp/${chimpId}/topics`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(topic),
-    });
-    if (res.ok) {
+    const { error } = await api.api.chimps({ chimpId }).topics.delete(topic);
+    if (!error) {
       window.location.reload();
     }
   };

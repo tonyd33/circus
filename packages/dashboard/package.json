@@ -10,6 +10,7 @@
     "typecheck": "bun tsgo --noEmit"
   },
   "dependencies": {
+    "@elysiajs/eden": "^1.4.9",
     "@mnke/circus-shared": "workspace:*",
     "@radix-ui/react-collapsible": "^1.1.12",
     "@radix-ui/react-label": "^2.1.7",
@@ -19,9 +20,7 @@
     "bun-plugin-tailwind": "^0.1.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "ioredis": "catalog:",
     "lucide-react": "^1.0.0",
-    "nats": "catalog:",
     "radix-ui": "^1.4.3",
     "react": "^19",
     "react-dom": "^19",
@@ -36,6 +35,7 @@
   },
   "devDependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.92",
+    "@mnke/circus-api": "workspace:*",
     "@opencode-ai/sdk": "^1.14.25",
     "@playwright/mcp": "^0.0.70",
     "@playwright/test": "^1.59.1",

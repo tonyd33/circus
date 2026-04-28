@@ -1,6 +1,5 @@
 #!/usr/bin/env bun
 
-import { Standards } from "@mnke/circus-shared";
 import { EnvReader as ER } from "@mnke/circus-shared/lib";
 import { Either } from "@mnke/circus-shared/lib/fp";
 import * as Logger from "@mnke/circus-shared/logger";
@@ -10,11 +9,6 @@ const logger = Logger.createLogger("dashboard");
 
 async function main() {
   const result = ER.record({
-    natsUrl: ER.str("NATS_URL").fallback("nats://localhost:4222"),
-    databaseUrl: ER.str("DATABASE_URL").fallback(
-      "postgresql://circus:circus@localhost:5432/circus",
-    ),
-    defaultProfile: ER.str(Standards.Profile.Env.defaultProfile),
     port: ER.int("PORT").fallback(4772),
   }).read(process.env).value;
 

@@ -10,7 +10,8 @@ import {
   type NatsConnection,
   type Subscription,
 } from "nats";
-import type { ActivityEvent } from "../lib/chimp";
+
+type ActivityEvent = Standards.Activity.ActivityEvent;
 
 const PING_INTERVAL_MS = 3_000;
 
@@ -142,14 +143,12 @@ export async function createActivityStream(
       "event",
     );
 
-    // Outputs (messages from this chimp)
     await addConsumer(
       Standards.Chimp.Naming.outputsStreamName(),
       Standards.Chimp.Naming.outputSubject(chimpId),
       "output",
     );
 
-    // Meta events (plain NATS — no stream, live only)
     const metaSub = nc.subscribe(
       Standards.Chimp.Naming.lifecycleSubject(chimpId),
     );

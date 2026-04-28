@@ -14,6 +14,7 @@ COPY --chown=root:root packages/ringmaster/package.json ./packages/ringmaster/
 COPY --chown=root:root packages/chimp/package.json ./packages/chimp/
 COPY --chown=root:root packages/bullhorn/package.json ./packages/bullhorn/
 COPY --chown=root:root packages/dashboard/package.json ./packages/dashboard/
+COPY --chown=root:root packages/api/package.json ./packages/api/
 COPY --chown=root:root packages/shared/package.json ./packages/shared/
 
 # Install dependencies (this layer will be cached unless package.json files change)
@@ -78,6 +79,12 @@ FROM base AS bullhorn
 WORKDIR /app
 
 COPY --from=build /usr/src/app/packages/bullhorn/dist/index.js ./index.js
+ENTRYPOINT ["bun", "run", "index.js"]
+
+FROM base AS api
+WORKDIR /app
+
+COPY --from=build /usr/src/app/packages/api/dist/index.js ./index.js
 ENTRYPOINT ["bun", "run", "index.js"]
 
 FROM base AS dashboard
