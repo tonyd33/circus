@@ -11,6 +11,8 @@ const SSE_HEADERS = {
 };
 
 const ChimpParams = z.object({ chimpId: Standards.Chimp.ChimpIdSchema });
+const ErrorBody = z.object({ error: z.string() });
+const OkBody = z.object({ ok: z.literal(true) });
 
 export const messagesController = (deps: Deps) =>
   new Elysia({ name: "messages" })
@@ -19,14 +21,23 @@ export const messagesController = (deps: Deps) =>
       async ({ params, body, status }) => {
         try {
           await deps.messageService.sendCommand(params.chimpId, body.prompt);
-          return { ok: true };
+          return { ok: true as const };
         } catch {
           return status(500, { error: "Failed to send message" });
         }
       },
-      { params: ChimpParams, body: SendMessageBody },
+      {
+        params: ChimpParams,
+        body: SendMessageBody,
+        response: { 200: OkBody, 500: ErrorBody },
+        detail: { tags: ["messages"], summary: "Send a prompt to a chimp" },
+      },
     )
-    .get("/api/meta/events", ({ set }) => {
-      Object.assign(set.headers, SSE_HEADERS);
-      return deps.messageService.createMetaEventStream();
-    });
+    .get(
+      "/api/meta/events",
+      ({ set }) => {
+        Object.assign(set.headers, SSE_HEADERS);
+        return deps.messageService.createMetaEventStream();
+      },
+      { detail: { hide: true } },
+    );

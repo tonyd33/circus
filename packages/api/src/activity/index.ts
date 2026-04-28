@@ -30,5 +30,5 @@ export const activityController = (deps: Deps) =>
         return status(500, { error: "Internal Server Error" });
       }
     },
-    { params: ChimpParams },
+    { params: ChimpParams, detail: { hide: true } },
   );

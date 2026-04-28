@@ -1,6 +1,28 @@
 import { z } from "zod";
+import { TopicSchema } from "./topic";
 
 export const ChimpIdSchema = z.string().min(1);
+
+export const ChimpStatusSchema = z.enum([
+  "scheduled",
+  "pending",
+  "running",
+  "stopped",
+  "failed",
+  "unknown",
+]);
+
+export const ChimpStateSchema = z.object({
+  chimpId: ChimpIdSchema,
+  status: ChimpStatusSchema,
+  createdAt: z.number(),
+  updatedAt: z.number(),
+});
+
+export const ChimpStateWithProfileSchema = ChimpStateSchema.extend({
+  profile: z.string(),
+  topics: z.array(TopicSchema).optional(),
+});
 
 export const Env = {
   chimpId: "CHIMP_ID",
@@ -22,20 +44,9 @@ export const Prefix = {
   META: "meta",
 };
 
-export type ChimpStatus =
-  | "scheduled"
-  | "pending"
-  | "running"
-  | "stopped"
-  | "failed"
-  | "unknown";
-
-export interface ChimpState {
-  chimpId: string;
-  status: ChimpStatus;
-  createdAt: number;
-  updatedAt: number;
-}
+export type ChimpStatus = z.infer<typeof ChimpStatusSchema>;
+export type ChimpState = z.infer<typeof ChimpStateSchema>;
+export type ChimpStateWithProfile = z.infer<typeof ChimpStateWithProfileSchema>;
 
 export const Naming = {
   eventsStreamName(): string {
