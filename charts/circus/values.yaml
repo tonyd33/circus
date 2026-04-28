@@ -222,7 +222,8 @@ dashboard:
   replicaCount: 1
   service:
     type: ClusterIP
-    port: 3000
+    port: 4772
+  apiUrl: ""
   extraEnv: []
   resources:
     requests:

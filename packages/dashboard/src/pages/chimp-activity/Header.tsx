@@ -39,7 +39,7 @@ export const Header = memo(function Header({
   });
 
   const addTopic = async () => {
-    const parsed = Standards.Topic.TopicSchema.safeParse({
+    const parsed = Standards.Topic.GithubTopicSchema.safeParse({
       platform: "github",
       owner: newTopic.owner,
       repo: newTopic.repo,
@@ -63,6 +63,7 @@ export const Header = memo(function Header({
     !Number.isNaN(parseInt(newTopic.number, 10));
 
   const removeTopic = async (topic: Standards.Topic.Topic) => {
+    if (topic.platform !== "github") return;
     const { error } = await api.api.chimps({ chimpId }).topics.delete(topic);
     if (!error) {
       window.location.reload();

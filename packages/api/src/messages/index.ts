@@ -1,6 +1,8 @@
-import { Elysia, t } from "elysia";
+import { Standards } from "@mnke/circus-shared";
+import { Elysia } from "elysia";
 import { z } from "zod";
 import type { Deps } from "../deps";
+import { SendMessageBody } from "./model";
 
 const SSE_HEADERS = {
   "content-type": "text/event-stream",
@@ -8,9 +10,7 @@ const SSE_HEADERS = {
   connection: "keep-alive",
 };
 
-const SendMessageBody = z.object({
-  prompt: z.string().min(1),
-});
+const ChimpParams = z.object({ chimpId: Standards.Chimp.ChimpIdSchema });
 
 export const messagesController = (deps: Deps) =>
   new Elysia({ name: "messages" })
@@ -24,10 +24,7 @@ export const messagesController = (deps: Deps) =>
           return status(500, { error: "Failed to send message" });
         }
       },
-      {
-        params: t.Object({ chimpId: t.String() }),
-        body: SendMessageBody,
-      },
+      { params: ChimpParams, body: SendMessageBody },
     )
     .get("/api/meta/events", ({ set }) => {
       Object.assign(set.headers, SSE_HEADERS);

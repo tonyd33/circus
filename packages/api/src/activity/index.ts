@@ -1,4 +1,6 @@
-import { Elysia, t } from "elysia";
+import { Standards } from "@mnke/circus-shared";
+import { Elysia } from "elysia";
+import { z } from "zod";
 import type { Deps } from "../deps";
 import { createActivityStream } from "./service";
 
@@ -7,6 +9,8 @@ const SSE_HEADERS = {
   "cache-control": "no-cache",
   connection: "keep-alive",
 };
+
+const ChimpParams = z.object({ chimpId: Standards.Chimp.ChimpIdSchema });
 
 export const activityController = (deps: Deps) =>
   new Elysia({ name: "activity" }).get(
@@ -26,5 +30,5 @@ export const activityController = (deps: Deps) =>
         return status(500, { error: "Internal Server Error" });
       }
     },
-    { params: t.Object({ chimpId: t.String() }) },
+    { params: ChimpParams },
   );

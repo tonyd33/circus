@@ -90,9 +90,18 @@ ENTRYPOINT ["bun", "run", "index.js"]
 FROM base AS dashboard
 WORKDIR /app
 
-COPY --from=build /usr/src/app/node_modules ./node_modules
-COPY --from=build /usr/src/app/packages ./packages
-COPY --from=build /usr/src/app/package.json ./
+COPY --from=build /usr/src/app/packages/dashboard/dist ./packages/dashboard/dist
+COPY --from=build /usr/src/app/packages/dashboard/src/server.ts ./packages/dashboard/src/server.ts
+COPY --from=build /usr/src/app/packages/dashboard/package.json ./packages/dashboard/package.json
+COPY --from=build /usr/src/app/packages/shared ./packages/shared
+COPY --from=build /usr/src/app/packages/api/package.json ./packages/api/package.json
+COPY --from=build /usr/src/app/packages/chimp/package.json ./packages/chimp/package.json
+COPY --from=build /usr/src/app/packages/bullhorn/package.json ./packages/bullhorn/package.json
+COPY --from=build /usr/src/app/packages/ringmaster/package.json ./packages/ringmaster/package.json
+COPY --from=build /usr/src/app/packages/usher/package.json ./packages/usher/package.json
+COPY --from=build /usr/src/app/package.json ./package.json
+COPY --from=build /usr/src/app/bun.lock ./bun.lock
+RUN bun install --frozen-lockfile --production
 
-WORKDIR /app/packages/dashboard/
-ENTRYPOINT ["bun", "start"]
+WORKDIR /app/packages/dashboard
+ENTRYPOINT ["bun", "run", "src/server.ts"]

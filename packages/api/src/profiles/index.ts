@@ -1,5 +1,9 @@
-import { Elysia, t } from "elysia";
+import { Protocol } from "@mnke/circus-shared";
+import { Elysia } from "elysia";
+import { z } from "zod";
 import type { Deps } from "../deps";
+
+const NameParams = z.object({ name: z.string().min(1) });
 
 export const profilesController = (deps: Deps) =>
   new Elysia({ prefix: "/api/profiles", name: "profiles" })
@@ -11,19 +15,15 @@ export const profilesController = (deps: Deps) =>
         if (!profile) return status(404, { error: "Not found" });
         return { name: params.name, profile };
       },
-      { params: t.Object({ name: t.String() }) },
+      { params: NameParams },
     )
     .put(
       "/:name",
-      async ({ params, body, status }) => {
-        const result = await deps.profileService.save(params.name, body);
-        if ("error" in result) return status(400, { error: result.error });
+      async ({ params, body }) => {
+        await deps.profileService.save(params.name, body);
         return { ok: true };
       },
-      {
-        params: t.Object({ name: t.String() }),
-        body: t.Unknown(),
-      },
+      { params: NameParams, body: Protocol.ChimpProfileSchema },
     )
     .delete(
       "/:name",
@@ -31,5 +31,5 @@ export const profilesController = (deps: Deps) =>
         await deps.profileService.delete(params.name);
         return { ok: true };
       },
-      { params: t.Object({ name: t.String() }) },
+      { params: NameParams },
     );

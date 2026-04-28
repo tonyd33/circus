@@ -1,4 +1,4 @@
-import { Protocol } from "@mnke/circus-shared";
+import type { Protocol } from "@mnke/circus-shared";
 import type { ProfileStore } from "@mnke/circus-shared/components";
 import type * as Logger from "@mnke/circus-shared/logger";
 
@@ -16,17 +16,9 @@ export class ProfileService {
     return this.store.get(name);
   }
 
-  async save(
-    name: string,
-    body: unknown,
-  ): Promise<{ ok: true } | { error: unknown }> {
-    const parsed = Protocol.ChimpProfileSchema.safeParse(body);
-    if (!parsed.success) {
-      return { error: parsed.error.flatten() };
-    }
-    await this.store.save(name, parsed.data);
+  async save(name: string, profile: Protocol.ChimpProfile): Promise<void> {
+    await this.store.save(name, profile);
     this.logger.info({ name }, "Profile saved");
-    return { ok: true };
   }
 
   async delete(name: string) {

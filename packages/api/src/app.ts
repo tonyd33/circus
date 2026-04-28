@@ -14,6 +14,13 @@ export interface AppConfig {
 export const buildApp = (deps: Deps, config: AppConfig) =>
   new Elysia()
     .use(corsPlugin(config.dashboardOrigin))
+    .onError(({ code, error, status }) => {
+      if (code === "VALIDATION") {
+        return status(400, {
+          error: error.all[0]?.message ?? "Validation failed",
+        });
+      }
+    })
     .get("/healthz", () => "OK")
     .use(chimpsController(deps))
     .use(topicsController(deps))

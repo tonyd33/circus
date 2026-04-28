@@ -1,3 +1,7 @@
+import { z } from "zod";
+
+export const ChimpIdSchema = z.string().min(1);
+
 export const Env = {
   chimpId: "CHIMP_ID",
   natsUrl: "NATS_URL",

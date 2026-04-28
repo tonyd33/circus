@@ -1,14 +1,16 @@
 import { z } from "zod";
 import * as P from "../lib/parser/string";
 
+export const GithubTopicSchema = z.object({
+  platform: z.literal("github"),
+  owner: z.string(),
+  repo: z.string(),
+  type: z.enum(["pr", "issue"]),
+  number: z.number(),
+});
+
 export const TopicSchema = z.discriminatedUnion("platform", [
-  z.object({
-    platform: z.literal("github"),
-    owner: z.string(),
-    repo: z.string(),
-    type: z.enum(["pr", "issue"]),
-    number: z.number(),
-  }),
+  GithubTopicSchema,
   z.object({
     platform: z.literal("discord"),
     guildId: z.string(),
