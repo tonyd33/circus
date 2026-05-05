@@ -1,17 +1,13 @@
 import { Standards } from "@mnke/circus-shared";
 import type {
   ChimpProfileStore,
+  StateManager,
   TopicRegistry,
 } from "@mnke/circus-shared/components";
 import { Typing } from "@mnke/circus-shared/lib";
 import type * as Logger from "@mnke/circus-shared/logger";
 import type { NatsConnection } from "nats";
-import type {
-  ConsumerManager,
-  JobManager,
-  MetaPublisher,
-  StateManager,
-} from "@/executors";
+import type { ConsumerManager, JobManager, MetaPublisher } from "@/executors";
 import type { PodCache } from "@/state";
 import {
   type Action,
@@ -105,6 +101,14 @@ export class EventHandler {
         await this.deps.topicRegistry.subscribe(action.topic, action.chimpId);
         break;
 
+      case "unregister_topic":
+        await this.deps.topicRegistry.unsubscribe(action.topic, action.chimpId);
+        break;
+
+      case "unregister_all_topics":
+        await this.deps.topicRegistry.unsubscribeAll(action.chimpId);
+        break;
+
       case "delete_consumers":
         await this.deps.consumerManager.deleteConsumer(action.chimpId);
         break;
@@ -122,6 +126,10 @@ export class EventHandler {
         break;
 
       case "set_profile":
+        await this.deps.chimpProfileStore.setProfile(
+          action.chimpId,
+          action.profile,
+        );
         await this.deps.metaPublisher.publishProfile(
           action.chimpId,
           action.profile,

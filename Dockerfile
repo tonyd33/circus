@@ -7,25 +7,21 @@ WORKDIR /usr/src/app
 # this will cache them and speed up future builds
 FROM base AS build
 
-# Copy package manifests first for better layer caching
 COPY --chown=root:root package.json bun.lock ./
 COPY --chown=root:root packages/usher/package.json ./packages/usher/
 COPY --chown=root:root packages/ringmaster/package.json ./packages/ringmaster/
 COPY --chown=root:root packages/chimp/package.json ./packages/chimp/
 COPY --chown=root:root packages/bullhorn/package.json ./packages/bullhorn/
 COPY --chown=root:root packages/dashboard/package.json ./packages/dashboard/
+COPY --chown=root:root packages/api/package.json ./packages/api/
 COPY --chown=root:root packages/shared/package.json ./packages/shared/
 
-# Install dependencies (this layer will be cached unless package.json files change)
 RUN bun ci
 
-# Copy the rest of the project
 COPY --chown=root:root packages ./packages
 
-# Build the project
 RUN bun run build
 
-# Nix builder stage - build development tools from flake
 FROM nixos/nix:latest AS nix-env
 WORKDIR /build
 RUN echo "experimental-features = nix-command flakes" >> /etc/nix/nix.conf && \
@@ -37,7 +33,6 @@ RUN nix build .#chimp-env && \
     readlink -f result > /nix-closure/env-path
 
 FROM base AS chimp
-# Copy nix development environment (built from flake.nix)
 COPY --from=nix-env /nix-closure/nix/store /nix/store
 COPY --from=nix-env /nix-closure/env-path /tmp/env-path
 RUN ln -s "$(cat /tmp/env-path)" /nix-env && rm /tmp/env-path
@@ -49,17 +44,13 @@ ENV CURL_CA_BUNDLE="/nix-env/etc/ssl/certs/ca-bundle.crt"
 ADD --unpack https://github.com/anomalyco/opencode/releases/download/v1.14.25/opencode-linux-x64.tar.gz /usr/local/bin/
 RUN bunx npm install -g @anthropic-ai/claude-code
 
-WORKDIR /app
-COPY --from=build --chown=root:root /usr/src/app/packages ./packages
-COPY --from=build --chown=root:root /usr/src/app/package.json ./
-# IMPROVE: How to share bun
-RUN bun ci
-
 RUN useradd -ms /bin/bash agent
 USER agent
 WORKDIR /home/agent/
 
-ENTRYPOINT ["bun", "run", "/app/packages/chimp/src/index.ts"]
+COPY --from=build --chown=root:root /usr/src/app/packages/chimp/dist/index.js /app/index.js
+
+ENTRYPOINT ["bun", "run", "/app/index.js"]
 
 FROM base AS ringmaster
 WORKDIR /app
@@ -80,12 +71,17 @@ WORKDIR /app
 COPY --from=build /usr/src/app/packages/bullhorn/dist/index.js ./index.js
 ENTRYPOINT ["bun", "run", "index.js"]
 
+FROM base AS api
+WORKDIR /app
+
+COPY --from=build /usr/src/app/packages/api/dist/index.js ./index.js
+ENTRYPOINT ["bun", "run", "index.js"]
+
 FROM base AS dashboard
 WORKDIR /app
 
-COPY --from=build /usr/src/app/node_modules ./node_modules
-COPY --from=build /usr/src/app/packages ./packages
-COPY --from=build /usr/src/app/package.json ./
+COPY --from=build /usr/src/app/packages/dashboard/dist ./dist
+COPY --from=build /usr/src/app/packages/dashboard/dist-server/index.js ./server.js
 
-WORKDIR /app/packages/dashboard/
-ENTRYPOINT ["bun", "start"]
+ENV DIST_DIR=/app/dist
+ENTRYPOINT ["bun", "run", "server.js"]

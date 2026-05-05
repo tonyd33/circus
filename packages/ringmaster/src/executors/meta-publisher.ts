@@ -25,7 +25,11 @@ export class MetaPublisher {
     };
     this.publish(chimpId, event);
     this.logger.info(
-      { subject: Standards.Chimp.Naming.metaSubject(chimpId), chimpId, status },
+      {
+        subject: Standards.Chimp.Naming.lifecycleSubject(chimpId),
+        chimpId,
+        status,
+      },
       "Published status meta event",
     );
   }
@@ -56,7 +60,7 @@ export class MetaPublisher {
   }
 
   private publish(chimpId: string, event: Protocol.MetaEvent): void {
-    const subject = Standards.Chimp.Naming.metaSubject(chimpId);
+    const subject = Standards.Chimp.Naming.lifecycleSubject(chimpId);
     this.nc.publish(subject, JSON.stringify(event));
   }
 }

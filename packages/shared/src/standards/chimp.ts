@@ -1,3 +1,29 @@
+import { z } from "zod";
+import { TopicSchema } from "./topic";
+
+export const ChimpIdSchema = z.string().min(1);
+
+export const ChimpStatusSchema = z.enum([
+  "scheduled",
+  "pending",
+  "running",
+  "stopped",
+  "failed",
+  "unknown",
+]);
+
+export const ChimpStateSchema = z.object({
+  chimpId: ChimpIdSchema,
+  status: ChimpStatusSchema,
+  createdAt: z.number(),
+  updatedAt: z.number(),
+});
+
+export const ChimpStateWithProfileSchema = ChimpStateSchema.extend({
+  profile: z.string(),
+  topics: z.array(TopicSchema).optional(),
+});
+
 export const Env = {
   chimpId: "CHIMP_ID",
   natsUrl: "NATS_URL",
@@ -18,20 +44,9 @@ export const Prefix = {
   META: "meta",
 };
 
-export type ChimpStatus =
-  | "scheduled"
-  | "pending"
-  | "running"
-  | "stopped"
-  | "failed"
-  | "unknown";
-
-export interface ChimpState {
-  chimpId: string;
-  status: ChimpStatus;
-  createdAt: number;
-  updatedAt: number;
-}
+export type ChimpStatus = z.infer<typeof ChimpStatusSchema>;
+export type ChimpState = z.infer<typeof ChimpStateSchema>;
+export type ChimpStateWithProfile = z.infer<typeof ChimpStateWithProfileSchema>;
 
 export const Naming = {
   eventsStreamName(): string {
@@ -47,28 +62,30 @@ export const Naming = {
   outputSubject(chimpId: string): string {
     return `${Prefix.OUTPUTS}.${chimpId}`;
   },
-  metaSubject(chimpId: string): string {
-    return `${Prefix.META}.${chimpId}`;
+  lifecycleSubject(chimpId: string): string {
+    return `${Prefix.META}.lifecycle.${chimpId}`;
+  },
+  lifecycleFilter(): string {
+    return `${Prefix.META}.lifecycle.>`;
+  },
+  orchestrationStreamName(): string {
+    return "orchestration";
+  },
+  orchestrationSubject(action: string, chimpId: string): string {
+    return `${Prefix.META}.orchestration.${action}.${chimpId}`;
+  },
+  orchestrationFilter(): string {
+    return `${Prefix.META}.orchestration.>`;
   },
 
   eventConsumerName(chimpId: string): string {
     return `chimp-${chimpId}`;
   },
+  orchestrationConsumerName(): string {
+    return "ringmaster-orchestration";
+  },
   podName(chimpId: string): string {
     const hash = Bun.hash(chimpId).toString(36);
     return `chimp-${hash}`;
-  },
-
-  redisChimpKey(chimpId: string): string {
-    return `chimp:${chimpId}:state`;
-  },
-  redisChimpPattern(): string {
-    return "chimp:*:state";
-  },
-  redisProfileKey(name: string): string {
-    return `profile:${name}`;
-  },
-  redisProfilePattern(): string {
-    return "profile:*";
   },
 };

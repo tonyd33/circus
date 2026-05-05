@@ -15,7 +15,7 @@ variable "PUSH" {
 }
 
 group "default" {
-  targets = ["chimp", "ringmaster", "usher", "bullhorn", "dashboard"]
+  targets = ["chimp", "ringmaster", "usher", "bullhorn", "dashboard", "api"]
 }
 
 target "common" {
@@ -55,5 +55,12 @@ target "dashboard" {
   inherits = ["common"]
   target = "dashboard"
   tags = ["dashboard:${TAG}"]
+  output = [PUSH ? "type=registry" : "type=docker"]
+}
+
+target "api" {
+  inherits = ["common"]
+  target = "api"
+  tags = ["api:${TAG}"]
   output = [PUSH ? "type=registry" : "type=docker"]
 }

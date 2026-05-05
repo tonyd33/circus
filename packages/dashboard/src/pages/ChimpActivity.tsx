@@ -7,6 +7,7 @@ import type { Standards } from "@mnke/circus-shared";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useSSE } from "@/hooks/useSSE";
+import { API_URL, api } from "@/lib/api";
 import type { ActivityEvent } from "@/lib/chimp";
 import { ActivityFeed } from "./chimp-activity/ActivityFeed";
 import { getMessageType, sortByTimestamp } from "./chimp-activity/constants";
@@ -23,14 +24,15 @@ export function ChimpActivity() {
 
   useEffect(() => {
     if (!chimpId) return;
-    fetch(`/api/chimp/${chimpId}/topics`)
-      .then((r) => r.json())
-      .then((data) => setTopics(data.topics ?? []))
+    api.api
+      .chimps({ chimpId })
+      .topics.get()
+      .then(({ data }) => setTopics(data?.topics ?? []))
       .catch(() => {});
   }, [chimpId]);
 
   const { messages, connected, error } = useSSE<ActivityMessage>({
-    url: chimpId ? `/api/chimp/${chimpId}/activity` : null,
+    url: chimpId ? `${API_URL}/api/chimps/${chimpId}/activity` : null,
     sortBy: sortByTimestamp,
     getKey: (msg) => `${msg.id}-${msg.type}-${msg.timestamp}`,
   });

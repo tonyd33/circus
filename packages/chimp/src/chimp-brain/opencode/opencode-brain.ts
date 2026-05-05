@@ -18,6 +18,8 @@ const IGNORED_EVENTS: Set<string> = new Set([
   "session.diff",
   "session.updated",
   "message.part.delta",
+  "message.part.updated",
+  "file.watcher.updated",
 ]);
 
 export class OpencodeBrain extends ChimpBrain {

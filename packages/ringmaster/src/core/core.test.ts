@@ -310,17 +310,114 @@ describe("event_received", () => {
   });
 });
 
-describe("chimp_output", () => {
-  test("chimp-request: creates job for requested chimp", () => {
+describe("orchestration_action", () => {
+  test("set-profile → upsert_status + set_profile", () => {
     const actions = interpret(
       decide({
-        type: "chimp_output",
-        chimpId: "chimp-1",
+        type: "orchestration_action",
         timestamp: T,
-        message: {
-          type: "chimp-request",
-          profile: "worker",
+        action: {
+          type: "set-profile",
           chimpId: "new-chimp",
+          profile: "worker",
+        },
+      }),
+      emptyHandler,
+    );
+
+    expect(actions).toEqual([
+      { chimpId: "new-chimp", type: "upsert_status", status: "scheduled" },
+      { chimpId: "new-chimp", type: "set_profile", profile: "worker" },
+    ]);
+  });
+
+  test("subscribe-topic → register_topic", () => {
+    const directTopic = { platform: "direct" as const, chimpId: "new-chimp" };
+    const actions = interpret(
+      decide({
+        type: "orchestration_action",
+        timestamp: T,
+        action: {
+          type: "subscribe-topic",
+          chimpId: "new-chimp",
+          topic: directTopic,
+        },
+      }),
+      emptyHandler,
+    );
+
+    expect(actions).toEqual([
+      { chimpId: "new-chimp", type: "register_topic", topic: directTopic },
+    ]);
+  });
+
+  test("unsubscribe-topic → unregister_topic", () => {
+    const actions = interpret(
+      decide({
+        type: "orchestration_action",
+        timestamp: T,
+        action: {
+          type: "unsubscribe-topic",
+          chimpId: "c1",
+          topic,
+        },
+      }),
+      emptyHandler,
+    );
+
+    expect(actions).toEqual([
+      { chimpId: "c1", type: "unregister_topic", topic },
+    ]);
+  });
+
+  test("set-topics → set_topics", () => {
+    const actions = interpret(
+      decide({
+        type: "orchestration_action",
+        timestamp: T,
+        action: {
+          type: "set-topics",
+          chimpId: "c1",
+          topics: [topic],
+        },
+      }),
+      emptyHandler,
+    );
+
+    expect(actions).toEqual([
+      { chimpId: "c1", type: "set_topics", topics: [topic] },
+    ]);
+  });
+
+  test("ensure-consumers (no deliverFrom) → create_consumers with timestamp", () => {
+    const actions = interpret(
+      decide({
+        type: "orchestration_action",
+        timestamp: T,
+        action: { type: "ensure-consumers", chimpId: "new-chimp" },
+      }),
+      emptyHandler,
+    );
+
+    expect(actions).toEqual([
+      {
+        chimpId: "new-chimp",
+        type: "create_consumers",
+        eventFilterSubjects: ["events.direct.new-chimp.>"],
+        deliverFrom: { type: "time", value: T },
+      },
+    ]);
+  });
+
+  test("ensure-consumers (with deliverFrom) → create_consumers passes through", () => {
+    const actions = interpret(
+      decide({
+        type: "orchestration_action",
+        timestamp: T,
+        action: {
+          type: "ensure-consumers",
+          chimpId: "new-chimp",
+          deliverFrom: { type: "sequence", value: 99 },
         },
       }),
       emptyHandler,
@@ -329,49 +426,43 @@ describe("chimp_output", () => {
     expect(actions).toEqual([
       {
         chimpId: "new-chimp",
-        type: "upsert_status",
-        status: "scheduled",
-      },
-      {
-        chimpId: "new-chimp",
-        type: "set_profile",
-        profile: "worker",
-      },
-      {
-        chimpId: "new-chimp",
-        type: "set_topics",
-        topics: [{ platform: "direct", chimpId: "new-chimp" }],
-      },
-      {
-        chimpId: "new-chimp",
         type: "create_consumers",
         eventFilterSubjects: ["events.direct.new-chimp.>"],
-        deliverFrom: { type: "time", value: T },
+        deliverFrom: { type: "sequence", value: 99 },
       },
-      {
-        chimpId: "new-chimp",
-        type: "register_topic",
-        topic: { platform: "direct", chimpId: "new-chimp" },
-      },
-      { chimpId: "new-chimp", type: "create_job", profile: "worker" },
     ]);
   });
 
-  test("agent-message-response → no actions", () => {
+  test("ensure-job → queries profile, then create_job", () => {
     const actions = interpret(
       decide({
-        type: "chimp_output",
-        chimpId: "chimp-1",
+        type: "orchestration_action",
         timestamp: T,
-        message: {
-          type: "agent-message-response",
-          content: "hello",
-          sessionId: "s1",
-        },
+        action: { type: "ensure-job", chimpId: "new-chimp" },
       }),
       emptyHandler,
     );
 
-    expect(actions).toEqual([]);
+    expect(actions).toEqual([
+      { chimpId: "new-chimp", type: "create_job", profile: P },
+    ]);
+  });
+
+  test("delete-chimp → cleanup actions", () => {
+    const actions = interpret(
+      decide({
+        type: "orchestration_action",
+        timestamp: T,
+        action: { type: "delete-chimp", chimpId: "c1" },
+      }),
+      emptyHandler,
+    );
+
+    expect(actions).toEqual([
+      { chimpId: "c1", type: "delete_consumers" },
+      { chimpId: "c1", type: "delete_job" },
+      { chimpId: "c1", type: "delete_state" },
+      { chimpId: "c1", type: "unregister_all_topics" },
+    ]);
   });
 });

@@ -2,12 +2,12 @@ import { Standards } from "@mnke/circus-shared";
 import {
   ChimpProfileStore,
   ProfileStore,
+  StateManager,
   TopicRegistry,
 } from "@mnke/circus-shared/components";
 import { createDatabase } from "@mnke/circus-shared/db";
 import { NatsLib } from "@mnke/circus-shared/lib";
 import type * as Logger from "@mnke/circus-shared/logger";
-import Redis from "ioredis";
 import {
   connect,
   type JetStreamManager,
@@ -17,13 +17,8 @@ import {
 } from "nats";
 import { ProfileLoader } from "@/config";
 import { EventHandler, type RingmasterConfig } from "@/core";
-import {
-  ConsumerManager,
-  JobManager,
-  MetaPublisher,
-  StateManager,
-} from "@/executors";
-import { EventListener, OutputListener, PodWatcher } from "@/listeners";
+import { ConsumerManager, JobManager, MetaPublisher } from "@/executors";
+import { EventListener, OrchestrationListener, PodWatcher } from "@/listeners";
 import { PodCache } from "@/state";
 
 export class Ringmaster {
@@ -44,7 +39,7 @@ export class Ringmaster {
   private eventHandler: EventHandler | null = null;
 
   private eventListener: EventListener | null = null;
-  private outputListener: OutputListener | null = null;
+  private orchestrationListener: OrchestrationListener | null = null;
   private podWatcher: PodWatcher | null = null;
 
   constructor(config: RingmasterConfig, logger: Logger.Logger) {
@@ -67,10 +62,7 @@ export class Ringmaster {
     const topicRegistry = new TopicRegistry(this.nc, db);
     await topicRegistry.start();
 
-    this.stateManager = new StateManager(
-      this.config.redisUrl,
-      this.logger.child({ component: "StateManager" }),
-    );
+    this.stateManager = new StateManager(db);
     this.consumerManager = new ConsumerManager(
       this.jsm,
       this.logger.child({ component: "ConsumerManager" }),
@@ -79,8 +71,7 @@ export class Ringmaster {
       this.nc,
       this.logger.child({ component: "MetaPublisher" }),
     );
-    const profileRedis = new Redis(this.config.redisUrl);
-    const profileStore = new ProfileStore(profileRedis);
+    const profileStore = new ProfileStore(db);
     this.profileLoader = new ProfileLoader(
       profileStore,
       this.logger.child({ component: "ProfileLoader" }),
@@ -132,18 +123,17 @@ export class Ringmaster {
       this.eventHandler,
       this.logger.child({ component: "EventListener" }),
     );
-    this.outputListener = new OutputListener(
+    this.orchestrationListener = new OrchestrationListener(
       this.nc,
       this.eventHandler,
-      this.logger.child({ component: "OutputListener" }),
+      this.logger.child({ component: "OrchestrationListener" }),
     );
 
     await Promise.all([
       this.podCache.start(),
       this.eventListener.start(),
-      this.outputListener.start(),
+      this.orchestrationListener.start(),
       this.podWatcher.start(),
-      this.stateManager.start(),
       this.jobManager.start(),
     ]);
     this.logger.info("Ringmaster started");
@@ -154,14 +144,13 @@ export class Ringmaster {
       this.podCache?.stop(),
       this.podWatcher?.stop(),
       this.eventListener?.stop(),
-      this.outputListener?.stop(),
-      this.stateManager?.stop(),
+      this.orchestrationListener?.stop(),
       this.jobManager?.stop(),
       this.profileLoader?.stop(),
     ]);
     this.podWatcher = null;
     this.eventListener = null;
-    this.outputListener = null;
+    this.orchestrationListener = null;
     this.stateManager = null;
     this.jobManager = null;
     this.profileLoader = null;
@@ -194,6 +183,11 @@ export class Ringmaster {
         ...streamDefaults,
         name: Standards.Chimp.Naming.outputsStreamName(),
         subjects: [`${Standards.Chimp.Prefix.OUTPUTS}.>`],
+      }),
+      NatsLib.ensureStream(jsm, {
+        ...streamDefaults,
+        name: Standards.Chimp.Naming.orchestrationStreamName(),
+        subjects: [Standards.Chimp.Naming.orchestrationFilter()],
       }),
     ]);
   }

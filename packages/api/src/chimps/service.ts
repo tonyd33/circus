@@ -1,17 +1,17 @@
 import { Protocol, Standards } from "@mnke/circus-shared";
 import type {
   ChimpProfileStore,
+  StateManager,
   TopicRegistry,
 } from "@mnke/circus-shared/components";
 import type * as Logger from "@mnke/circus-shared/logger";
 import type { NatsConnection } from "nats";
-import type { RedisStatusSource } from "../lib/status-source";
 
 const PING_INTERVAL_MS = 3_000;
 
 export class ChimpService {
   constructor(
-    private statusSource: RedisStatusSource,
+    private statusSource: StateManager,
     private chimpProfileStore: ChimpProfileStore,
     private topicRegistry: TopicRegistry,
     private nc: NatsConnection,
@@ -54,7 +54,7 @@ export class ChimpService {
     const log = this.logger;
     const self = this;
 
-    const sub = nc.subscribe(`${Standards.Chimp.Prefix.META}.>`);
+    const sub = nc.subscribe(Standards.Chimp.Naming.lifecycleFilter());
     let pingInterval: ReturnType<typeof setInterval>;
 
     return new ReadableStream<Uint8Array>({

@@ -23,16 +23,10 @@ spec:
           image: "{{ .Values.dashboard.image.repository }}:{{ .Values.dashboard.image.tag }}"
           imagePullPolicy: {{ .Values.dashboard.image.pullPolicy }}
           env:
-            - name: REDIS_URL
-              value: {{ .Values.externalServices.redis.url | quote }}
-            - name: NATS_URL
-              value: {{ .Values.externalServices.nats.url | quote }}
-            - name: DATABASE_URL
-              value: {{ .Values.externalServices.postgres.url | quote }}
-            - name: DEFAULT_PROFILE
-              value: {{ .Values.global.defaultProfile | quote }}
             - name: NODE_ENV
               value: "production"
+            - name: API_URL
+              value: {{ .Values.dashboard.apiUrl | quote }}
             {{- with .Values.dashboard.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

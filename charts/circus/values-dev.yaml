@@ -96,3 +96,8 @@ dashboard:
   enabled: true
   image:
     repository: dashboard
+
+api:
+  enabled: true
+  image:
+    repository: api

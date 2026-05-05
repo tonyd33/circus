@@ -41,15 +41,16 @@
 
 ## NATS Subject Topology
 
-Three subject trees, three JetStream streams:
+Four JetStream streams plus a plain pub/sub channel:
 
 ```
-events.{platform}.{...path}      — what happened in the world
-commands.{chimpId}                — direct commands to a specific chimp
-outputs.{chimpId}                 — messages from chimps
+events.{platform}.{...path}              — what happened in the world (JetStream: events)
+commands.{chimpId}                       — direct commands to a specific chimp (JetStream: commands)
+outputs.{chimpId}                        — messages from chimps (JetStream: outputs)
+meta.orchestration.{action}.{chimpId}    — orchestration control plane (JetStream: orchestration)
 ```
 
-Plus `meta.{chimpId}` for lifecycle events (plain NATS, not JetStream).
+Plus `meta.lifecycle.{chimpId}` for lifecycle broadcasts (plain NATS, not JetStream — status/profile/topics/dispatch events for dashboards).
 
 ### Event Subjects
 

@@ -10,7 +10,8 @@
   "scripts": {
     "dev": "bun --watch src/index.ts",
     "start": "bun src/index.ts",
-    "typecheck": "bun tsgo --noEmit"
+    "typecheck": "bun tsgo --noEmit",
+    "build": "bun build --target=bun --outfile=dist/index.js src/index.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.92",

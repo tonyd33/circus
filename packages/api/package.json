@@ -1,0 +1,29 @@
+{
+  "name": "@mnke/circus-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./app": "./src/app.ts"
+  },
+  "scripts": {
+    "dev": "bun --hot src/index.ts",
+    "start": "NODE_ENV=production bun src/index.ts",
+    "typecheck": "bun tsgo --noEmit",
+    "build": "bun build --target=bun --outfile=dist/index.js src/index.ts"
+  },
+  "dependencies": {
+    "@elysiajs/cors": "^1.4.2",
+    "@elysiajs/openapi": "^1.4.15",
+    "@mnke/circus-shared": "workspace:*",
+    "elysia": "^1.4.28",
+    "nats": "catalog:",
+    "zod": "catalog:"
+  },
+  "peerDependencies": {
+    "@typescript/native-preview": "^7.0.0-dev.20260411.1"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

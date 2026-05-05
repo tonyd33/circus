@@ -2,6 +2,7 @@ import {
   AuthResolver,
   ProfileStore,
   RedisTokenStore,
+  StateManager,
   TopicRegistry,
 } from "@mnke/circus-shared/components";
 import { createDatabase } from "@mnke/circus-shared/db";
@@ -66,6 +67,8 @@ export class Chimp {
     process.on("SIGINT", () => this.shutdown("explicit_stop"));
     process.on("SIGTERM", () => this.shutdown("explicit_stop"));
 
+    const db = createDatabase(this.config.databaseUrl);
+
     if (this.config.outputMode === "nats" || this.config.inputMode === "nats") {
       this.nc = await connect({
         servers: this.config.natsUrl,
@@ -74,7 +77,6 @@ export class Chimp {
       });
       this.logger.info("Connected to NATS");
 
-      const db = createDatabase(this.config.databaseUrl);
       this.topicRegistry = new TopicRegistry(this.nc, db);
       await this.topicRegistry.start();
       this.logger.info("Topic registry connected");
@@ -89,7 +91,8 @@ export class Chimp {
     };
 
     const profileRedis = new Redis(this.config.redisUrl);
-    const profileStore = new ProfileStore(profileRedis);
+    const profileStore = new ProfileStore(db);
+    const stateManager = new StateManager(db);
 
     const profile = await profileStore.get(this.config.profile);
     const tokenStore = new RedisTokenStore(profileRedis);
@@ -100,6 +103,7 @@ export class Chimp {
       chimpId: this.config.chimpId,
       profile: this.config.profile,
       profileStore,
+      stateManager,
       topicRegistry: this.topicRegistry,
       logger: this.logger.child({ component: "MCP" }),
     });

@@ -34,27 +34,40 @@ bun --watch packages/ringmaster/src/index.ts
 - **Event-centric NATS subjects**: Events describe what happened in the world (`events.github.{owner}.{repo}.pr.{number}.comment`). Chimps subscribe to topics they care about. Direct commands via `commands.{chimpId}`.
 - **Topic subscriptions**: Chimps register interest in topics (via MCP `subscribe_topic` tool). Postgres `topic_subscriptions` table maps topics to chimps (multiple chimps per topic). Enables cross-platform continuity (e.g. discord-triggered chimp receives github PR comments).
 - **Pure core**: Ringmaster's `core/core.ts` is pure decision logic. Side effects in event handler.
-- **Chimp state in Redis**: Key pattern `chimp:{id}:state` via `Standards.Chimp.Naming.redisChimpKey()`
+- **Chimp state in Postgres**: `chimp_states` table — chimpId, status, createdAt, updatedAt. Read/write via `StateManager` (`@mnke/circus-shared/components`).
+- **Chimp profiles in Postgres**: `chimp_profile_definitions` table — name + jsonb definition. Read/write via `ProfileStore`. Profile *assignments* (chimpId → profile name) live in `chimp_profiles` table via `ChimpProfileStore`.
 - **Types in shared**: Put types in `packages/shared/src/standards/`, not separate files.
 
 ### NATS Subject Topology
 
 ```
-events.{platform}.{...path}   — world events (usher publishes)
-commands.{chimpId}             — direct commands to chimps (dashboard, chimp-to-chimp)
-outputs.{chimpId}              — chimp output messages
-meta.{chimpId}                 — chimp lifecycle events
+events.{platform}.{...path}              — world events (usher publishes)
+commands.{chimpId}                       — direct commands to chimps (dashboard, chimp-to-chimp)
+outputs.{chimpId}                        — chimp output messages (data-plane)
+meta.lifecycle.{chimpId}                 — chimp lifecycle broadcasts (status/profile/topics/dispatch)
+meta.orchestration.{action}.{chimpId}    — orchestration control plane (set-profile, subscribe-topic, ensure-job, ...)
 ```
 
-Streams: `events`, `commands`, `outputs`
+Streams: `events`, `commands`, `outputs`, `orchestration` (all JetStream).
 
 Each chimp has:
 - Events consumer: `chimp-{chimpId}` on `events` stream (filtered to subscribed topics)
 - Commands consumer: `chimp-{chimpId}-commands` on `commands` stream
 
+Ringmaster has:
+- `event-listener` consumer on `events.>` — dispatch
+- `ringmaster-orchestration` consumer on `meta.orchestration.>` — control plane
+- (Used to listen on `outputs.>` for `chimp-request`; that coupling was removed — bullhorn now translates `chimp-request` outputs into orchestration actions.)
+
+## Orchestration Control Plane
+
+`meta.orchestration.>` is durable JetStream. Producers (currently bullhorn; future: usher, dashboard) publish discrete `OrchestrationAction` messages — `set-profile`, `subscribe-topic`, `set-topics`, `unsubscribe-topic`, `ensure-consumers`, `ensure-job`, `delete-chimp`. Ringmaster's core decides what internal Actions each one maps to.
+
+Action `type` strings are kebab-case; internal core `Action` types stay snake_case for now (pending project-wide migration).
+
 ## Chimp Handoff
 
-Chimps hand off work to a new chimp with a different profile using `chimp_request`. The old chimp asks ringmaster to spawn the new chimp, then sends it individual commands (subscribe to topics, add event contexts, continue work). No special handoff orchestration — just regular commands.
+Chimps hand off work to a new chimp with a different profile using `chimp_request`. The old chimp publishes a single `chimp-request` output. Bullhorn expands it into a 4-message orchestration sequence (`set-profile` + `subscribe-topic` + `ensure-consumers` + `ensure-job`) on `meta.orchestration.>`. The old chimp also publishes follow-up `chimp-command` outputs (subscribe-topic init command, add-event-context, continue work) — those are data-plane and bullhorn forwards them to the new chimp's `events.direct.{chimpId}.command` subject.
 
 ## Project Structure
 
@@ -74,7 +87,7 @@ Chimps hand off work to a new chimp with a different profile using `chimp_reques
 
 1. **Leaf modules have no internal dependencies.** `standards/`, `db/`, `lib/` don't import each other. This keeps them independently testable and prevents cycles.
 
-2. **Components compose leaves.** `components/` imports from `db/`, `standards/`, and external packages (NATS, Redis). This is the only layer that talks to external stores.
+2. **Components compose leaves.** `components/` imports from `db/`, `standards/`, and external packages (NATS, Postgres, Redis). This is the only layer that talks to external stores.
 
 3. **Export paths match purpose.** `@mnke/circus-shared/lib` for utilities, `@mnke/circus-shared/db` for persistence, `@mnke/circus-shared/components` for data access. Consumers import from the path that matches what they need — not a kitchen-sink re-export.
 
@@ -415,9 +428,12 @@ const profile: Protocol.ChimpProfile = ...;
 
 ## Key Files
 
-- `packages/shared/src/standards/chimp.ts` — NATS subject naming, stream names, consumer names, Redis keys
+- `packages/shared/src/standards/chimp.ts` — NATS subject naming, stream names, consumer names, ChimpState type
 - `packages/shared/src/standards/topic.ts` — topic schema, serialization, event subject parsing
+- `packages/shared/src/db/schema.ts` — Drizzle tables: `topic_subscriptions`, `chimp_profiles`, `chimp_states`, `chimp_profile_definitions`
 - `packages/shared/src/components/topic-registry.ts` — topic subscription registry (Postgres + NATS consumer management)
+- `packages/shared/src/components/state-manager.ts` — chimp lifecycle state (Postgres)
+- `packages/shared/src/components/profile-store.ts` — chimp profile definitions (Postgres)
 - `packages/shared/src/protocol.ts` — all Zod schemas (commands, outputs, meta events, event context)
 - `packages/ringmaster/src/core/core.ts` — pure decision logic (event routing, chimp spawning)
 - `packages/chimp/src/chimp-brain/chimp-brain.ts` — base brain class (command dispatch, overridable handlers)

@@ -14,6 +14,6 @@ spec:
   ports:
     - name: dashboard
       port: {{ .Values.dashboard.service.port }}
-      targetPort: 3000
+      targetPort: 4772
       protocol: TCP
 {{- end }}

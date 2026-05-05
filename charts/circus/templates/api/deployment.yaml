@@ -1,0 +1,68 @@
+{{- if .Values.api.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "circus.fullname" . }}-api
+  labels:
+    {{- include "circus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  replicas: {{ .Values.api.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "circus.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        {{- include "circus.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: api
+    spec:
+      containers:
+        - name: api
+          image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          env:
+            - name: NATS_URL
+              value: {{ .Values.externalServices.nats.url | quote }}
+            - name: DATABASE_URL
+              value: {{ .Values.externalServices.postgres.url | quote }}
+            - name: DEFAULT_PROFILE
+              value: {{ .Values.global.defaultProfile | quote }}
+            - name: DASHBOARD_ORIGIN
+              value: {{ .Values.api.dashboardOrigin | quote }}
+            - name: NODE_ENV
+              value: "production"
+            {{- with .Values.api.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - containerPort: 4773
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 4773
+            initialDelaySeconds: 5
+            periodSeconds: 3
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 4773
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 4773
+            initialDelaySeconds: 0
+            periodSeconds: 1
+            timeoutSeconds: 5
+            failureThreshold: 30
+{{- end }}
