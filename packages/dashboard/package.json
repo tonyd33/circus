@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "start": "NODE_ENV=production bun src/server.ts",
-    "build": "vite build",
+    "build": "vite build && bun build --target=bun --outfile=dist-server/index.js src/server.ts",
     "typecheck": "bun tsgo --noEmit"
   },
   "dependencies": {
