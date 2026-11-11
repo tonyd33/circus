@@ -33,7 +33,7 @@
     "drizzle-orm": "^0.45.2",
     "ioredis": "catalog:",
     "pino": "^10.3.1",
-    "postgres": "^3.4.9",
+    "postgres": "^4.0.0",
     "prom-client": "^15.1.3"
   }
 }
